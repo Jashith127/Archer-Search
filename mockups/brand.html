@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archer pixel identity</title>
+<style>
+@font-face { font-family: "DM Sans"; src: url("../src/archer/static/fonts/dm-sans-latin-wght-normal.woff2") format("woff2"); font-weight: 100 1000; }
+@font-face { font-family: "DM Mono"; src: url("../src/archer/static/fonts/dm-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; }
+:root{--bg:#0a0a0a;--s1:#111;--s2:#161616;--s3:#1d1d1d;--bd:rgba(255,255,255,.09);--bds:rgba(255,255,255,.055);--t:#ededed;--t2:#a1a1a1;--t3:#6b6b6b;--ink:237,237,237;
+  --mono:"DM Mono","Cascadia Code",Consolas,monospace;--sans:"DM Sans","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t);font:14.5px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+canvas{display:block}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+.eyebrow{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--t3)}
+h1{font:600 40px/1.1 var(--sans);letter-spacing:-.03em;margin:10px 0 10px}
+h2{font:600 22px/1.2 var(--sans);letter-spacing:-.02em;margin:6px 0 8px}
+p.lede{color:var(--t2);max-width:680px;margin:0}
+section{padding:56px 0;border-top:1px solid var(--bds)}
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+.note{color:var(--t2);font-size:13.5px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:860px){.grid3,.grid2{grid-template-columns:1fr}.wrap{padding:0 16px}}
+
+/* controls */
+.controls{position:sticky;top:0;z-index:20;background:rgba(10,10,10,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--bds)}
+.controls .wrap{display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding-top:10px;padding-bottom:10px}
+.controls b{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-right:4px}
+.seg{display:inline-flex;gap:4px}
+.seg button{padding:5px 11px;border:1px solid var(--bd);border-radius:8px;background:var(--s1);color:var(--t2);font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:var(--t);color:#000;border-color:var(--t);font-weight:600}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2)}
+.ctl input{accent-color:#ededed;width:110px}
+.ctl output{font:12px var(--mono);color:var(--t3);width:34px}
+
+/* hero */
+.hero{position:relative;height:440px;margin-top:28px}
+.hero canvas{position:absolute;inset:0;width:100%;height:100%}
+.hero .cap{position:absolute;left:18px;bottom:14px;font:12px var(--mono);color:var(--t3);pointer-events:none}
+.hero .cap span{color:var(--t2)}
+
+/* unit anatomy */
+.unit{display:grid;grid-template-columns:280px 1fr;gap:28px;align-items:center;padding:24px}
+.unit svg{width:100%;height:auto}
+.spec{display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:13.5px}
+.spec dt{font:12px var(--mono);color:var(--t3);padding-top:2px}.spec dd{margin:0;color:var(--t2)}
+.ramp{display:flex;gap:6px;margin-top:6px}
+.ramp i{width:34px;height:34px;border-radius:7px;display:grid;place-items:end center;font:10px var(--mono);font-style:normal;color:var(--t3);padding-bottom:0}
+.ramp div{display:flex;flex-direction:column;align-items:center;gap:4px;font:10px var(--mono);color:var(--t3)}
+
+/* directions */
+.dir canvas{width:100%;height:220px;background:#0b0b0b;border-bottom:1px solid var(--bds)}
+.dir .body{padding:16px 18px 18px}
+.dir h3{margin:0 0 4px;font:600 15px var(--sans);display:flex;gap:8px;align-items:center}
+.tag{font:500 10px var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:2px 7px;border-radius:5px;background:var(--t);color:#000}
+.sizes{display:flex;gap:14px;align-items:flex-end;margin-top:14px}
+.sizes figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px;font:10px var(--mono);color:var(--t3)}
+
+/* icons */
+.tiles{display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap;padding:24px}
+.tiles figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;font:11px var(--mono);color:var(--t3)}
+.zoom{image-rendering:pixelated}
+.taskbar{display:flex;align-items:center;justify-content:flex-end;gap:12px;height:44px;padding:0 16px;font:12px "Segoe UI",sans-serif}
+.taskbar.dark{background:#1c1c1c;color:#ddd}.taskbar.light{background:#eef0f4;color:#222}
+.taskbar .ph{width:16px;height:16px;border-radius:3px;background:currentColor;opacity:.25}
+.vs{display:flex;gap:12px;align-items:center;font:11px var(--mono);color:var(--t3)}
+
+/* product mocks */
+.frame{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--bd);background:var(--bg)}
+.chrome{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;background:#141414;border-bottom:1px solid var(--bds);font:12px var(--mono);color:var(--t3)}
+.chrome i{width:9px;height:9px;border-radius:50%;background:#2a2a2a}
+.chrome .url{margin-left:10px;padding:3px 10px;border-radius:6px;background:#0d0d0d}
+.home{height:420px;position:relative}
+.home canvas{position:absolute;inset:0;width:100%;height:100%}
+.home .ui{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);width:min(560px,86%);text-align:center;pointer-events:none}
+.sbar{display:flex;align-items:center;gap:10px;height:46px;padding:0 16px;background:rgba(21,21,21,.86);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.18);border-radius:12px;color:var(--t3);text-align:left;font-size:15px}
+.sbar svg{width:16px;height:16px;fill:none;stroke:var(--t2);stroke-width:2}
+.home .hint{margin-top:12px;font:12px var(--mono);color:var(--t3)}
+.replay{position:absolute;right:12px;bottom:12px;z-index:2;padding:5px 10px;border:1px solid var(--bd);border-radius:7px;background:var(--s2);color:var(--t2);font:12px var(--mono);cursor:pointer}
+.rhead{display:flex;align-items:center;gap:14px;height:60px;padding:0 18px;border-bottom:1px solid var(--bds)}
+.rhead .sbar{flex:1;height:38px;font-size:14px;color:var(--t)}
+.loader{height:3px;width:100%}
+.tabs{display:flex;gap:18px;padding:10px 18px;font-size:13px;color:var(--t3);border-bottom:1px solid var(--bds)}.tabs b{color:var(--t);font-weight:500}
+.ai{margin:18px;padding:16px;border:1px solid var(--bd);border-radius:12px;background:var(--s1)}
+.ai .row{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2)}
+.ai canvas{width:100%;height:40px;margin-top:12px}
+.skel{height:10px;border-radius:5px;background:var(--s3);margin:10px 0}
+ul.rules{margin:0;padding-left:18px;color:var(--t2)}ul.rules li{margin:6px 0}ul.rules b{color:var(--t)}
+.motion{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.motion div{padding:14px;border:1px solid var(--bd);border-radius:12px;background:var(--s1);font-size:13px;color:var(--t2)}
+.motion b{display:block;color:var(--t);font-weight:600;margin-bottom:4px}
+.motion code{font:11px var(--mono);color:var(--t3)}
+@media (max-width:860px){.motion{grid-template-columns:1fr 1fr}.unit{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="controls"><div class="wrap">
+  <span><b>Ink</b><span class="seg" id="ink"><button data-v="mono" class="on">Mono</button><button data-v="ember">Ember</button><button data-v="signal">Signal</button></span></span>
+  <label class="ctl">Pixel pitch <input id="pitch" type="range" min="4" max="14" value="7"><output>7px</output></label>
+  <label class="ctl">Roundness <input id="round" type="range" min="0" max="100" value="35"><output>35%</output></label>
+  <label class="ctl">Gap <input id="gap" type="range" min="10" max="50" value="24"><output>24%</output></label>
+</div></div>
+
+<div class="wrap">
+  <div style="padding-top:40px">
+    <div class="eyebrow">Archer · brand exploration v1</div>
+    <h1>The pixel grid</h1>
+    <p class="lede">The brand is a field of tiny, slightly rounded squares. At rest it's a faint grid. When Archer is doing something, the pixels light up, gather into the mark and move with you. The UI stays quiet and monochrome. The grid appears only around it: the home page, loading, AI work, the favicon and the tray.</p>
+  </div>
+  <div class="hero card"><canvas id="hero"></canvas><div class="cap">Click to morph · <span id="heroName">mark</span> · move your cursor over the field</div></div>
+
+  <section>
+    <div class="eyebrow">01 · The unit</div>
+    <h2>One rounded square, five inks</h2>
+    <div class="card unit">
+      <svg id="anatomy" viewBox="0 0 280 200"></svg>
+      <dl class="spec">
+        <dt>pitch</dt><dd>Grid spacing. 7px on large surfaces, 4px in loaders, and whole device pixels in icons.</dd>
+        <dt>square</dt><dd>76% of pitch. The gap (24%) keeps the grid visible even where the shape is solid.</dd>
+        <dt>radius</dt><dd>35% of half the square. Rounded enough to feel modern, not so much that the pixels read as dots.</dd>
+        <dt>ink</dt><dd>One colour at five opacities. Using opacity instead of hue keeps it in line with the monochrome UI.
+          <div class="ramp" id="ramp"></div></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">02 · Mark directions</div>
+    <h2>Three ways to draw Archer in pixels</h2>
+    <p class="note" style="margin:0 0 18px">Each card is live. The 48, 32 and 16px versions below each one are hand-drawn bitmaps, since icon sizes need pixel-exact art.</p>
+    <div class="grid3">
+      <div class="card dir"><canvas data-dir="ascent"></canvas><div class="body">
+        <h3>A · Ascent <span class="tag">Recommended</span></h3>
+        <div class="note">The existing chevron "A", rebuilt in pixels. Its legs break up into particles, like an arrow leaving the bow. It keeps continuity with the current mark and reads clearly down to 16px.</div>
+        <div class="sizes" data-bm="ascent"></div></div></div>
+      <div class="card dir"><canvas data-dir="target"></canvas><div class="body">
+        <h3>B · Target</h3>
+        <div class="note">A pixel bullseye that fills in from the centre: "found it." It's easy to animate as a loading state. The risk is that it reads as generic (Target, crosshair icons).</div>
+        <div class="sizes" data-bm="target"></div></div></div>
+      <div class="card dir"><canvas data-dir="caret"></canvas><div class="body">
+        <h3>C · Caret</h3>
+        <div class="note">No symbol: the wordmark plus a blinking pixel caret, much like Cursor's own. It's the most minimal option, but it needs a separate icon (the caret block) and is the least ownable.</div>
+        <div class="sizes" data-bm="caret"></div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">03 · Icons</div>
+    <h2>Favicon and tray, pixel-exact</h2>
+    <div class="card">
+      <div class="tiles" id="tiles"></div>
+      <div class="taskbar dark" id="tbDark"></div>
+      <div class="taskbar light" id="tbLight"></div>
+    </div>
+    <p class="note" style="margin-top:12px">At 16px each grid cell is a whole 2×2 device-pixel block with no gap, so it's honest pixel art. Gaps appear from 32px up. The dark tile keeps the icon readable on light taskbars as well as dark ones.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">04 · In product</div>
+    <h2>Where the grid shows up</h2>
+    <div class="frame" style="margin-bottom:16px">
+      <div class="chrome"><i></i><i></i><i></i><span class="url">archer.localhost:4747</span></div>
+      <div class="home"><canvas id="homeField"></canvas>
+        <div class="ui"><div class="sbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the web privately</div>
+          <div class="hint">Classic mode · results from your SearXNG</div></div>
+        <button class="replay" id="replay">Replay</button></div>
+    </div>
+    <div class="grid2">
+      <div class="frame">
+        <div class="rhead"><svg id="hdrMark" width="24" height="24"></svg><div class="sbar">rust async runtime comparison</div></div>
+        <canvas class="loader" id="loader"></canvas>
+        <div class="tabs"><b>All</b><span>Images</span><span>News</span><span>Videos</span></div>
+        <div style="padding:6px 18px 18px"><div class="skel" style="width:30%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:28%;margin-top:22px"></div><div class="skel" style="width:80%"></div></div>
+        <div class="note" style="padding:0 18px 16px">Header: static pixel mark. Loading: a 3px pixel "comet" replaces the usual progress bar.</div>
+      </div>
+      <div class="frame">
+        <div class="ai"><div class="row"><svg id="aiMark" width="18" height="18"></svg>Reading 8 sources…</div><canvas id="aiField"></canvas>
+          <div class="skel" style="width:92%;margin-top:16px"></div><div class="skel" style="width:76%"></div></div>
+        <div class="note" style="padding:0 18px 16px">AI answer generating: a 4-row band where light sweeps across the pixels, used in place of a spinner. It only appears after the POST that generates the answer, never on a plain GET.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">05 · Motion</div>
+    <h2>Five behaviours, nothing else</h2>
+    <div class="motion">
+      <div><b>Assemble</b>Pixels light up left to right, with random jitter on each one.<br><code>~900ms · ease-out</code></div>
+      <div><b>Breathe</b>Lit pixels pulse ±14% opacity, each with its own phase.<br><code>~3s loop</code></div>
+      <div><b>Sweep</b>A diagonal band of light crosses the field now and then.<br><code>~9s period</code></div>
+      <div><b>React</b>Pixels near the cursor brighten, falling off with distance.<br><code>110px radius</code></div>
+      <div><b>Rest</b>With reduced motion, or when off-screen, the field draws one static frame.<br><code>0 cost idle</code></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">06 · Rules</div>
+    <h2>Keeping it modern, not retro</h2>
+    <ul class="rules">
+      <li><b>Pixels around the UI, never inside it.</b> Result text, cards and heroes stay as they are. The grid belongs to the home page, setup, loading, AI work and icons.</li>
+      <li><b>Small pixels, large shapes.</b> A large mark is drawn with many tiny squares rather than a few chunky ones. That separates it from 8-bit nostalgia.</li>
+      <li><b>One ink.</b> Mono is the default. Ember (the weather accent) or Signal (rain blue) could tint a state, but never both at once.</li>
+      <li><b>Wordmark stays in DM Sans.</b> The pixel treatment is reserved for the symbol and the field. A pixel font would date it.</li>
+      <li><b>Strict CSP fits.</b> Everything here is canvas plus DOM in one script, so it can move into <code>archer.js</code> as-is.</li>
+    </ul>
+  </section>
+  <div style="height:60px"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------- shared state
+const INKS = { mono: [237, 237, 237], ember: [243, 163, 91], signal: [110, 168, 255] };
+const S = { ink: "mono", pitch: 7, round: 0.35, gap: 0.24 };
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const rgba = (a) => `rgba(${INKS[S.ink].join(",")},${a})`;
+const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0x5bd1e995; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+const LEVEL = { "#": 1, "+": 0.62, ":": 0.34, ".": 0.14, "-": 0 };
+
+// ---------------------------------------------------------------- bitmaps (icon sizes)
+const BM = {
+  ascent9: ["----#----", "---###---", "---###---", "--#####--", "--##-##--", "-##---##-", "-+#---#+-", "+:-----:+", ":-------:"],
+  ascent7: ["---#---", "--###--", "--###--", "-##-##-", "-##-##-", "#+---+#", ":-----:"],
+  target9: ["--#####--", "-#-----#-", "#--:::--#", "#-:###:-#", "#-:###:-#", "#-:###:-#", "#--:::--#", "-#-----#-", "--#####--"],
+  target7: ["-#####-", "#-----#", "#-###-#", "#-###-#", "#-###-#", "#-----#", "-#####-"],
+  caret9: ["---------", "---###---", "---###---", "---###---", "---###---", "---###---", "---###---", "---###---", "---------"],
+  caret7: ["-------", "--###--", "--###--", "--###--", "--###--", "--###--", "-------"],
+};
+
+// SVG rendering of a bitmap (resolution-independent, for headers and large displays).
+function bitmapSVG(svg, rows, size) {
+  const NS = "http://www.w3.org/2000/svg", n = rows.length, sq = 10 * (1 - S.gap);
+  svg.setAttribute("viewBox", `0 0 ${n * 10} ${n * 10}`);
+  if (size) { svg.setAttribute("width", size); svg.setAttribute("height", size); }
+  svg.replaceChildren();
+  rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    const a = LEVEL[ch]; if (!a) return;
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", x * 10 + (10 - sq) / 2); r.setAttribute("y", y * 10 + (10 - sq) / 2);
+    r.setAttribute("width", sq); r.setAttribute("height", sq); r.setAttribute("rx", sq / 2 * S.round);
+    r.setAttribute("fill", rgba(a)); svg.appendChild(r);
+  }));
+  return svg;
+}
+
+// Canvas rendering at exact device pixels (for favicon/tray realism). tile: draw dark rounded tile behind.
+function bitmapCanvas(rows, px, tile = true) {
+  const c = document.createElement("canvas"); c.width = c.height = px;
+  const g = c.getContext("2d"), n = rows.length;
+  const pad = tile ? Math.max(1, Math.round(px * 0.12)) : 0;
+  const pitch = Math.floor((px - pad * 2) / n), off = Math.floor((px - pitch * n) / 2);
+  const gap = px >= 32 ? Math.max(1, Math.round(pitch * S.gap)) : 0, sq = pitch - gap;
+  if (tile) { g.fillStyle = "#121212"; g.beginPath(); g.roundRect(0, 0, px, px, px * 0.22); g.fill(); g.strokeStyle = "rgba(255,255,255,.12)"; g.stroke(); }
+  rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    const a = LEVEL[ch]; if (!a) return;
+    g.fillStyle = rgba(a); g.beginPath();
+    g.roundRect(off + x * pitch, off + y * pitch, sq, sq, px >= 48 ? sq / 2 * S.round : 0); g.fill();
+  }));
+  return c;
+}
+
+// ---------------------------------------------------------------- vector shapes → field targets
+const SHAPES = {
+  chevron(g, x, y, s) {
+    g.beginPath();
+    [[.5, 0], [1, 1], [.7, 1], [.5, .56], [.3, 1], [0, 1]].forEach(([u, v], i) => g[i ? "lineTo" : "moveTo"](x + u * s, y + v * s));
+    g.closePath(); g.fill();
+  },
+  target(g, x, y, s) {
+    const cx = x + s / 2, cy = y + s / 2;
+    g.lineWidth = s * 0.11; g.beginPath(); g.arc(cx, cy, s * 0.445, 0, 7); g.stroke();
+    g.beginPath(); g.arc(cx, cy, s * 0.17, 0, 7); g.fill();
+  },
+  word(g, x, y, s, text = "archer") {
+    g.font = `600 ${s}px "DM Sans"`; g.textBaseline = "middle"; g.textAlign = "center";
+    g.fillText(text, x, y);
+  },
+};
+
+// Build a target map for a cols×rows field. kind: ascent | chevron | target | word | caret | none
+function makeTarget(kind, cols, rows, { fit = 0.62, fx = 0.5, fy = 0.5 } = {}) {
+  const SS = 4, w = cols * SS, h = rows * SS, off = new OffscreenCanvas(w, h), g = off.getContext("2d");
+  g.fillStyle = g.strokeStyle = "#fff";
+  const s = Math.min(h * fit, w * 0.8), x = w * fx - s / 2, y = h * fy - s / 2;
+  let bbox = [x, y, s, s];
+  if (kind === "ascent" || kind === "chevron") SHAPES.chevron(g, x, y, s);
+  else if (kind === "target") SHAPES.target(g, x, y, s);
+  else if (kind === "word") SHAPES.word(g, w * fx, h * fy, s * 0.62);
+  else if (kind === "caret") {
+    const fs = s * 0.5; SHAPES.word(g, w * fx - fs * 0.35, h * fy, fs);
+    const tw = g.measureText("archer").width; g.globalAlpha = 1;
+    g.fillRect(w * fx - fs * 0.35 + tw / 2 + fs * 0.12, h * fy - fs * 0.42, fs * 0.36, fs * 0.84);
+  }
+  const data = g.getImageData(0, 0, w, h).data, map = new Float32Array(cols * rows);
+  if (kind === "none") return map;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    let a = 0;
+    for (let j = 0; j < SS; j++) for (let i = 0; i < SS; i++) a += data[((r * SS + j) * w + c * SS + i) * 4 + 3];
+    map[r * cols + c] = a / (SS * SS * 255);
+  }
+  if (kind === "ascent") {
+    // Legs dissolve downward and shed particles below the mark.
+    const top = bbox[1] / SS, bot = (bbox[1] + bbox[3]) / SS, H = bot - top;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const k = r * cols + c, ny = (r - top) / H;
+      if (map[k] > 0 && ny > 0.58) {
+        const f = (ny - 0.58) / 0.42;
+        map[k] = hash(c, r) > f * 0.8 ? map[k] * (1 - f * 0.55) : 0;
+      }
+    }
+    const fall = Math.max(3, Math.round(H * 0.28));
+    const legRow = Math.floor(top + H * 0.97);
+    for (let d = 1; d <= fall; d++) for (let c = 0; c < cols; c++) {
+      const r = legRow + d; if (r >= rows) break;
+      const cov = data[((legRow * SS) * w + c * SS) * 4 + 3] / 255;
+      if (cov > 0.5 && hash(c * 7, r * 13) < 0.32 * (1 - d / (fall + 1))) map[r * cols + c] = 0.18 + 0.25 * (1 - d / fall);
+    }
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------- the field
+const FIELDS = [];
+class Field {
+  constructor(canvas, o = {}) {
+    this.c = canvas; this.g = canvas.getContext("2d");
+    this.o = Object.assign({ base: 0.055, sweep: 0.16, hover: 0.42, breathe: 0.14, twinkle: 0.3, targets: ["none"], fit: 0.62, fx: 0.5, fy: 0.5, pitch: null, assemble: 900 }, o);
+    this.ti = 0; this.mx = this.my = -1e4; this.visible = true;
+    canvas.addEventListener("pointermove", (e) => { const r = canvas.getBoundingClientRect(); this.mx = e.clientX - r.left; this.my = e.clientY - r.top; });
+    canvas.addEventListener("pointerleave", () => { this.mx = this.my = -1e4; });
+    new ResizeObserver(() => this.layout()).observe(canvas);
+    new IntersectionObserver(([e]) => { this.visible = e.isIntersecting; }).observe(canvas);
+    FIELDS.push(this);
+  }
+  get pitch() { return this.o.pitch || S.pitch; }
+  layout() {
+    const w = this.c.clientWidth, h = this.c.clientHeight, dpr = devicePixelRatio || 1;
+    if (!w || !h) return;
+    this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
+    this.g.setTransform(dpr, 0, 0, dpr, 0, 0); this.w = w; this.h = h; this.dpr = dpr;
+    const p = this.pitch; this.cols = Math.floor(w / p); this.rows = Math.floor(h / p);
+    this.ox = (w - this.cols * p) / 2; this.oy = (h - this.rows * p) / 2;
+    const n = this.cols * this.rows;
+    this.cur = new Float32Array(n); this.from = new Float32Array(n); this.to = new Float32Array(n); this.t0 = new Float32Array(n);
+    this.seed = new Float32Array(n); for (let k = 0; k < n; k++) this.seed[k] = hash(k % this.cols, (k / this.cols) | 0);
+    this.sprite(); this.show(this.ti, true);
+  }
+  sprite() {
+    const p = this.pitch, sq = p * (1 - S.gap), d = this.dpr || 1, sp = document.createElement("canvas");
+    sp.width = sp.height = Math.ceil(sq * d) + 2;
+    const g = sp.getContext("2d"); g.scale(d, d); g.fillStyle = `rgb(${INKS[S.ink].join(",")})`;
+    g.beginPath(); g.roundRect(1 / d, 1 / d, sq, sq, (sq / 2) * S.round); g.fill();
+    this.sp = sp; this.sq = sq;
+  }
+  show(i, instant) {
+    if (!this.cols) return;
+    this.ti = i % this.o.targets.length;
+    const map = makeTarget(this.o.targets[this.ti], this.cols, this.rows, this.o), now = performance.now();
+    for (let k = 0; k < map.length; k++) {
+      this.from[k] = instant ? map[k] : this.cur[k]; this.to[k] = map[k];
+      const x = k % this.cols;
+      this.t0[k] = instant ? -1e9 : now + (x / this.cols) * this.o.assemble * 0.6 + this.seed[k] * this.o.assemble * 0.5;
+    }
+  }
+  next() { this.show(this.ti + 1); }
+  frame(now) {
+    if (!this.cols || (!this.visible && !REDUCED)) return;
+    const { g, cols, rows, o, pitch: p } = this, t = REDUCED ? 0 : now;
+    g.clearRect(0, 0, this.w, this.h);
+    const per = cols + rows + 90, band = ((t * 0.011) % (per * 1.6)) - 45, inset = (p - this.sq) / 2;
+    const sw = this.sp.width / this.dpr;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const k = r * cols + c, sd = this.seed[k];
+      // transition
+      let q = (now - this.t0[k]) / 420; q = q < 0 ? 0 : q > 1 ? 1 : q;
+      const e = 1 - Math.pow(1 - q, 3);
+      let v = this.from[k] + (this.to[k] - this.from[k]) * e;
+      if (q > 0 && q < 1 && this.to[k] !== this.from[k]) v += Math.sin(q * Math.PI) * 0.55 * (sd > 0.5 ? 1 : 0.2);
+      this.cur[k] = v;
+      // effects
+      const lit = v * (1 - o.breathe + o.breathe * Math.sin(t * 0.0021 + sd * 6.283));
+      const d = c * 0.55 + r - band, sweep = o.sweep * Math.exp(-(d * d) / 30);
+      const tw = o.twinkle * Math.pow(Math.max(0, Math.sin(t * 0.0009 * (0.4 + sd) + sd * 90)), 80);
+      let hov = 0;
+      if (o.hover && this.mx > -1e3) {
+        const dx = this.ox + c * p + p / 2 - this.mx, dy = this.oy + r * p + p / 2 - this.my, dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 110) hov = o.hover * (1 - dist / 110) ** 2;
+      }
+      const a = Math.min(1, Math.max(o.base, lit) + sweep * (1 - v * 0.6) + tw + hov);
+      if (a < 0.02) continue;
+      g.globalAlpha = a;
+      g.drawImage(this.sp, this.ox + c * p + inset - 1 / this.dpr, this.oy + r * p + inset - 1 / this.dpr, sw, sw);
+    }
+    g.globalAlpha = 1;
+  }
+}
+
+// Pixel comet loader: one-dimensional, cheap.
+function loader(canvas) {
+  const g = canvas.getContext("2d");
+  return (now) => {
+    const w = canvas.clientWidth, h = canvas.clientHeight, dpr = devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    const p = 4, sq = 3, n = Math.floor(w / p), head = REDUCED ? n * 0.6 : ((now * 0.09) % (n + 60)) - 10;
+    for (let i = 0; i < n; i++) {
+      const d = head - i; let a = 0.06;
+      if (d >= 0 && d < 46) a = Math.max(a, (1 - d / 46) ** 2.2);
+      if (d >= 0 && d < 46 && hash(i, Math.floor(now / 90)) < 0.12) a *= 0.4;
+      g.fillStyle = rgba(a); g.beginPath(); g.roundRect(i * p, (h - sq) / 2, sq, sq, sq / 2 * S.round); g.fill();
+    }
+  };
+}
+
+// ---------------------------------------------------------------- wire up
+const hero = new Field(document.getElementById("hero"), { targets: ["ascent", "word", "target", "caret"], fit: 0.66 });
+const names = ["Ascent mark", "wordmark", "Target", "Caret"];
+let heroTimer;
+const heroNext = () => { hero.next(); document.getElementById("heroName").textContent = names[hero.ti]; };
+const heroAuto = () => { clearInterval(heroTimer); if (!REDUCED) heroTimer = setInterval(heroNext, 5200); };
+document.getElementById("hero").addEventListener("click", () => { heroNext(); heroAuto(); });
+document.getElementById("heroName").textContent = names[0];
+heroAuto();
+
+const dirs = [...document.querySelectorAll("[data-dir]")].map((cv) => {
+  const kind = cv.dataset.dir, f = new Field(cv, { targets: ["none", kind], fit: kind === "caret" ? 0.62 : 0.6, pitch: 5, sweep: 0.1 });
+  cv.addEventListener("pointerenter", () => f.show(1));
+  return f;
+});
+setTimeout(() => dirs.forEach((f) => f.show(1)), 300);
+
+const home = new Field(document.getElementById("homeField"), { targets: ["none", "ascent"], fit: 0.3, fy: 0.28, base: 0.045, sweep: 0.09, hover: 0.3, assemble: 1100 });
+const replayHome = () => { home.show(0, true); setTimeout(() => home.show(1), 120); };
+document.getElementById("replay").addEventListener("click", replayHome);
+setTimeout(replayHome, 500);
+
+const ai = new Field(document.getElementById("aiField"), { pitch: 6, base: 0.07, sweep: 0.75, hover: 0.2, breathe: 0, twinkle: 0.5 });
+const loaderDraw = loader(document.getElementById("loader"));
+
+function renderStatic() {
+  // directions: bitmap sizes
+  document.querySelectorAll("[data-bm]").forEach((el) => {
+    const k = el.dataset.bm; el.replaceChildren();
+    [[48, k + "9"], [32, k + "9"], [16, k + "7"]].forEach(([px, bm]) => {
+      const fig = document.createElement("figure"), cv = bitmapCanvas(BM[bm], px);
+      fig.append(cv, px + "px"); el.appendChild(fig);
+    });
+  });
+  // icon tiles: actual + zoomed
+  const tiles = document.getElementById("tiles"); tiles.replaceChildren();
+  const cur = document.createElement("figure"), img = document.createElement("img");
+  img.src = "../src/archer/static/favicon.svg"; img.width = img.height = 48; cur.append(img, "current");
+  tiles.appendChild(cur);
+  [[16, "ascent7"], [24, "ascent7"], [32, "ascent9"], [48, "ascent9"], [256, "ascent9"]].forEach(([px, bm]) => {
+    const fig = document.createElement("figure"), cv = bitmapCanvas(BM[bm], px);
+    if (px === 256) { cv.style.width = cv.style.height = "128px"; }
+    fig.append(cv, px === 256 ? "256 (app)" : px + "px"); tiles.appendChild(fig);
+  });
+  const z = document.createElement("figure"), zc = bitmapCanvas(BM.ascent7, 16);
+  zc.className = "zoom"; zc.style.width = zc.style.height = "96px"; z.append(zc, "16px ×6"); tiles.appendChild(z);
+  // taskbars
+  for (const id of ["tbDark", "tbLight"]) {
+    const tb = document.getElementById(id); tb.replaceChildren();
+    for (let i = 0; i < 3; i++) { const s = document.createElement("span"); s.className = "ph"; tb.appendChild(s); }
+    const a = bitmapCanvas(BM.ascent7, 16); a.title = "Archer · http://archer.localhost:4747"; tb.appendChild(a);
+    const clock = document.createElement("span"); clock.textContent = "21:18"; tb.appendChild(clock);
+  }
+  bitmapSVG(document.getElementById("hdrMark"), BM.ascent9, 24);
+  bitmapSVG(document.getElementById("aiMark"), BM.ascent7, 18);
+  anatomy();
+  // ramp
+  const ramp = document.getElementById("ramp"); ramp.replaceChildren();
+  [0.06, 0.18, 0.38, 0.66, 1].forEach((a) => {
+    const d = document.createElement("div"), i = document.createElement("i");
+    i.style.background = rgba(a); d.append(i, Math.round(a * 100) + "%"); ramp.appendChild(d);
+  });
+}
+
+function anatomy() {
+  const NS = "http://www.w3.org/2000/svg", svg = document.getElementById("anatomy"); svg.replaceChildren();
+  const P = 56, sq = P * (1 - S.gap), x0 = 56, y0 = 18;
+  const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+  const alphas = [[0.18, 1, 0.38], [0.66, 1, 0.06], [0.06, 0.38, 0.18]];
+  alphas.forEach((row, r) => row.forEach((a, c) => el("rect", { x: x0 + c * P + (P - sq) / 2, y: y0 + r * P + (P - sq) / 2, width: sq, height: sq, rx: (sq / 2) * S.round, fill: rgba(a) })));
+  const dim = "rgba(255,255,255,.35)";
+  el("line", { x1: x0, y1: y0 + 3 * P + 8, x2: x0 + P, y2: y0 + 3 * P + 8, stroke: dim });
+  el("text", { x: x0 + P / 2, y: y0 + 3 * P + 22, fill: "#6b6b6b", "font-size": 11, "text-anchor": "middle", "font-family": "DM Mono" }).textContent = "pitch";
+  el("line", { x1: x0 - 10, y1: y0 + (P - sq) / 2, x2: x0 - 10, y2: y0 + (P + sq) / 2, stroke: dim });
+  el("text", { x: x0 - 16, y: y0 + P / 2 + 4, fill: "#6b6b6b", "font-size": 11, "text-anchor": "end", "font-family": "DM Mono" }).textContent = "sq";
+}
+
+// controls
+document.getElementById("ink").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  S.ink = b.dataset.v; document.querySelectorAll("#ink button").forEach((x) => x.classList.toggle("on", x === b));
+  FIELDS.forEach((f) => f.sprite()); renderStatic();
+});
+for (const [id, key, fmt] of [["pitch", "pitch", (v) => v + "px"], ["round", "round", (v) => v + "%"], ["gap", "gap", (v) => v + "%"]]) {
+  const inp = document.getElementById(id), out = inp.nextElementSibling;
+  inp.addEventListener("input", () => {
+    const v = +inp.value; out.textContent = fmt(v);
+    S[key] = key === "pitch" ? v : v / 100;
+    if (key === "pitch") hero.layout(), home.layout(); else FIELDS.forEach((f) => f.sprite());
+    renderStatic();
+  });
+}
+
+function loop(now) {
+  FIELDS.forEach((f) => f.frame(now)); loaderDraw(now);
+  if (!REDUCED) requestAnimationFrame(loop);
+}
+document.fonts.load('600 40px "DM Sans"').finally(() => {
+  renderStatic(); FIELDS.forEach((f) => f.layout());
+  requestAnimationFrame(loop);
+  if (REDUCED) setTimeout(() => requestAnimationFrame(loop), 1400);
+});
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 """Render every hero template against canned upstream data, so template bugs fail here, not in the browser."""
 
+import asyncio
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 from archer.app import app
 from archer.config import settings
 from archer.searxng import SearXNG
-from archer.sources import crypto, dictionary, places, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, places, translate, weather, wiki
 
 BASE = f"http://{settings.public_host}:{settings.port}"
 EMPTY_SEARCH = {"results": [], "answers": [], "infoboxes": [], "suggestions": [], "corrections": [], "unresponsive_engines": []}
@@ -105,7 +106,11 @@ def upstream(request: httpx.Request) -> httpx.Response:
 
 
 @pytest.fixture
-def client():
+def client(tmp_path, monkeypatch):
+    # No model catalog on disk, so model lookups never read the user's cached Epoch data.
+    monkeypatch.setattr(aimodels, "CACHE_FILE", tmp_path / "epoch.zip")
+    monkeypatch.setattr(aimodels, "_catalog", None)
+    monkeypatch.setattr(aimodels, "_failed_at", 0.0)
     for cache in (weather._geo_cache, weather._wx_cache, dictionary._cache, wiki._entity_cache,
                   crypto._cache, translate._cache, places._area_cache, places._places_cache):
         cache._data.clear()
@@ -170,6 +175,66 @@ def test_wide_logo_is_not_cropped_as_poster(client):
     app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     html = client.get("/search", params={"q": "bojack horseman"}).text
     assert "hero-entity--tv" in html and "is-logo" in html and "is-poster" not in html
+
+
+def test_film_uses_wikidata_art_when_wikipedia_has_no_page_image():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "en.wikipedia.org":
+            page = {**WP_PAGE["query"]["pages"][0], "title": "Example Film"}
+            page.pop("original", None)
+            return httpx.Response(200, json={"query": {"pages": [page]}})
+        if request.url.host == "www.wikidata.org" and request.url.params.get("props", "").startswith("claims"):
+            claims = {"P31": [item("Q11424")], "P18": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "string", "value": "Example poster.jpg"}}, "rank": "normal"}]}
+            return httpx.Response(200, json={"entities": {"Q189489": {"claims": claims}}})
+        return upstream(request)
+
+    async def fetch():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as ext:
+            return await wiki.lookup(ext, "Example Film")
+
+    wiki._entity_cache._data.clear()
+    result = asyncio.run(fetch())
+    assert result["image"] == "https://commons.wikimedia.org/wiki/Special:FilePath/Example%20poster.jpg?width=800"
+
+
+def test_music_has_separate_video_spotify_and_lyrics_cards(client):
+    def string_claim(value):
+        return {"mainsnak": {"snaktype": "value", "datavalue": {"type": "string", "value": value}}, "rank": "normal"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "en.wikipedia.org":
+            page = {**WP_PAGE["query"]["pages"][0], "title": "Example Song"}
+            return httpx.Response(200, json={"query": {"pages": [page]}})
+        if request.url.host == "www.wikidata.org" and request.url.params.get("props", "").startswith("claims"):
+            claims = {"P31": [item("Q7366")], "P1651": [string_claim("abcdefghijk")],
+                      "P2207": [string_claim("1234567890ABCDEFGHIJKL")]}
+            return httpx.Response(200, json={"entities": {"Q189489": {"claims": claims}}})
+        return upstream(request)
+
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    wiki._entity_cache._data.clear()
+    html = client.get("/search", params={"q": "Example Song"}).text
+    assert "player--video" in html and "music-service--spotify" in html
+    assert "music-lyrics" in html and "Example+Song+lyrics" in html
+    assert "<iframe" not in html
+
+
+def test_song_without_spotify_id_has_discovery_card_not_formed_fact(client):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "en.wikipedia.org":
+            page = {**WP_PAGE["query"]["pages"][0], "title": "Ghost Town (Kanye West song)"}
+            return httpx.Response(200, json={"query": {"pages": [page]}})
+        if request.url.host == "www.wikidata.org" and request.url.params.get("props", "").startswith("claims"):
+            claims = {"P31": [item("Q7366")], "P1651": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "string", "value": "abcdefghijk"}}, "rank": "normal"}],
+                      "P571": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "time", "value": {"time": "+2014-01-01T00:00:00Z", "precision": 11}}}, "rank": "normal"}]}
+            return httpx.Response(200, json={"entities": {"Q189489": {"claims": claims}}})
+        return upstream(request)
+
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    wiki._entity_cache._data.clear()
+    html = client.get("/search", params={"q": "Ghost Town"}).text
+    assert "music-service--spotify" in html and "Search on Spotify" in html
+    assert "Formed" not in html
 
 
 @pytest.mark.parametrize("q, marker", [
@@ -280,9 +345,11 @@ def test_entity_badges_and_tile_icons(client):
     assert 'aria-label="X"' in x_chip and ">X<" not in x_chip               # X is logo-only
 
 
-def test_results_header_has_no_branding(client):
+def test_results_header_has_pixel_mark(client):
     html = client.get("/search", params={"q": "zendaya"}).text
-    assert 'class="brand"' not in html and 'class="kbd"' in html
+    assert 'class="brand"' in html and 'class="kbd"' not in html
+    brand = html.split('class="brand"', 1)[1].split("</a>", 1)[0]
+    assert brand.count('class="px-on"') == 23 and brand.count('class="px-off"') == 26   # full 7x7 matrix
 
 
 @pytest.mark.parametrize("host, upstream_reply, status", [
@@ -365,3 +432,85 @@ def test_country_and_chemical_kinds(client):
     app.state.ext = entity_with({"P31": [item("Q6256")], "P36": [item("Q17042")]})
     html = client.get("/search", params={"q": "india"}).text
     assert "hero-entity--country" in html and "Capital" in html
+
+
+# ------------------------------------------------------------- AI models (Epoch AI)
+
+ECI_CSV = """Model,Display name,eci,eci_ci_low,eci_ci_high,date,Organization,Country (of organization),Model accessibility,Accessibility group,model_versions
+Claude Opus 4.5,Claude Opus 4.5,150.2,148,152,2025-11-24,Anthropic,United States of America,API access,Closed weights,
+Claude Opus 4.1,Claude Opus 4.1,144.1,142,146,2025-08-05,Anthropic,United States of America,API access,Closed weights,
+Claude Opus 4,Claude Opus 4,143.0,141,145,2025-05-22,Anthropic,United States of America,API access,Closed weights,
+Claude Opus 4.6,Claude Opus 4.6,155.2,153,157,2026-02-05,Anthropic,United States of America,API access,Closed weights,
+Gemini 3 Pro,Gemini 3 Pro,153.1,151,155,2025-11-18,"Google DeepMind,Google",United States of America,API access,Closed weights,
+GPT-5.1,GPT-5.1,149.0,147,151,2025-11-12,OpenAI,United States of America,API access,Closed weights,
+o3,o3,146.0,144,148,2025-04-16,OpenAI,United States of America,API access,Closed weights,
+DeepSeek-V3.2,DeepSeek-V3.2,146.0,144,148,2025-12-01,DeepSeek,China,Open weights,Open weights,
+"""
+SCORES_CSV = """model_id,benchmark_id,performance,benchmark,benchmark_release_date,model,model_version,Model,date,source
+m1,b1,0.814,GPQA diamond,2023-11-20,x,x,Claude Opus 4.5,2025-11-24,
+m2,b1,0.697,GPQA diamond,2023-11-20,x,x,Claude Opus 4.1,2025-08-05,
+m3,b1,0.902,GPQA diamond,2023-11-20,x,x,Gemini 3 Pro,2025-11-18,
+m4,b1,0.85,GPQA diamond,2023-11-20,x,x,GPT-5.1,2025-11-12,
+m1,b2,0.767,SWE-Bench verified,2024-08-13,x,x,Claude Opus 4.5,2025-11-24,
+m2,b2,0.733,SWE-Bench verified,2024-08-13,x,x,Claude Opus 4.1,2025-08-05,
+m3,b2,0.729,SWE-Bench verified,2024-08-13,x,x,Gemini 3 Pro,2025-11-18,
+m1,b3,0.4,DTBench,2025-01-01,x,x,Claude Opus 4.5,2025-11-24,
+"""
+# GPQA's own results file: every model version, including ones the index doesn't cover.
+BENCH_META_CSV = """benchmark,in_eci,source_file,score_column,scale,random_baseline,score_ceiling,release_date,superseded_by
+GPQA diamond,True,gpqa_diamond.csv,Best score (across scorers),1.0,0.25,1.0,2023-11-20,
+"""
+VERSIONS_CSV = """model_version,model_group,date,display_name,organization,country,accessibility,training_compute_flop
+claude-opus-4-5_low,Claude Opus 4.5,2025-11-24,Claude Opus 4.5 (low),Anthropic,,,
+claude-opus-4-5_high,Claude Opus 4.5,2025-11-24,Claude Opus 4.5 (high),Anthropic,,,
+"""
+GPQA_CSV = """Model version,mean_score,Best score (across scorers),Release date,Organization,Country,Training compute (FLOP),Training compute notes,stderr,Log viewer,Logs,Started at,id
+claude-opus-4-5_low,0.70,0.70,2025-11-24,Anthropic,,,,,,,,a
+claude-opus-4-5_high,0.871,0.871,2025-11-24,Anthropic,,,,,,,,b
+mystery-model-9_high,0.55,0.55,2025-09-01,Somewhere,,,,,,,,c
+"""
+
+
+def epoch_zip() -> bytes:
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(aimodels._ECI, ECI_CSV)
+        z.writestr(aimodels._SCORES, SCORES_CSV)
+        z.writestr(aimodels._BENCH_META, BENCH_META_CSV)
+        z.writestr(aimodels._VERSIONS, VERSIONS_CSV)
+        z.writestr("gpqa_diamond.csv", GPQA_CSV)
+    return buf.getvalue()
+
+
+def test_ai_model_matching():
+    cat = aimodels._parse(epoch_zip())
+    find = lambda q: (m.name if (m := aimodels.find(cat, q)) else None)  # noqa: E731
+    assert find("Claude Opus 4.5") == find("opus 4.5") == find("claude opus 4.5 benchmarks") == "Claude Opus 4.5"
+    assert find("gpt 5.1 release date") == "GPT-5.1"
+    assert find("o3") is None                       # too short to claim on its own...
+    assert find("openai o3") == find("o3 model") == "o3"  # ...unless the query frames it as a model
+    assert find("iphone 17") is None and find("claude") is None and find("python 3.12") is None
+
+
+def test_ai_model_hero(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, content=epoch_zip()) if r.url.host == "epoch.ai" else upstream(r)))
+    html = client.get("/search", params={"q": "claude opus 4.5"}).text
+    assert "hero-aimodel" in html and "24 Nov 2025" in html and "Closed weights" in html
+    assert "Claude Opus 4" in html                                        # family
+    assert ">Claude Opus 4.1</a>" in html and ">Claude Opus 4.6</a>" in html  # previous / succeeded by
+    assert "Gemini 3 Pro" in html and "Google DeepMind" in html             # rival from another lab
+    assert "GPQA Diamond" in html and "SWE-bench Verified" in html and "76.7%" in html
+    assert "87.1%" in html and "81.4%" not in html          # GPQA uses its own file, best reasoning setting
+    assert "Random guessing (25%)" in html and "mystery-model-9_high" in html  # its baseline and full population
+    assert html.count('data-am-toggle="dots"') == 3          # index + 2 benchmarks, each with show/hide toggles
+    assert "DTBench" not in html                                          # only well-known benchmarks get tabs
+    assert "hero-entity" not in html                                      # beats the Wikipedia panel
+    assert aimodels.CACHE_FILE.exists()                                   # cached for the next query
+
+
+def test_ai_model_unavailable_falls_back_to_entity(client):
+    html = client.get("/search", params={"q": "zendaya"}).text            # epoch.ai 404s in `upstream`
+    assert "hero-entity" in html and "hero-aimodel" not in html

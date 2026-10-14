@@ -1,0 +1,8 @@
+<section class="related" {% if not v.related %}data-related-q="{{ v.q }}" hidden{% endif %} data-related-tab="{{ v.tab }}">
+  <h2 class="section-title">Related searches</h2>
+  <div class="chips">
+    {% for term in v.related %}
+    <a class="chip" href="/search?q={{ term|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}">{{ term }}</a>
+    {% endfor %}
+  </div>
+</section>

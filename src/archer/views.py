@@ -4,14 +4,16 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
+from urllib.parse import parse_qs, quote_plus, urlsplit
 
 import httpx
 
 from archer.config import settings
 from archer.imagerank import rank_images
 from archer.query import PLACE_TYPES, Query, classify
-from archer.searxng import Result, SearchResponse, SearXNG
-from archer.sources import crypto, dictionary, places, translate, weather, wiki
+from archer.searxng import Result, SearchResponse, SearXNG, suggestion_terms
+from archer.sources import aimodels, crypto, dictionary, places, translate, weather, wiki
 from archer.utilities import parse_currency_answer
 
 log = logging.getLogger("archer")
@@ -46,6 +48,7 @@ class View:
     discussions: list[Result] = field(default_factory=list)
     lazy: dict = field(default_factory=dict)
     response: SearchResponse | None = None
+    related: list[str] = field(default_factory=list)
     hero_failed: str | None = None  # source name when the hero's data source failed
 
 
@@ -57,7 +60,8 @@ async def _safe(coro, what: str):
     try:
         return await coro
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
-        log.warning("%s failed: %s: %s", what, type(exc).__name__, exc)
+        # HTTP exception strings include query parameters; keep query text out of logs.
+        log.warning("%s failed: %s", what, type(exc).__name__)
         return _FAILED
 
 
@@ -123,6 +127,13 @@ async def _entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
     return Hero("entity", data) if data else None
 
 
+async def _ai_model_or_entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
+    """AI models match a local Epoch AI catalog first; anything else falls through to Wikipedia."""
+    if (cat := await aimodels.ensure(ext)) and (model := aimodels.find(cat, query.text)):
+        return Hero("aimodel", aimodels.panel(cat, model))
+    return await _entity(ext, query) if query.entity_candidate else None
+
+
 ASYNC_HEROES = {"weather": _place_hero, "time": _place_hero, "sun": _place_hero, "define": _define,
                 "translate": _translate, "crypto": _crypto}
 # Named in the "couldn't load" notice when a hero's source fails.
@@ -141,6 +152,45 @@ def _quick_answer(response: SearchResponse) -> Hero | None:
     return None
 
 
+_LYRICS_RESULT = re.compile(r"^(.+?)\s+[–—-]\s+(.+?)\s+Lyrics(?:\s*[|–-].*)?$", re.I)
+
+
+def _song_from_results(query: str, results: list[Result]) -> Hero | None:
+    """Rescue songs without a Wikipedia article using a matching lyrics result."""
+    wanted = re.sub(r"[^a-z0-9]+", "", query.casefold())
+    for result in results[:5]:
+        if result.host not in ("genius.com", "azlyrics.com"):
+            continue
+        match = _LYRICS_RESULT.match(result.title)
+        if not match:
+            continue
+        artist, title = match.groups()
+        title = title.strip()
+        found = re.sub(r"[^a-z0-9]+", "", title.casefold())
+        if SequenceMatcher(None, wanted, found).ratio() < .78:
+            continue
+        video = next((r for r in results[:8] if r.host in ("youtube.com", "youtu.be")
+                      and SequenceMatcher(None, found, re.sub(r"[^a-z0-9]+", "", r.title.casefold())).ratio() > .35), None)
+        video_id = ""
+        if video:
+            parsed = urlsplit(video.url)
+            video_id = (parse_qs(parsed.query).get("v", [""])[0] if parsed.hostname in ("youtube.com", "www.youtube.com")
+                        else parsed.path.strip("/"))
+            if not re.fullmatch(r"[\w-]{11}", video_id):
+                video_id = ""
+        spotify_id = next((urlsplit(r.url).path.split("/track/")[1].split("/")[0]
+                           for r in results[:12] if r.host == "open.spotify.com"
+                           and "/track/" in urlsplit(r.url).path
+                           and found in re.sub(r"[^a-z0-9]+", "", r.title.casefold())), "")
+        if not re.fullmatch(r"[A-Za-z0-9]{22}", spotify_id):
+            spotify_id = ""
+        return Hero("song", {"title": title, "artist": artist.strip(), "lyrics_url": result.url,
+                             "spotify_search": f"https://open.spotify.com/search/{quote_plus(title + ' ' + artist)}",
+                             "spotify_id": spotify_id, "video_id": video_id,
+                             "video_url": video.url if video_id else ""})
+    return None
+
+
 # --------------------------------------------------------------------- build
 
 async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: int) -> View:
@@ -154,8 +204,8 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
             view.hero = Hero(query.kind, query.data)
         elif builder := ASYNC_HEROES.get(query.kind):
             hero_task = _safe(builder(ext, query), query.kind)
-        elif query.entity_candidate:
-            hero_task = _safe(_entity(ext, query), "wikipedia")
+        elif query.kind in ("general", "question"):
+            hero_task = _safe(_ai_model_or_entity(ext, query), "wikipedia")
 
     search_task = searx.search(query.text, TABS[tab], page)
     if hero_task:
@@ -169,6 +219,9 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
     else:
         response = await search_task
     view.response = response
+    view.related = suggestion_terms(response.suggestions, view.q)
+    if first_page_all and not view.hero and query.kind in ("general", "question"):
+        view.hero = _song_from_results(query.text, response.results)
     if first_page_all and query.kind == "places":
         view.hero = _places_hero(query, response)
 
@@ -196,7 +249,7 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
         entity = view.hero.data if view.hero and view.hero.kind == "entity" else None
         kind = entity["kind"] if entity else None
         view.lazy = {
-            "news": bool(query.wants_news or kind in NEWS_KINDS),
+            "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind == "aimodel")),
             "videos": query.wants_videos,
             "images": query.wants_images or kind in IMAGE_KINDS,
             "works": {"qid": entity["qid"], "role": entity["works_role"]} if entity and entity.get("works_role") else None,

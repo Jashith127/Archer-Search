@@ -7,7 +7,8 @@ from urllib.parse import quote
 
 import httpx
 
-from archer.sources import TTLCache
+from archer.config import settings
+from archer.sources import TTLCache, watch
 
 WP_API = "https://en.wikipedia.org/w/api.php"
 WD_API = "https://www.wikidata.org/w/api.php"
@@ -259,6 +260,57 @@ def _fmt_amount(value: dict | None, labels: dict[str, str]) -> str:
     return f"{number}{suffix}" if suffix.startswith("°") else f"{number} {suffix}".strip()
 
 
+# Songs, singles, compositions, albums and EPs: things you can actually press play on.
+PLAYABLE = {"Q7366", "Q134556", "Q105543609", "Q482994", "Q208569", "Q169930", "Q2031291", "Q209939"}
+
+
+def _music_player(entity: dict, kind: str) -> dict | None:
+    """Embeds for a song or album. YouTube only when Wikidata lists its (music) video."""
+    if kind != "music" or not set(_ids(entity, "P31", 20)) & PLAYABLE:
+        return None
+    cc = settings.home_country.lower()
+
+    def first(prop: str) -> str:
+        value = _first(entity, prop)
+        return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.\-]{5,64}", value) else ""
+
+    sources = []
+    if video := first("P1651"):
+        sources.append({"kind": "youtube", "label": "Music video", "id": video,
+                        "embed": f"https://www.youtube-nocookie.com/embed/{video}?autoplay=1&rel=0",
+                        "thumb": f"https://i.ytimg.com/vi/{video}/hqdefault.jpg",
+                        "url": f"https://www.youtube.com/watch?v={video}"})
+    if track := first("P2207"):
+        sources.append({"kind": "spotify", "label": "Spotify", "embed": f"https://open.spotify.com/embed/track/{track}",
+                        "url": f"https://open.spotify.com/track/{track}"})
+    elif album := first("P2205"):
+        sources.append({"kind": "spotify", "label": "Spotify", "embed": f"https://open.spotify.com/embed/album/{album}",
+                        "url": f"https://open.spotify.com/album/{album}"})
+    if song := first("P10110"):
+        sources.append({"kind": "applemusic", "label": "Apple Music", "embed": f"https://embed.music.apple.com/{cc}/song/{song}",
+                        "url": f"https://music.apple.com/{cc}/song/{song}"})
+    elif album := first("P2281"):
+        sources.append({"kind": "applemusic", "label": "Apple Music", "embed": f"https://embed.music.apple.com/{cc}/album/{album}",
+                        "url": f"https://music.apple.com/{cc}/album/{album}"})
+    return {"sources": sources} if sources else None
+
+
+def _watch_data(entity: dict, kind: str, title: str) -> dict:
+    """TMDB id for live country-specific lookup, plus Wikidata's streaming IDs as a fallback."""
+
+    services, seen = [], set()
+    for prop, (name, template, kinds) in watch.WIKIDATA_SERVICES.items():
+        value = _first(entity, prop)
+        if kind in kinds and isinstance(value, str) and name not in seen and re.fullmatch(r"[A-Za-z0-9_.\-]{2,80}", value):
+            seen.add(name)
+            services.append({"name": name, "url": template.format(value)})
+    tmdb = _first(entity, "P4983" if kind == "tv" else "P4947")
+    country = settings.home_country.upper()
+    return {"media": "tv" if kind == "tv" else "movie", "tmdb": tmdb if isinstance(tmdb, str) else "",
+            "services": services, "country": country, "country_name": watch.country_name(country),
+            "flag": flag_url(country), "justwatch": watch.justwatch_search(country, title)}
+
+
 def _unique_facts(facts: list[tuple[str, str]], skip: set[str]) -> list[tuple[str, str]]:
     """First occurrence of each label wins; labels already shown as tiles are dropped."""
     seen, out = set(skip), []
@@ -323,9 +375,9 @@ def _kind(entity: dict) -> str:
 
 # ------------------------------------------------------------ panel build
 
-async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
+async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = False) -> dict | None:
     key = candidate.lower()
-    if (hit := _entity_cache.get(key)) is not None:
+    if not fresh and (hit := _entity_cache.get(key)) is not None:
         return hit or None
     page, corrected = await _find_page(client, candidate)
     if not page:
@@ -437,7 +489,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
         tile("Released", str(rel_year or ""), rel_txt)
         tile("Runtime", _fmt_amount(_first(entity, "P2047"), labels))
         tile("Director", names("P57", 2))
-        tile("Box office", _fmt_amount(_first(entity, "P2142"), labels))
+        fact("Box office", _fmt_amount(_first(entity, "P2142"), labels))
         tile("Genre", names("P136", 2))
         fact("Budget", _fmt_amount(_first(entity, "P2130"), labels))
         fact("Country", names("P495", 2))
@@ -447,7 +499,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
         tile("Aired", f"{start_y}–{end_y or 'present'}" if start_y else "", start_txt)
         tile("Seasons", _fmt_amount(_first(entity, "P2437"), labels))
         tile("Episodes", _fmt_amount(_first(entity, "P1113"), labels))
-        tile("Network", names("P449", 2))
+        fact("Network", names("P449", 2))
         tile("Genre", names("P136", 2))
     elif kind == "book":
         pub_txt, pub_y, _ = _fmt_time(_first(entity, "P577"))
@@ -457,15 +509,19 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
         tile("Genre", names("P136", 2))
         fact("Publisher", names("P123", 2))
     elif kind == "music":
-        formed_txt, formed_y, _ = _fmt_time(_first(entity, "P571"))
-        tile("Formed", str(formed_y or ""), names("P740", 1) or names("P495", 1))
-        tile("Genre", names("P136", 2))
-        tile("Label", names("P264", 2))
-        tile("Members", names("P527", 4))
-        _, rel_y, _ = _fmt_time(_first(entity, "P577"))
-        tile("Released", str(rel_y or ""))
-        tile("Artist", names("P175", 2))
-        works_role = "performer"
+        if set(_ids(entity, "P31", 20)) & PLAYABLE:
+            _, rel_y, _ = _fmt_time(_first(entity, "P577"))
+            tile("Released", str(rel_y or ""))
+            tile("Artist", names("P175", 2))
+            tile("Genre", names("P136", 2))
+            tile("Label", names("P264", 2))
+        else:
+            formed_txt, formed_y, _ = _fmt_time(_first(entity, "P571"))
+            tile("Formed", str(formed_y or ""), names("P740", 1) or names("P495", 1))
+            tile("Genre", names("P136", 2))
+            tile("Label", names("P264", 2))
+            tile("Members", names("P527", 4))
+            works_role = "performer"
     elif kind == "org":
         found_txt, found_y, _ = _fmt_time(_first(entity, "P571"))
         tile("Founded", str(found_y or ""), found_txt)
@@ -564,8 +620,14 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
     links.append({"label": "Wikipedia", "url": page.get("fullurl", ""), "kind": "wikipedia"})
 
     coords = _first(entity, "P625")
+    # PageImages can omit non-free posters and some TV art. Wikidata's P18 is a
+    # useful second source, while the browser can still try the thumbnail if an
+    # original is present but refuses to load.
     original = page.get("original") or page.get("thumbnail") or {}
     image = original.get("source", "")
+    thumbnail = page.get("thumbnail", {}).get("source", "")
+    if not image and (file_name := _first(entity, "P18")) and isinstance(file_name, str):
+        image = f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(file_name)}?width=800"
     width, height = original.get("width", 1) or 1, original.get("height", 1) or 1
     cast = name_list("P161", 10) if kind in ("film", "tv") else []
 
@@ -585,6 +647,9 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
                     if c.get("mainsnak", {}).get("snaktype") == "value"), "")
         country_tile["flag"] = flag_url(iso)
 
+    player = _music_player(entity, kind) if kind == "music" else None
+    watch = _watch_data(entity, kind, page["title"]) if kind in ("film", "tv") else None
+
     icon, kind_label = KIND_META.get(kind, KIND_META["thing"])
     shown = tiles[:5]
     # Tiles that don't fit the bento move into the expandable About section, so nothing is lost.
@@ -596,11 +661,14 @@ async def lookup(client: httpx.AsyncClient, candidate: str) -> dict | None:
         "badge": {"icon": icon, "label": kind_label + (f" · {SUBKIND_LABEL[subkind]}" if subkind else "")},
         "flag": flag,
         "tags": tags,
+        "player": player,
+        "watch": watch,
         "qid": qid,
         "title": page["title"],
         "description": page.get("description") or entity.get("descriptions", {}).get("en", {}).get("value", ""),
         "extract": page.get("extract", ""),
         "image": image if image.startswith("https://") else "",
+        "image_fallback": thumbnail if thumbnail.startswith("https://") and thumbnail != image else "",
         # Poster layout only for genuinely tall art; wide title cards would be cropped to nonsense.
         "image_tall": height >= width * 1.1,
         # Logos (usually SVG wordmarks) are shown whole on a light card instead of cropped.

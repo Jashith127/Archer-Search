@@ -25,7 +25,7 @@ try {
     foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
         $lnk = $shell.CreateShortcut((Join-Path $dir 'Archer.lnk'))
         $lnk.TargetPath = $exe
-        $lnk.Arguments = '--open'
+        $lnk.Arguments = ''
         $lnk.WorkingDirectory = $root
         $lnk.IconLocation = $ico
         $lnk.Description = 'Archer search engine'
@@ -33,7 +33,7 @@ try {
     }
 
     Start-Process $exe -ArgumentList '--open'
-    Write-Host 'Archer is installed and running. Its setup page is opening in your browser.'
+    Write-Host 'Archer is installed and running. Its Settings window is opening at Browser setup.'
 }
 finally {
     Pop-Location

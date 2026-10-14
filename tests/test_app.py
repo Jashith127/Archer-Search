@@ -125,8 +125,11 @@ def test_strip_api(client):
     assert client.get("/api/strip/nope", params={"q": "x"}).status_code == 404
 
 
-def test_suggest_passes_searxng_through(client):
-    assert client.get("/suggest", params={"q": "zen"}).json() == ["zen", ["zendaya movies"]]
+def test_suggest_returns_opensearch_with_chromium_relevance(client):
+    resp = client.get("/suggest", params={"q": "zen"})
+    assert resp.json() == ["zen", ["zendaya movies"], [], [], {"google:suggestrelevance": [600]}]
+    assert resp.headers["content-type"].startswith("application/x-suggestions+json")
+    assert resp.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.parametrize("reply", [
@@ -135,7 +138,7 @@ def test_suggest_passes_searxng_through(client):
     lambda r: httpx.Response(200, json={"unexpected": "shape"}),
 ])
 def test_suggest_degrades_to_empty(client, reply):
-    app.state.searxng = fake(reply)
+    app.state.searx = SearXNG(fake(reply))
     assert client.get("/suggest", params={"q": "dun"}).json() == ["dun", []]
 
 

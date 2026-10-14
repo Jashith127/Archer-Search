@@ -1,0 +1,29 @@
+{% set s = v.hero.data %}
+<section class="hero hero-entity hero-song has-player">
+  <div class="hero-head"><div class="hero-head-main">
+    <span class="hero-badge"><span class="hero-badge-icon"><svg><use href="#u-music"/></svg></span>Song</span>
+    <h1 class="hero-title">{{ s.title }}</h1><p class="hero-sub">{{ s.artist }}</p>
+  </div></div>
+  <div class="hero-grid">
+    {% if s.video_id %}
+    <div class="player player--video"><div class="player-tabs"><span class="player-tab is-active"><svg><use href="#b-youtube"/></svg>Music video</span>
+      <a class="player-open" href="{{ s.video_url }}">Open <svg class="tab-ext"><use href="#i-ext"/></svg></a></div>
+      <div class="player-stage"><div class="player-pane is-active" data-embed="https://www.youtube-nocookie.com/embed/{{ s.video_id }}?autoplay=1&amp;rel=0" data-kind="youtube">
+        <button type="button" class="player-facade" aria-label="Play the music video"><img src="https://i.ytimg.com/vi/{{ s.video_id }}/hqdefault.jpg" alt="" referrerpolicy="no-referrer"><span class="player-play"><svg><use href="#i-play"/></svg></span></button>
+      </div></div></div>
+    {% else %}
+    <div class="music-artwork collage"><div class="collage-main collage-placeholder"><svg><use href="#u-music"/></svg></div></div>
+    {% endif %}
+    <div class="music-side">
+      <section class="music-service music-service--spotify"><div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-spotify"/></svg>Spotify</span></div>
+        {% if s.spotify_id %}<div class="music-embed" data-embed="https://open.spotify.com/embed/track/{{ s.spotify_id }}" data-kind="spotify"></div>
+        {% else %}<p class="watch-note">Find this recording on Spotify.</p><a class="music-spotify-search" href="{{ s.spotify_search }}">Search on Spotify <svg class="tab-ext"><use href="#i-ext"/></svg></a>{% endif %}
+      </section>
+      <section class="music-lyrics" data-lyrics-title="{{ s.title }}" data-lyrics-artist="{{ s.artist }}">
+        <span class="about-label"><svg><use href="#u-music"/></svg>Lyrics</span>
+        <p class="music-lyrics-status">Finding a matching version…</p>
+        <a class="music-lyrics-source" href="{{ s.lyrics_url }}">View lyrics source <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+      </section>
+    </div>
+  </div>
+</section>

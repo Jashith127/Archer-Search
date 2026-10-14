@@ -1,0 +1,20 @@
+{# Archer's pixel mark: the chevron "A" on a 7x7 dot matrix, legs dissolving downward.
+   '#' full ink, '+' and ':' fainter ink, '-' an unlit cell (still drawn, so the matrix shows).
+   Animation is pure CSS (.pxmark in archer.css); --i staggers each cell so a wave rises through it. #}
+{% set PX_ROWS = [
+  "---#---",
+  "--###--",
+  "--###--",
+  "-##-##-",
+  "-##-##-",
+  "##---##",
+  "+:---:+",
+] %}
+{% set PX_INK = {"#": 1, "+": 0.62, ":": 0.34} %}
+{% macro pixel_mark(size=26, cls="") -%}
+<svg class="pxmark {{ cls }}" viewBox="0 0 {{ PX_ROWS|length * 10 }} {{ PX_ROWS|length * 10 }}" width="{{ size }}" height="{{ size }}" aria-hidden="true">
+{%- for row in PX_ROWS %}{% set y = loop.index0 %}{% for ch in row %}{% set x = loop.index0 %}
+<rect x="{{ x * 10 + 1.25 }}" y="{{ y * 10 + 1.25 }}" width="7.5" height="7.5" rx="1.9" class="{{ 'px-on' if ch in PX_INK else 'px-off' }}"{% if ch in PX_INK and PX_INK[ch] < 1 %} fill-opacity="{{ PX_INK[ch] }}"{% endif %} style="--i:{{ (PX_ROWS|length - 1 - y) * 2 + x }}"/>
+{%- endfor %}{% endfor %}
+</svg>
+{%- endmacro %}

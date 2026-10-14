@@ -4,7 +4,7 @@
 {% set show_flag = e.kind == "country" and e.flag %}
 {# Thin panels (three facts or fewer) don't get a mostly-empty facts bento: the facts become
    stat chips and About takes the right side. #}
-{% set sparse = e.tiles|length <= 3 and not v.lazy.weather_at %}
+{% set sparse = e.tiles|length <= 3 and not v.lazy.weather_at and not e.watch and not e.player %}
 {% set has_about = e.extract or e.facts or e.cast %}
 
 {% macro tile_block(t, lead) -%}
@@ -30,7 +30,7 @@
 {% endif %}
 {%- endmacro %}
 
-<section class="hero hero-entity hero-entity--{{ e.kind }}{% if poster %} is-poster{% endif %}{% if not v.lazy.news or sparse %} no-news{% endif %}{% if sparse %} is-sparse{% endif %}">
+<section class="hero hero-entity hero-entity--{{ e.kind }}{% if poster %} is-poster{% endif %}{% if not (v.lazy.news or e.watch) or sparse %} no-news{% endif %}{% if e.watch %} has-watch{% if not (tmdb_enabled() and e.watch.tmdb) and e.watch.services|length <= 1 %} watch-compact{% endif %}{% endif %}{% if e.player %} has-player{% endif %}{% if sparse %} is-sparse{% endif %}">
   <div class="hero-head">
     <div class="hero-head-main">
       {{ hero_badge(e.badge.icon, e.badge.label, flag=e.flag if show_flag else "") }}
@@ -45,17 +45,59 @@
   </div>
 
   <div class="hero-grid">
-    <div class="collage{% if not (e.image or show_flag) %} collage--empty{% endif %}{% if e.image_logo and not show_flag %} is-logo{% endif %}"{% if v.lazy.images and not poster %} data-collage-q="{{ e.title ~ (' landmarks' if show_flag else '') }}"{% endif %}>
+    {% if e.player %}
+    {% set videos = e.player.sources|selectattr('kind', 'equalto', 'youtube')|list %}
+    {% if videos %}
+    {% set video = videos[0] %}
+    <div class="player player--video">
+      <div class="player-tabs"><span class="player-tab is-active"><svg><use href="#b-youtube"/></svg>Music video</span>
+        <a class="player-open" href="{{ video.url }}">Open <svg class="tab-ext"><use href="#i-ext"/></svg></a></div>
+      <div class="player-stage"><div class="player-pane is-active" data-embed="{{ video.embed }}" data-kind="youtube">
+        <button type="button" class="player-facade" aria-label="Play the music video"><img src="{{ video.thumb }}" alt="" referrerpolicy="no-referrer"><span class="player-play"><svg><use href="#i-play"/></svg></span></button>
+      </div></div>
+    </div>
+    {% else %}
+    <div class="music-artwork collage"><div class="collage-main{% if not e.image %} collage-placeholder{% endif %}">
+      {% if e.image %}<img src="{{ e.image }}" alt="{{ e.title }}" referrerpolicy="no-referrer">{% else %}<svg><use href="#u-music"/></svg>{% endif %}
+    </div></div>
+    {% endif %}
+    <div class="music-side">
+      {% set artist_tile = e.tiles|selectattr('label', 'equalto', 'Artist')|first|default(none) %}
+      {% set spotify_sources = e.player.sources|selectattr('kind', 'equalto', 'spotify')|list %}
+      {% for s in e.player.sources if s.kind != 'youtube' %}
+      <section class="music-service music-service--{{ s.kind }}">
+        <div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-{{ s.kind }}"/></svg>{{ s.label }}</span><a href="{{ s.url }}">Open <svg class="tab-ext"><use href="#i-ext"/></svg></a></div>
+        <div class="music-embed" data-embed="{{ s.embed }}" data-kind="{{ s.kind }}">
+          <button type="button" class="music-embed-load">Play on {{ s.label }}</button>
+        </div>
+      </section>
+      {% endfor %}
+      {% if not spotify_sources %}
+      <section class="music-service music-service--spotify">
+        <div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-spotify"/></svg>Spotify</span></div>
+        <p class="watch-note">Find this recording on Spotify.</p>
+        <a class="music-spotify-search" href="https://open.spotify.com/search/{{ (e.title ~ ' ' ~ (artist_tile.value if artist_tile else ''))|qs }}">Search on Spotify <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+      </section>
+      {% endif %}
+      {% if e.kind == 'music' %}
+      <section class="music-lyrics" data-lyrics-title="{{ e.title }}" data-lyrics-artist="{{ artist_tile.value if artist_tile else '' }}"><span class="about-label"><svg><use href="#u-music"/></svg>Lyrics</span>
+        <p class="music-lyrics-status">Finding a matching version…</p><a class="music-lyrics-source" href="/search?q={{ (e.title ~ ' lyrics')|qs }}">Search lyrics <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+      </section>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="collage{% if not (e.image or show_flag) %} collage--empty{% endif %}{% if e.image_logo and not show_flag %} is-logo{% endif %}"{% if v.lazy.images or e.kind in ('film', 'tv') %} data-collage-q="{{ e.title ~ (' poster' if e.kind in ('film', 'tv') else ' landmarks' if show_flag else '') }}"{% endif %}>
       {% if show_flag %}
       {# Countries lead with the flag, shown whole rather than cropped. #}
       <a class="collage-main collage-flag" href="{{ e.wiki_url }}"><img src="{{ e.flag }}" alt="Flag of {{ e.title }}" referrerpolicy="no-referrer"></a>
       {% elif e.image %}
-      <a class="collage-main" href="{{ e.wiki_url }}"><img src="{{ e.image }}" alt="{{ e.title }}" referrerpolicy="no-referrer"></a>
+      <a class="collage-main" href="{{ e.wiki_url }}"><img src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer"></a>
       {% else %}
       <div class="collage-main collage-placeholder"><svg><use href="#u-{{ e.badge.icon }}"/></svg></div>
       {% endif %}
-      {% if not poster %}<div class="collage-side"><div class="collage-slot skeleton"></div><div class="collage-slot skeleton"></div></div>{% endif %}
+      <div class="collage-side"><div class="collage-slot skeleton"></div><div class="collage-slot skeleton"></div></div>
     </div>
+    {% endif %}
 
     {% if sparse %}
     {# Right column: the facts that exist as compact rows, then the full About text, scrollable. #}
@@ -71,7 +113,8 @@
       <div class="about-side-body">{{ about_content() }}</div>
     </section>
     {% else %}
-    {% if v.lazy.news %}
+    {% if e.watch %}{% include "watch_panel.html" %}
+    {% elif v.lazy.news and not e.player %}
     <a class="news-card skeleton" data-hero-news="{{ e.title }}" href="#" aria-label="Top story"></a>
     {% endif %}
 

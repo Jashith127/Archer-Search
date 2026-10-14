@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archer layout mockups</title>
+<style>
+:root{--bg:#0a0a0a;--s1:#111;--s2:#161616;--s3:#1d1d1d;--bd:rgba(255,255,255,.09);--bds:rgba(255,255,255,.055);--t:#ededed;--t2:#a1a1a1;--t3:#6b6b6b;--mono:"DM Mono","Cascadia Code",Consolas,monospace;--sans:"DM Sans","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t);font:14.5px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+svg{width:1em;height:1em;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* ---- mockup chooser (not part of any design) ---- */
+#chooser{position:sticky;top:0;z-index:100;display:flex;gap:6px;align-items:center;padding:10px 16px;background:#000;border-bottom:1px solid #2a2a2a;overflow-x:auto}
+#chooser b{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:#777;margin-right:8px;white-space:nowrap}
+#chooser button{padding:7px 13px;border:1px solid #2a2a2a;border-radius:8px;background:#0e0e0e;color:#aaa;white-space:nowrap}
+#chooser button.on{background:#ededed;color:#000;border-color:#ededed;font-weight:600}
+.blurb{padding:14px 24px;border-bottom:1px solid var(--bds);color:var(--t2);font-size:13.5px;background:#0d0d0d}
+.blurb b{color:var(--t)}
+.mock{display:none;position:relative;min-height:calc(100vh - 100px)}
+.mock.on{display:block}
+
+/* ---- shared bits ---- */
+.ph{background:linear-gradient(135deg,hsl(var(--h) 28% 24%),hsl(calc(var(--h) + 40) 30% 12%));}
+.res{padding:16px 0 18px;border-bottom:1px solid var(--bds)}
+.res .site{display:flex;align-items:center;gap:10px}
+.badge{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--s3);border:1px solid var(--bd);font-weight:600;font-size:12px}
+.res .host{font-size:13px;font-weight:500;line-height:1.2}.res .crumb{font-size:12px;color:var(--t3);line-height:1.2}
+.res h3{margin:8px 0 4px;font-size:18px;font-weight:500;letter-spacing:-.015em}
+.res p{margin:0;color:var(--t2);font-size:14px}
+.title-s{display:flex;align-items:center;gap:8px;font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--t2)}
+.card{display:flex;flex-direction:column;background:var(--s1);border:1px solid var(--bds);border-radius:10px;overflow:hidden}
+.card .im{aspect-ratio:16/9}.card .bd{padding:11px 13px 13px;display:flex;flex-direction:column;gap:5px}
+.card .src{font-size:12px;color:var(--t3)}.card .ti{font-size:13.5px;font-weight:500;line-height:1.4}.card .ag{font-size:12px;color:var(--t3)}
+.hero{display:grid;grid-template-columns:150px 1fr;gap:18px;padding:18px;background:var(--s1);border:1px solid var(--bds);border-radius:14px;margin-bottom:22px}
+.hero .im{height:150px;border-radius:10px}.hero h2{margin:2px 0 2px;font-size:30px;letter-spacing:-.03em;line-height:1.1}
+.tag{display:inline-block;font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.07em;border:1px solid var(--bd);border-radius:7px;padding:3px 8px;color:var(--t2);margin-bottom:8px}
+.facts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.facts span{padding:8px 12px;border:1px solid var(--bds);border-radius:10px;background:var(--s2);font-size:13px}.facts i{display:block;font:500 10px var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--t3);font-style:normal}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--bds);border-radius:8px;background:var(--s1);color:var(--t2);font-size:12.5px;font-weight:500}
+.btn:hover{background:var(--s2);color:var(--t)}
+.kbd{font:500 11px var(--mono);color:var(--t3);border:1px solid var(--bd);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.go{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:10px;background:var(--t);color:#000;font-size:16px}
+.logo{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--t);color:#000;font-weight:700;font-size:15px;letter-spacing:-.04em}
+input.q{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--t);font:15.5px var(--sans)}
+.seg{display:inline-flex;padding:3px;gap:2px;background:var(--bg);border:1px solid var(--bds);border-radius:10px;font-size:12.5px;font-weight:500}
+.seg span{padding:4px 11px;border-radius:7px;color:var(--t3);display:inline-flex;gap:5px;align-items:center}
+.seg span.on{background:var(--s3);color:var(--t);box-shadow:0 0 0 1px var(--bd) inset}
+.seg svg{font-size:13px}
+.mut{color:var(--t3)}
+
+/* ======================================================== A · MASTHEAD */
+.A-top{position:sticky;top:46px;z-index:20;background:rgba(10,10,10,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--bds)}
+.A-row{display:flex;align-items:center;gap:18px;padding:12px 40px}
+.A-box{flex:1;max-width:760px;display:flex;align-items:center;gap:10px;height:48px;padding:0 6px 0 16px;background:var(--s1);border:1px solid var(--bd);border-radius:24px}
+.A-tabs{display:flex;gap:4px;padding:0 40px 10px 40px}
+.A-tabs a{display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;color:var(--t3);font-weight:500;font-size:13.5px}
+.A-tabs a.on{background:var(--t);color:#000}.A-tabs a:not(.on):hover{background:var(--s2);color:var(--t)}
+.A-body{padding:26px 40px 60px;display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.A-col{max-width:780px}
+.A-strip{margin:18px 0 20px;padding:18px 0}
+.A-strip-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.A-row2{display:flex;gap:12px;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 90px),transparent)}
+.A-row2 .card{flex:none;width:280px}
+.A-arrows{display:flex;gap:6px}.A-arrows .btn{width:30px;padding:0;justify-content:center}
+
+/* ======================================================== B · SIDEBAR */
+.B{display:grid;grid-template-columns:268px minmax(0,1fr);min-height:calc(100vh - 100px)}
+.B-side{position:sticky;top:46px;align-self:start;height:calc(100vh - 46px);display:flex;flex-direction:column;gap:20px;padding:18px 16px;border-right:1px solid var(--bds);background:#0c0c0c;overflow:auto}
+.B-brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px;letter-spacing:-.02em}
+.B-box{display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;height:42px;background:var(--s1);border:1px solid var(--bd);border-radius:11px}
+.B-nav{display:flex;flex-direction:column;gap:2px}
+.B-nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--t2);font-weight:500}
+.B-nav a em{margin-left:auto;font:400 11px var(--mono);color:var(--t3);font-style:normal}
+.B-nav a.on{background:var(--s3);color:var(--t)}.B-nav a:not(.on):hover{background:var(--s2)}
+.B-lbl{font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--t3);margin:0 0 8px 4px}
+.B-depth{display:flex;flex-direction:column;gap:6px}
+.B-depth div{padding:10px 12px;border:1px solid var(--bds);border-radius:10px;background:var(--s1)}
+.B-depth div.on{border-color:rgba(255,255,255,.3);background:var(--s3)}
+.B-depth b{display:flex;justify-content:space-between;font-size:13.5px}.B-depth small{color:var(--t3);font-size:12px}
+.B-main{padding:28px 40px 60px;min-width:0}
+.B-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.B-grid .big{grid-column:span 2;grid-row:span 2}.B-grid .big .im{aspect-ratio:auto;height:100%;min-height:200px}
+.B-grid .card .im{aspect-ratio:4/3}
+
+/* ======================================================== C · DOCK */
+.C-top{display:flex;justify-content:space-between;align-items:center;padding:16px 28px}
+.C-col{max-width:880px;margin:0 auto;padding:10px 24px 150px}
+.C-dock{position:sticky;bottom:22px;z-index:20;width:min(820px,calc(100% - 32px));margin:0 auto;padding:8px;background:rgba(22,22,22,.9);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.6)}
+.C-dock .top{display:flex;align-items:center;gap:10px;height:50px;padding:0 6px 0 14px}
+.C-dock .bot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px 2px}
+.C-pills{display:flex;gap:2px}.C-pills a{display:flex;gap:6px;align-items:center;padding:6px 12px;border-radius:999px;color:var(--t3);font-size:13px;font-weight:500}
+.C-pills a.on{background:var(--t);color:#000}
+.C-mosaic{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:86px;gap:8px;margin:20px 0}
+.C-mosaic div{border-radius:12px}.C-mosaic .w2{grid-column:span 2}.C-mosaic .h2{grid-row:span 2}.C-mosaic .w2h2{grid-column:span 2;grid-row:span 2}
+
+/* ======================================================== D · CONSOLE */
+.D-wrap{max-width:1080px;margin:0 auto;padding:22px 28px 60px}
+.D-console{position:sticky;top:58px;z-index:20;background:rgba(17,17,17,.92);backdrop-filter:blur(16px);border:1px solid var(--bd);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.D-c1{display:flex;align-items:center;gap:12px;padding:8px 10px 8px 16px;height:58px}
+.D-c1 .logo{width:30px;height:30px;font-size:13px}
+.D-c2{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 10px;height:44px;border-top:1px solid var(--bds)}
+.D-tabs{display:flex;gap:2px;height:100%}.D-tabs a{position:relative;display:flex;align-items:center;gap:7px;padding:0 12px;color:var(--t3);font-weight:500;font-size:13.5px}
+.D-tabs a.on{color:var(--t)}.D-tabs a.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--t);border-radius:2px}
+.D-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:40px;margin-top:26px}
+.D-peek{display:flex;gap:12px;overflow:hidden;scroll-snap-type:x mandatory;margin-right:-28px}
+.D-peek .card{flex:none;width:68%;scroll-snap-align:start}
+.D-prog{height:3px;background:var(--s3);border-radius:3px;margin-top:12px;position:relative}.D-prog::after{content:"";position:absolute;left:0;top:0;width:34%;height:100%;background:var(--t2);border-radius:3px}
+.D-aside .card{padding:14px}
+
+/* ======================================================== E · SPLIT */
+.E-top{position:sticky;top:46px;z-index:20;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:20px;padding:12px 28px;background:rgba(10,10,10,.9);backdrop-filter:blur(14px);border-bottom:1px solid var(--bds)}
+.E-box{display:flex;align-items:center;gap:10px;height:44px;padding:0 6px 0 14px;background:var(--s1);border:1px solid var(--bd);border-radius:12px;max-width:720px}
+.E-scope{font:500 12px var(--mono);color:var(--t2);padding:4px 9px;border:1px solid var(--bd);border-radius:7px;display:inline-flex;gap:5px;align-items:center}
+.E-dial{display:flex;align-items:center;gap:0;position:relative;padding:0 4px}
+.E-dial .track{position:absolute;left:14px;right:14px;top:9px;height:2px;background:var(--bd)}
+.E-dial label{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;width:64px;font-size:11.5px;color:var(--t3);font-weight:500}
+.E-dial label i{width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--t3)}
+.E-dial label.on{color:var(--t)}.E-dial label.on i{background:var(--t);border-color:var(--t);box-shadow:0 0 0 4px rgba(255,255,255,.1)}
+.E-chips{display:flex;gap:6px;padding:12px 28px 0}
+.E-chips a{padding:6px 13px;border:1px solid var(--bds);border-radius:8px;color:var(--t2);font-size:13px;font-weight:500;display:flex;gap:6px;align-items:center}
+.E-chips a.on{background:var(--s3);color:var(--t);border-color:var(--bd)}
+.E-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:36px;padding:20px 28px 60px}
+.E-ans{position:sticky;top:132px;align-self:start;padding:18px;background:var(--s1);border:1px solid var(--bd);border-radius:16px;background-image:linear-gradient(180deg,rgba(255,255,255,.04),transparent 40%)}
+.E-ans h4{margin:0 0 8px;font-size:15px;display:flex;gap:8px;align-items:center}
+.E-ans p{color:var(--t2);font-size:14px;margin:0 0 10px}
+.E-ans .sk{height:10px;border-radius:5px;background:var(--s3);margin:8px 0}
+.E-rowstrip{margin:18px 0;padding:16px 0;border-top:1px solid var(--bds);border-bottom:1px solid var(--bds)}
+.E-rowstrip .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.E-cites{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.E-cites span{font:400 11px var(--mono);padding:3px 8px;border:1px solid var(--bd);border-radius:6px;color:var(--t2)}
+
+@media(max-width:900px){.B{grid-template-columns:1fr}.B-side{position:static;height:auto}.B-grid{grid-template-columns:repeat(2,1fr)}.D-body,.E-grid{grid-template-columns:1fr}.A-row,.A-tabs,.A-body{padding-left:16px;padding-right:16px}.E-top{grid-template-columns:1fr}.hero{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="chooser"><b>Archer layouts</b></div>
+<div id="blurbs"></div>
+
+<!-- ============ A · MASTHEAD ============ -->
+<section class="mock" id="mA">
+  <header class="A-top">
+    <div class="A-row">
+      <div class="logo">A</div>
+      <div class="A-box"><svg class="mut" style="font-size:17px"><use href="#search"/></svg><input class="q" value="zendaya"><span class="kbd">/</span><button class="go" style="border-radius:50%"><svg><use href="#search"/></svg></button></div>
+      <div class="seg" id="A-seg"></div>
+    </div>
+    <nav class="A-tabs" id="A-tabs"></nav>
+  </header>
+  <div class="A-body">
+    <div class="A-col" id="A-hero"></div>
+    <div class="A-col" id="A-r1"></div>
+    <div class="A-strip" style="border-top:1px solid var(--bds);border-bottom:1px solid var(--bds)">
+      <div class="A-strip-h"><div class="title-s"><svg><use href="#news"/></svg>In the news</div>
+        <div class="A-arrows"><a class="btn">See all</a><a class="btn"><svg><use href="#l"/></svg></a><a class="btn"><svg><use href="#r"/></svg></a></div></div>
+      <div class="A-row2" id="A-news"></div>
+    </div>
+    <div class="A-col" id="A-r2"></div>
+  </div>
+</section>
+
+<!-- ============ B · SIDEBAR ============ -->
+<section class="mock" id="mB">
+  <div class="B">
+    <aside class="B-side">
+      <div class="B-brand"><div class="logo">A</div>Archer</div>
+      <div class="B-box"><svg class="mut" style="font-size:16px"><use href="#search"/></svg><input class="q" value="zendaya" style="font-size:14.5px"><button class="go" style="width:30px;height:30px"><svg><use href="#search"/></svg></button></div>
+      <nav class="B-nav" id="B-nav"></nav>
+      <div><div class="B-lbl">Answer depth</div>
+        <div class="B-depth">
+          <div class="on"><b>Classic <span class="mut">●</span></b><small>Links and cards. No AI.</small></div>
+          <div><b>Balanced</b><small>Compact AI summary on top.</small></div>
+          <div><b>AI mode</b><small>Agentic, reads many pages.</small></div>
+        </div></div>
+      <div style="margin-top:auto" class="mut"><small>Classic · no AI used<br>View on SearXNG</small></div>
+    </aside>
+    <main class="B-main"><div style="max-width:780px" id="B-hero"></div><div style="max-width:780px" id="B-r1"></div>
+      <div style="margin:22px 0;padding:18px 0;border-top:1px solid var(--bds);border-bottom:1px solid var(--bds)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="title-s"><svg><use href="#news"/></svg>In the news</div><a class="btn">Show all 12</a></div>
+        <div class="B-grid" id="B-news"></div>
+      </div>
+      <div style="max-width:780px" id="B-r2"></div></main>
+  </div>
+</section>
+
+<!-- ============ C · DOCK ============ -->
+<section class="mock" id="mC">
+  <div class="C-top"><div style="display:flex;gap:10px;align-items:center;font-weight:600"><div class="logo">A</div>Archer</div><span class="mut" style="font:400 11px var(--mono)">Classic · no AI used</span></div>
+  <div class="C-col">
+    <div id="C-hero"></div><div id="C-r1"></div>
+    <div style="margin-top:22px"><div style="display:flex;justify-content:space-between;align-items:center"><div class="title-s"><svg><use href="#image"/></svg>Images</div><a class="btn">Expand gallery</a></div>
+      <div class="C-mosaic" id="C-mosaic"></div></div>
+    <div id="C-r2"></div>
+  </div>
+  <div class="C-dock">
+    <div class="top"><svg class="mut" style="font-size:18px"><use href="#search"/></svg><input class="q" value="zendaya" style="font-size:16px"><span class="kbd">/</span><button class="go"><svg><use href="#search"/></svg></button></div>
+    <div class="bot"><div class="C-pills" id="C-pills"></div><div class="seg" id="C-seg"></div></div>
+  </div>
+</section>
+
+<!-- ============ D · CONSOLE ============ -->
+<section class="mock" id="mD">
+  <div class="D-wrap">
+    <div class="D-console">
+      <div class="D-c1"><div class="logo">A</div><svg class="mut" style="font-size:17px"><use href="#search"/></svg><input class="q" value="zendaya"><span class="kbd">/</span><button class="go"><svg><use href="#search"/></svg></button></div>
+      <div class="D-c2"><nav class="D-tabs" id="D-tabs"></nav><div class="seg" id="D-seg"></div></div>
+    </div>
+    <div class="D-body">
+      <div><div id="D-hero"></div><div id="D-r1"></div>
+        <div style="margin:22px 0;padding:18px 0;border-top:1px solid var(--bds);border-bottom:1px solid var(--bds)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="title-s"><svg><use href="#news"/></svg>In the news</div><span class="mut" style="font:400 11px var(--mono)">1 / 3 · swipe or →</span></div>
+          <div class="D-peek" id="D-news"></div><div class="D-prog"></div></div>
+        <div id="D-r2"></div></div>
+      <aside class="D-aside"><div class="title-s" style="margin-bottom:10px">Related</div>
+        <div class="card" id="D-rel"></div>
+        <div class="title-s" style="margin:22px 0 10px"><svg><use href="#image"/></svg>Images</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="D-imgs"></div></aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E · SPLIT ============ -->
+<section class="mock" id="mE">
+  <header class="E-top">
+    <div style="display:flex;gap:10px;align-items:center"><div class="logo">A</div></div>
+    <div class="E-box"><span class="E-scope">All <svg><use href="#chev"/></svg></span><input class="q" value="zendaya"><span class="kbd">/</span><button class="go"><svg><use href="#search"/></svg></button></div>
+    <div class="E-dial" id="E-dial"><div class="track"></div>
+      <label class="on"><i></i>Classic</label><label><i></i>Balanced</label><label><i></i>AI</label></div>
+  </header>
+  <div class="E-chips" id="E-chips"></div>
+  <div class="E-grid">
+    <div><div id="E-hero"></div><div id="E-r1"></div>
+      <div class="E-rowstrip"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="title-s"><svg><use href="#news"/></svg>In the news</div><a class="btn">See all <svg><use href="#r"/></svg></a></div><div class="grid" id="E-news"></div></div>
+      <div id="E-r2"></div></div>
+    <aside><div class="E-ans">
+      <h4><svg><use href="#spark"/></svg>Answer<span class="mut" style="font:400 11px var(--mono);margin-left:auto">Balanced · off</span></h4>
+      <p>Switch to <b style="color:var(--t)">Balanced</b> for a 2–3 sentence summary with citations, or <b style="color:var(--t)">AI</b> for a researched, structured answer.</p>
+      <div class="sk" style="width:92%"></div><div class="sk" style="width:78%"></div><div class="sk" style="width:85%"></div>
+      <div class="E-cites"><span>[1] wikipedia.org</span><span>[2] vogue.com</span><span>[3] imdb.com</span></div>
+      <div style="display:flex;gap:6px;margin-top:16px"><a class="btn" style="color:var(--t)">Ask AI</a><a class="btn">Try AI mode</a></div>
+    </div></aside>
+  </div>
+</section>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+<symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></symbol>
+<symbol id="image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+<symbol id="news" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 16h5"/></symbol>
+<symbol id="video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+<symbol id="map" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14"/></symbol>
+<symbol id="spark" viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></symbol>
+<symbol id="l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+<symbol id="r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+<symbol id="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</defs></svg>
+
+<script>
+const ic = n => `<svg><use href="#${n}"/></svg>`;
+const TABS = [["All","globe"],["Images","image"],["News","news"],["Videos","video"],["Maps","map"]];
+const RES = [
+ ["Instagram","instagram.com › zendaya","Zendaya (@zendaya) • Instagram photos and videos","179M Followers, 14 Following, 3,512 Posts - Zendaya (@zendaya) on Instagram."],
+ ["Wikipedia","wikipedia.org › wiki","Zendaya - Wikipedia","Zendaya Maree Stoermer Coleman (born September 1, 1996) is an American actress and singer."],
+ ["IMDb","imdb.com › name","Zendaya - IMDb","Zendaya is an American actress and singer. Known for Euphoria, Spider-Man and Dune."],
+ ["Vogue","vogue.com › zendaya","Zendaya Makes a Dramatic Return to the Pixie Cut","After months of goddess-like lengths, Zendaya has graduated from the bixie to a pixie cut."]];
+const NEWS = [["usatoday.com","Zendaya puts casual spin on her glamorous Louis Vuitton jacket","6 days ago",20],["vogue.com","Zendaya Makes a Dramatic Return to the Pixie Cut","13 Sep",330],["msn.com","Kadeem Hardison shares how he realized his TV daughter was a boss","12 hours ago",200],["people.com","Zendaya and Tom Holland step out in New York","2 days ago",270],["elle.com","The Odyssey: everything we know so far","3 days ago",150],["variety.com","Zendaya joins new A24 thriller","4 days ago",40]];
+const res = r => `<article class="res"><div class="site"><span class="badge">${r[0][0]}</span><div><div class="host">${r[0]}</div><div class="crumb">${r[1]}</div></div></div><h3>${r[2]}</h3><p>${r[3]}</p></article>`;
+const news = (n,i) => `<a class="card"><div class="im ph" style="--h:${n[3]}"></div><div class="bd"><span class="src">${n[0]}</span><span class="ti">${n[1]}</span><span class="ag">${n[2]}</span></div></a>`;
+const hero = `<div class="hero"><div class="im ph" style="--h:20"></div><div><span class="tag">Person</span><h2>Zendaya</h2><div class="mut">American actress and singer (born 1996)</div><div class="facts"><span><i>Age</i>30 years</span><span><i>Born in</i>Oakland</span><span><i>Spouse</i>Tom Holland</span></div></div></div>`;
+const seg = `<span class="on">Classic</span><span>Balanced</span><span>${ic("spark")}AI</span>`;
+const tabsA = (cls) => TABS.map((t,i)=>`<a class="${i==0?"on":""}">${ic(t[1])}${t[0]}</a>`).join("");
+
+// A
+A_seg=document.getElementById("A-seg").innerHTML=seg;
+document.getElementById("A-tabs").innerHTML=tabsA();
+document.getElementById("A-hero").innerHTML=hero;
+document.getElementById("A-r1").innerHTML=RES.slice(0,2).map(res).join("");
+document.getElementById("A-r2").innerHTML=RES.slice(2).map(res).join("");
+document.getElementById("A-news").innerHTML=NEWS.map(news).join("");
+// B
+document.getElementById("B-nav").innerHTML=TABS.map((t,i)=>`<a class="${i==0?"on":""}">${ic(t[1])}${t[0]}<em>${["","48","12","9",""][i]}</em></a>`).join("");
+document.getElementById("B-hero").innerHTML=hero;
+document.getElementById("B-r1").innerHTML=RES.slice(0,2).map(res).join("");
+document.getElementById("B-r2").innerHTML=RES.slice(2).map(res).join("");
+document.getElementById("B-news").innerHTML=NEWS.map((n,i)=>i==0?`<a class="card big"><div class="im ph" style="--h:${n[3]}"></div><div class="bd"><span class="src">${n[0]}</span><span class="ti" style="font-size:16px">${n[1]}</span><span class="ag">${n[2]}</span></div></a>`:news(n)).join("");
+// C
+document.getElementById("C-hero").innerHTML=hero;
+document.getElementById("C-r1").innerHTML=RES.slice(0,2).map(res).join("");
+document.getElementById("C-r2").innerHTML=RES.slice(2).map(res).join("");
+document.getElementById("C-pills").innerHTML=TABS.map((t,i)=>`<a class="${i==0?"on":""}">${ic(t[1])}${t[0]}</a>`).join("");
+document.getElementById("C-seg").innerHTML=seg;
+document.getElementById("C-mosaic").innerHTML=[["w2h2",20],["",200],["h2",300],["",120],["w2",60],["",250],["",340],["h2",170],["w2",30]].map(m=>`<div class="ph ${m[0]}" style="--h:${m[1]}"></div>`).join("");
+// D
+document.getElementById("D-tabs").innerHTML=TABS.map((t,i)=>`<a class="${i==0?"on":""}">${ic(t[1])}${t[0]}</a>`).join("");
+document.getElementById("D-seg").innerHTML=seg;
+document.getElementById("D-hero").innerHTML=hero;
+document.getElementById("D-r1").innerHTML=RES.slice(0,2).map(res).join("");
+document.getElementById("D-r2").innerHTML=RES.slice(2).map(res).join("");
+document.getElementById("D-news").innerHTML=NEWS.map(news).join("");
+document.getElementById("D-rel").innerHTML=["zendaya movies","zendaya and tom holland","zendaya euphoria","zendaya dune 3"].map(s=>`<div style="padding:7px 0;border-top:1px solid var(--bds);color:var(--t2)">${s}</div>`).join("").replace("border-top:1px solid var(--bds);","");
+document.getElementById("D-imgs").innerHTML=[20,200,300,120].map(h=>`<div class="ph" style="--h:${h};aspect-ratio:1;border-radius:10px"></div>`).join("");
+// E
+document.getElementById("E-chips").innerHTML=TABS.map((t,i)=>`<a class="${i==0?"on":""}">${ic(t[1])}${t[0]}</a>`).join("");
+document.getElementById("E-hero").innerHTML=hero;
+document.getElementById("E-r1").innerHTML=RES.slice(0,2).map(res).join("");
+document.getElementById("E-r2").innerHTML=RES.slice(2).map(res).join("");
+document.getElementById("E-news").innerHTML=NEWS.slice(0,3).map(news).join("");
+
+// chooser
+const L=[
+ ["A","Masthead","Familiar, refined. <b>Pill search + pill tabs in one sticky header</b>, AI switcher to the right of the box. Strips break out of the 780px column and run edge to edge with arrows, a fade and a \"See all\". Lowest-risk option."],
+ ["B","Sidebar","<b>Everything controllable lives in a left sidebar</b>: search, vertical tabs with result counts, and the AI depth as three descriptive cards (so the choice is explained, not just a toggle). Strips become an expandable bento grid with a featured lead story."],
+ ["C","Dock","<b>No header at all.</b> Search, tabs and AI level sit in a floating dock at the bottom (Spotlight style, thumb-reachable), so results get the whole screen. Images are a mosaic gallery that can expand."],
+ ["D","Console","<b>One floating console card</b> holds logo, search, tabs and AI switcher as a single object. Results use a two-column body with a Related + Images rail; the news strip is a peeking snap carousel with a progress bar."],
+ ["E","Split + Answer","<b>AI is a permanent right-hand panel</b>, so Balanced and AI mode have a home. The AI level is a three-stop dial in the top bar, search scope is a dropdown inside the box, and strips become tidy 3-up rows with See all."]];
+const ch=document.getElementById("chooser"), bl=document.getElementById("blurbs");
+L.forEach(([k,n,d])=>{const b=document.createElement("button");b.textContent=`${k} · ${n}`;b.dataset.k=k;b.onclick=()=>pick(k);ch.append(b);
+  const p=document.createElement("div");p.className="blurb";p.id="bl"+k;p.hidden=true;p.innerHTML=d;bl.append(p);});
+function pick(k){document.querySelectorAll(".mock").forEach(m=>m.classList.toggle("on",m.id==="m"+k));
+  ch.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));
+  L.forEach(([x])=>document.getElementById("bl"+x).hidden=x!==k);location.hash=k;window.scrollTo(0,0);}
+addEventListener("keydown",e=>{const i="12345".indexOf(e.key);if(i>=0&&!/input/i.test(e.target.tagName))pick(L[i][0]);});
+pick((location.hash||"#A").slice(1)||"A");
+</script>
+</body>
+</html>
