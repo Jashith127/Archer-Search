@@ -90,18 +90,24 @@ body.is-intro .panel { opacity: 0; }
 
 /* welcome */
 .view[data-view=welcome] { display: block; padding-top: 44px; }
-.welcome-heading h1 { margin-top: 12px; font-size: 30px; line-height: 1.2; font-weight: 600; }
-.welcome-caption { margin: 14px 0 28px; color: var(--text-2); font-size: 14px; max-width: 650px; line-height: 1.65; }
-.install-requirements { display: grid; gap: 10px; margin: 24px 0; padding: 18px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.install-requirements > div { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 16px; font-size: 12px; }
-.install-requirements dt { color: var(--text-2); }
-.install-requirements dd { margin: 0; color: var(--text); }
+.welcome-heading h1 { margin-top: 14px; font-size: 38px; line-height: 1.15; font-weight: 600; letter-spacing: -.035em; }
+.welcome-caption { margin: 16px 0 32px; color: var(--text-2); font-size: 14.5px; max-width: 620px; line-height: 1.65; }
+.install-requirements { display: grid; grid-template-columns: 1fr 1.6fr; gap: 32px; margin: 0; padding: 22px 0 16px; border-top: 1px solid var(--border); }
+.install-requirements > div { display: grid; gap: 5px; font-size: 12px; }
+.install-requirements dt { color: var(--text-3); font-size: 11px; }
+.install-requirements dd { margin: 0; color: var(--text-2); font-size: 12px; }
 .welcome-options { grid-column: 1 / -1; border-top: 1px solid var(--border); }
-.welcome-options .where { margin: 0; padding: 18px 0; border: 0; border-radius: 0; background: transparent; }
-.welcome-options .toggle { justify-content: space-between; margin: 0; padding: 15px 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
+.welcome-options .where { margin: 0; padding: 22px 0; border: 0; border-radius: 0; background: transparent; }
+.welcome-options .toggle { justify-content: space-between; margin: 0; padding: 22px 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 .welcome-options .toggle > span:first-child { display: grid; gap: 2px; }
 .welcome-options .toggle > span:first-child > span { color: var(--text-2); font-size: 12px; }
 .welcome-options .toggle .switch { display: block; }
+.welcome-options .where-label { color: var(--text); font: 600 14px var(--font); text-transform: none; letter-spacing: 0; }
+.welcome-options .where > div { gap: 9px; }
+.welcome-options .where code { font-size: 14px; color: var(--text-2); }
+.welcome-options .where .btn { border-color: var(--border); background: var(--surface-2); height: 36px; }
+.welcome-options .toggle > span:first-child { gap: 5px; }
+body:has([data-view=welcome]:not([hidden])) .btn--big { min-width: 130px; height: 44px; }
 .welcome-note { margin: 8px 0 0; font-size: 11px; color: var(--text-3); }
 .offer b, .card b { display: block; font-size: 14.5px; font-weight: 600; }
 .offer-head span, .card div > span { color: var(--text-3); font-size: 13.5px; line-height: 1.5; }
@@ -289,7 +295,7 @@ kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; col
   .view[data-view=welcome] { padding-top: 26px; }
   .welcome-heading h1 { font-size: 28px; }
   .welcome-caption { max-width: none; }
-  .install-requirements > div { grid-template-columns: 110px minmax(0,1fr); gap: 10px; }
+  .install-requirements { gap: 16px; grid-template-columns: 1fr 1.5fr; }
   .welcome-options .where { gap: 8px; }
   .welcome-options .where .btn { font-size: 11px; }
   .handoff { grid-template-columns: 1fr; }
