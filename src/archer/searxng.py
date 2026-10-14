@@ -1,7 +1,9 @@
-"""SearXNG client with a small TTL cache.
+"""Archer's search front: one cached entry point for results and suggestions.
 
+The configured provider answers (SearXNG here; DuckDuckGo, Google and Brave in `websearch.py`).
 Upstream engines rate-limit and CAPTCHA quickly, so identical requests (reloads,
-back/forward, lazy modules) are served from memory instead of fanning out again.
+back/forward, lazy modules) are served from memory instead of fanning out again. When the
+provider fails, DuckDuckGo answers instead (if the fallback is on) and the page says so.
 """
 
 import asyncio
@@ -73,6 +75,8 @@ class SearchResponse:
     unresponsive: list[tuple[str, str]] = field(default_factory=list)
     redirect: str | None = None
     error: str | None = None
+    provider: str = "searxng"  # which provider answered
+    notice: str | None = None  # e.g. "SearXNG didn't answer, so these results are from DuckDuckGo"
 
 
 def _http_url(value: str | None) -> str:
@@ -103,7 +107,7 @@ def _to_result(raw: dict) -> Result | None:
     )
 
 
-class SearXNG:
+class Search:
     def __init__(self, client: httpx.AsyncClient):
         self._client = client
         self._cache: dict[tuple, tuple[float, SearchResponse]] = {}
@@ -113,19 +117,44 @@ class SearXNG:
 
     async def search(self, q: str, category: str = "general", page: int = 1) -> SearchResponse:
         # Search preferences are part of the key, so changing them never serves stale results.
-        key = (q, category, page, settings.safesearch, settings.search_language)
+        key = self._key(q, category, page)
         if key not in self._search_pending:
             task = asyncio.create_task(self._search(q, category, page))
             self._search_pending[key] = task
             task.add_done_callback(lambda done: self._search_pending.pop(key, None))
         return await asyncio.shield(self._search_pending[key])
 
+    @staticmethod
+    def _key(q, category, page):
+        from archer import websearch
+        return (q, category, page, settings.safesearch, settings.search_language, settings.home_country,
+                websearch.backend(), settings.search_fallback)
+
     async def _search(self, q: str, category: str = "general", page: int = 1) -> SearchResponse:
-        key = (q, category, page, settings.safesearch, settings.search_language)
+        from archer import websearch
+        key = self._key(q, category, page)
         hit = self._cache.get(key)
         if hit and time.monotonic() - hit[0] < CACHE_TTL:
             return hit[1]
 
+        name = websearch.backend()
+        borrowed = category not in websearch.CATEGORIES.get(name, ())
+        if borrowed:
+            name = "duckduckgo"  # e.g. news from a Google key that only covers web and images
+        out = await (self._searxng(q, category, page) if name == "searxng" else websearch.search(self._client, name, q, category, page))
+        if out.error and name != "duckduckgo" and settings.search_fallback:
+            backup = await websearch.search(self._client, "duckduckgo", q, category, page)
+            if backup.results:
+                label = websearch.LABELS.get(name.split(":")[0], name)
+                backup.notice = f"{label} didn't answer ({out.error}), so these results are from DuckDuckGo."
+                out = backup
+        if out.results or out.answers:  # don't pin an empty, rate-limited response
+            if len(self._cache) >= _CACHE_MAX:
+                self._cache.pop(next(iter(self._cache)))
+            self._cache[key] = (time.monotonic(), out)
+        return out
+
+    async def _searxng(self, q: str, category: str, page: int) -> SearchResponse:
         params = {"q": q, "format": "json", "categories": category, "pageno": page}
         if settings.safesearch is not None:
             params["safesearch"] = settings.safesearch
@@ -152,31 +181,34 @@ class SearXNG:
             corrections=data.get("corrections", []),
             unresponsive=[tuple(u) for u in data.get("unresponsive_engines", [])],
         )
-        if out.results or out.answers:  # don't pin an empty, rate-limited response
-            if len(self._cache) >= _CACHE_MAX:
-                self._cache.pop(next(iter(self._cache)))
-            self._cache[key] = (time.monotonic(), out)
         return out
 
     async def autocomplete(self, q: str, timeout: float = 1.5) -> list:
-        if not suggestion_eligible(q):
+        from archer import websearch
+        source = websearch.suggestion_source()
+        if not suggestion_eligible(q) or source == "off":
             return [q, []]
-        hit = self._suggest_cache.get(q)
+        key = q if source == "searxng" else f"{source}|{q}"
+        hit = self._suggest_cache.get(key)
         if hit and time.monotonic() < hit[0]:
             return hit[1]
-        task = self._suggest_pending.get(q)
+        task = self._suggest_pending.get(key)
         if task is None:
-            task = asyncio.create_task(self._autocomplete(q, timeout))
-            self._suggest_pending[q] = task
-            task.add_done_callback(lambda done: self._suggest_pending.pop(q, None))
+            task = asyncio.create_task(self._autocomplete(q, timeout, source, key))
+            self._suggest_pending[key] = task
+            task.add_done_callback(lambda done: self._suggest_pending.pop(key, None))
         # A disconnected page must not cancel a lookup the address bar also awaits.
         return await asyncio.shield(task)
 
-    async def _autocomplete(self, q: str, timeout: float) -> list:
+    async def _autocomplete(self, q: str, timeout: float, source: str = "searxng", key: str = "") -> list:
+        from archer import websearch
         try:
-            resp = await self._client.get("/autocompleter", params={"q": q}, timeout=timeout)
-            resp.raise_for_status()
-            data = resp.json()
+            if source == "searxng":
+                resp = await self._client.get("/autocompleter", params={"q": q}, timeout=timeout)
+                resp.raise_for_status()
+                data = resp.json()
+            else:
+                data = await websearch.suggest(self._client, source, q, timeout)
         except (httpx.HTTPError, ValueError):
             return [q, []]
         if not isinstance(data, list) or len(data) < 2 or not isinstance(data[1], list):
@@ -195,5 +227,8 @@ class SearXNG:
             result = [q, terms, [], [], {"google:suggestrelevance": relevance}]
         if len(self._suggest_cache) >= _CACHE_MAX:
             self._suggest_cache.pop(next(iter(self._suggest_cache)))
-        self._suggest_cache[q] = (time.monotonic() + (SUGGEST_TTL if terms else 5), result)
+        self._suggest_cache[key or q] = (time.monotonic() + (SUGGEST_TTL if terms else 5), result)
         return result
+
+
+SearXNG = Search  # the name earlier code and tests import

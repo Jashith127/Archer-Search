@@ -59,23 +59,35 @@ document.addEventListener("DOMContentLoaded", () => {
     try { localStorage.setItem("archer-ai-small", value ? "1" : "0"); } catch {}
     applySize();
   };
-  // Images arrive from the same cached strip the results page uses, so they show before the text does.
-  const loadVisuals = t => {
-    if (!root.dataset.query || t.extra.question || t.extra.selected) return;
-    strip("images", root.dataset.query).then(items => {
-      const row = t.part("visuals");
-      if (!row.isConnected || t.node.classList.contains("has-media")) return;
-      const tiles = items.filter(i => isHttp(i.url) && isHttp(i.thumb)).slice(0, 8).map(item => {
-        const picture = img(item.thumb, item.title);
-        if (!picture) return null;
-        const tile = el("a", { class: "ai-visual", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.title + (item.source ? " · " + item.source : "") }, picture);
-        picture.addEventListener("error", () => tile.remove());
-        return tile;
-      }).filter(Boolean);
-      if (tiles.length < 3) return;
-      row.replaceChildren(...tiles);
-      row.hidden = false;
-    }).catch(() => {});
+  // Pictures come only when the server judged them useful (visuals.py), already filtered for relevance.
+  // A quick answer shows them as a thin row; research shows a titled gallery card.
+  const visualRow = (t, data) => {
+    const row = t.part("visuals");
+    const tiles = (data.items || []).map(item => {
+      const picture = img(item.thumbnail, item.title);
+      if (!picture || !isHttp(item.url)) return null;
+      const tile = el("a", { class: "ai-visual", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.title + (item.host ? " · " + item.host : ""), "data-ref": item.ref || "" }, picture);
+      picture.addEventListener("error", () => tile.remove());
+      return tile;
+    }).filter(Boolean);
+    if (!tiles.length) return;
+    row.replaceChildren(...tiles);
+    row.hidden = false;
+  };
+  // The answer model's verdict: keep only pictures of the actual subject, in its order, or none.
+  const applyVisuals = (t, data) => {
+    const tiles = [...t.node.querySelectorAll("[data-ref]")].filter(n => n.dataset.ref);
+    if (!tiles.length) return;
+    const keep = data.verdict === "show" ? data.keep || [] : [];
+    const containers = new Set(tiles.map(n => n.parentElement));
+    for (const tile of tiles) if (!keep.includes(tile.dataset.ref)) tile.remove();
+    for (const box of containers) {
+      [...box.children].filter(n => n.dataset.ref).sort((a, b) => keep.indexOf(a.dataset.ref) - keep.indexOf(b.dataset.ref)).forEach(n => box.append(n));
+      if (box.children.length) continue;
+      const gone = box.closest(".ai-tool-card--media") || box;
+      gone.classList.add("is-leaving");
+      setTimeout(() => { gone.hidden = true; gone.classList.remove("is-leaving"); }, 220);
+    }
   };
   const isFull = () => document.body.classList.contains("ai-fullview");
   const turns = () => [...thread.querySelectorAll(".ai-turn")];
@@ -247,6 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     find("[data-ai-source-count]").textContent = String(items.length);
     find("[data-ai-top-count]").textContent = String(items.length);
+    find("[data-ai-composer-count]").textContent = String(items.length);
     updateCompare();
   };
   const citations = ids => {
@@ -264,17 +277,91 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // ------------------------------------------------------------ answer rendering
+  // **bold** for defined terms, ==highlight== for the phrase the model thinks should catch the eye.
   const formatted = text => {
     const fragment = document.createDocumentFragment();
-    for (const part of text.split(/(\*\*[^*]+\*\*)/g)) fragment.append(part.startsWith("**") && part.endsWith("**") ? el("strong", { text: part.slice(2, -2) }) : document.createTextNode(part));
+    for (const part of text.split(/(\*\*[^*]+\*\*|==[^=\n]+==)/g)) {
+      if (part.length > 4 && part.startsWith("**") && part.endsWith("**")) fragment.append(el("strong", { text: part.slice(2, -2) }));
+      else if (part.length > 4 && part.startsWith("==") && part.endsWith("==")) fragment.append(el("mark", { class: "ai-mark", text: part.slice(2, -2) }));
+      else fragment.append(document.createTextNode(part));
+    }
     return fragment;
   };
+  const plain = text => (text || "").replace(/==([^=\n]+)==/g, "$1");
+  const CALLOUT = { key: ["Key point", "u-sparkle"], tip: ["Tip", "u-sparkle"], warning: ["Watch out", "u-shield"] };
   const renderBlock = block => {
-    const section = el("section", { class: "ai-block ai-block--" + block.kind });
+    const tone = block.kind === "callout" ? " ai-block--" + (block.tone || "key") : "";
+    const section = el("section", { class: "ai-block ai-block--" + block.kind + tone });
+    if (block.kind === "summary") section.setAttribute("aria-label", "Answer summary");
     if (block.kind === "inference") section.append(el("span", { class: "ai-block-label", text: "Archer's take" }));
     if (block.kind === "limitation") section.append(el("span", { class: "ai-block-label", text: "What remains uncertain" }));
+    if (block.kind === "callout") section.append(el("span", { class: "ai-block-label", text: (CALLOUT[block.tone] || CALLOUT.key)[0] }));
     if (block.heading) section.append(el("h3", { text: block.heading }));
-    if (block.kind === "table") {
+    if (block.kind === "facts") {
+      const tiles = block.items.map(item => el("div", { class: "ai-keyfact", "data-picture": item.picture || null },
+        el("div", { class: "ai-keyfact-body" }, el("dt", { text: item.label }), el("dd", {}, formatted(item.text), citations(item.citations)))));
+      section.append(el("dl", { class: "ai-keyfacts" }, ...tiles));
+      // A fact naming a person, place or work gets its Wikipedia photo (exact article titles only).
+      const pictured = tiles.filter(t => t.dataset.picture);
+      if (pictured.length) {
+        getJSON("/api/portraits?" + pictured.map(t => "t=" + encodeURIComponent(t.dataset.picture)).join("&")).then(found => {
+          for (const tile of pictured) {
+            const photo = img(found[tile.dataset.picture], "");
+            if (!photo) continue;
+            photo.addEventListener("error", () => tile.classList.remove("has-picture"));
+            tile.prepend(el("span", { class: "ai-keyfact-picture" }, photo));
+            tile.classList.add("has-picture");
+          }
+        }).catch(() => {});
+      }
+    } else if (block.kind === "verdict") {
+      const mark = { positive: "✓", mixed: "≈", negative: "✕" }[block.tone] || "≈";
+      section.classList.add("ai-verdict--" + block.tone);
+      section.prepend(el("span", { class: "ai-verdict-mark", "aria-hidden": "true", text: mark }));
+      section.querySelector("h3")?.classList.add("ai-verdict-title");
+      if (block.text) section.append(el("p", {}, formatted(block.text), citations(block.citations)));
+    } else if (block.kind === "proscons") {
+      const side = (items, cls, title, sign) => items.length ? el("div", { class: "ai-pc " + cls },
+        el("span", { class: "ai-block-label", text: title }),
+        el("ul", {}, ...items.map(item => el("li", { "data-sign": sign }, formatted(item.text), citations(item.citations))))) : null;
+      section.append(el("div", { class: "ai-pc-grid" }, side(block.pros, "ai-pc--pro", "Pros", "+"), side(block.cons, "ai-pc--con", "Cons", "−")));
+    } else if (block.kind === "products") {
+      const row = el("div", { class: "ai-products" });
+      for (const item of block.items) {
+        const card = isHttp(item.url) ? el("a", { class: "ai-product", href: item.url, target: "_blank", rel: "noopener noreferrer" }) : el("div", { class: "ai-product" });
+        const host = hostOf(item.url);
+        const photo = img(item.image, item.label);
+        const frame = el("span", { class: "ai-product-photo" }, photo || (host ? siteBadge(host) : null));
+        if (photo) photo.addEventListener("error", () => { if (host) frame.append(siteBadge(host)); });
+        card.append(frame, el("span", { class: "ai-product-body" },
+          el("strong", { class: "ai-product-name", text: item.label }),
+          item.value ? el("span", { class: "ai-product-price", text: item.value }) : null,
+          item.text ? el("span", { class: "ai-product-note" }, formatted(item.text)) : null,
+          host ? el("small", { class: "ai-product-host", text: host.replace(/^www\./, "") }) : null));
+        row.append(el("div", { class: "ai-product-cell" }, card, citations(item.citations)));
+      }
+      section.append(row);
+    } else if (block.kind === "bars") {
+      const values = block.items.map(item => Number(String(item.value).replace(/,/g, "")) || 0);
+      const top = Math.max(...values, 1);
+      section.append(el("div", { class: "ai-bars", role: "list" }, ...block.items.map((item, i) => {
+        const fill = el("span", { class: "ai-bar-fill" });
+        fill.style.width = Math.max(2, values[i] / top * 100) + "%";
+        return el("div", { class: "ai-bar", role: "listitem" },
+          el("span", { class: "ai-bar-label", text: item.label }),
+          el("span", { class: "ai-bar-track" }, fill),
+          el("span", { class: "ai-bar-value" }, document.createTextNode(Number(values[i]).toLocaleString() + (item.text ? " " : "")), item.text ? formatted(item.text) : "", citations(item.citations)));
+      })));
+    } else if (block.kind === "timeline") {
+      section.append(el("ol", { class: "ai-timeline" }, ...block.items.map(item => el("li", {},
+        el("span", { class: "ai-timeline-when", text: item.label }),
+        el("span", { class: "ai-timeline-what" }, formatted(item.text), citations(item.citations))))));
+    } else if (block.kind === "quote") {
+      const source = sourceMap.get((block.citations || [])[0]);
+      const who = source?.url ? siteName(hostOf(source.url)) : "Source";
+      section.append(el("blockquote", {}, el("p", {}, formatted(block.text.replace(/^["“]|["”]$/g, "")))),
+        el("p", { class: "ai-quote-by" }, document.createTextNode("— " + who), citations(block.citations)));
+    } else if (block.kind === "table") {
       const table = el("table");
       table.append(el("thead", {}, el("tr", {}, ...block.columns.map(t => el("th", { scope: "col", text: t })))));
       const body = el("tbody");
@@ -291,6 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
     else turn.answer.append(section);
     turn.blocks.push(block);
     turn.node.classList.add("has-answer");
+    decodeReveal(section);
   };
   const fact = (label, value) => el("div", { class: "ai-fact" }, el("small", { text: label }), el("strong", { text: String(value) }));
   const renderCard = card => {
@@ -299,14 +387,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const data = card.data || {};
     const panel = el("article", { class: "ai-tool-card ai-tool-card--" + card.kind },
       el("p", { class: "ai-tool-label", text: card.kind.replace("_", " ") }), el("h3", { text: card.title }));
-    if (card.kind === "media") {
-      // A gallery chosen for the question replaces the generic image row.
+    if (card.kind === "media" && turn.depth !== "research" && data.category === "images") {
       turn.node.classList.add("has-media");
-      turn.part("visuals").hidden = true;
+      visualRow(turn, data);
+      return;
+    }
+    if (card.kind === "media") {
+      turn.node.classList.add("has-media");
       const gallery = el("div", { class: "ai-media-grid" + (data.category === "videos" ? " ai-media-grid--videos" : "") });
       for (const item of data.items || []) {
         const tile = safeLink(item.url, "");
         tile.classList.add("ai-media-tile");
+        if (item.ref) tile.dataset.ref = item.ref;
         const preview = img(item.thumbnail, item.title);
         if (preview) tile.append(preview);
         else tile.classList.add("ai-media-missing");
@@ -369,6 +461,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     panel.append(citations([card.source_id]));
     turn.cards.append(panel);
+    decodeReveal(panel);
   };
 
   // ------------------------------------------------------------ turns
@@ -394,7 +487,8 @@ document.addEventListener("DOMContentLoaded", () => {
     welcome.hidden = true;
     thread.append(node);
     applySize();
-    loadVisuals(t);
+    // Full answer shape while nothing has arrived; a two-line tail while more is still coming.
+    t.skeletons = [pixelSkeleton(part("skeleton"), [0.34, 0, 1, 0.97, 0.9, 0.58, 0, 1, 0.74]), pixelSkeleton(part("skeleton-tail"), [0.92, 0.55])];
     return t;
   };
   const step = (text, stage) => {
@@ -413,7 +507,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const parts = [data.evidence_label];
     if (data.pages_read) parts.push(data.pages_read + (data.pages_read === 1 ? " page read" : " pages read"));
     if (data.searches) parts.push(data.searches + (data.searches === 1 ? " extra search" : " extra searches"));
-    if (data.cost_usd != null) parts.push((data.cost_is_ceiling ? "≤ $" : "~$") + data.cost_usd.toFixed(data.cost_usd < 0.01 ? 4 : 2));
+    if (data.saved) parts.push("Saved answer · no new AI call");
+    else if (data.cost_usd != null) parts.push((data.cost_is_ceiling ? "≤ $" : "~$") + data.cost_usd.toFixed(data.cost_usd < 0.01 ? 4 : 2));
     return parts.filter(Boolean).join(" · ");
   };
   const copyAnswer = async t => {
@@ -422,12 +517,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (block.heading) lines.push("## " + block.heading);
       if (block.kind === "table") {
         lines.push("| " + block.columns.join(" | ") + " |", "|" + block.columns.map(() => " --- |").join(""));
-        for (const row of block.rows) lines.push("| " + row.map(c => c.text).join(" | ") + " |");
-      } else if (block.items) block.items.forEach((item, i) => lines.push((block.kind === "steps" ? i + 1 + "." : "-") + " " + item.text));
-      else lines.push(block.text);
+        for (const row of block.rows) lines.push("| " + row.map(c => plain(c.text)).join(" | ") + " |");
+      } else if (["facts", "timeline", "products", "bars"].includes(block.kind)) block.items.forEach(item => lines.push("- " + [item.label + ":", item.value, plain(item.text)].filter(Boolean).join(" ")));
+      else if (block.kind === "proscons") {
+        block.pros.forEach(item => lines.push("+ " + plain(item.text)));
+        block.cons.forEach(item => lines.push("− " + plain(item.text)));
+      } else if (block.kind === "quote") lines.push("> " + plain(block.text));
+      else if (block.items?.length) block.items.forEach((item, i) => lines.push((block.kind === "steps" ? i + 1 + "." : "-") + " " + plain(item.text)));
+      else lines.push(plain(block.text));
       lines.push("");
     }
-    const cited = [...new Set(t.blocks.flatMap(b => [b.citations || [], ...(b.items || []).map(i => i.citations || []), ...(b.rows || []).flat().map(c => c.citations || [])].flat()))];
+    const cited = [...new Set(t.blocks.flatMap(b => [b.citations || [], ...[...(b.items || []), ...(b.pros || []), ...(b.cons || [])].map(i => i.citations || []), ...(b.rows || []).flat().map(c => c.citations || [])].flat()))];
     const links = cited.map(id => sourceMap.get(id)).filter(s => s && s.url).map(s => "- " + s.title + " " + s.url);
     if (links.length) lines.push("Sources:", ...links);
     const button = t.part("copy");
@@ -443,13 +543,59 @@ document.addEventListener("DOMContentLoaded", () => {
     busy = value;
     root.setAttribute("aria-busy", String(value));
     turn?.node.setAttribute("aria-busy", String(value));
+    if (!value) turn?.skeletons.forEach(s => s.stop());
     if (header && !isFull()) header.classList.toggle("is-busy", value);
     if (!value) header?.classList.remove("is-busy");
     followup.classList.toggle("is-busy", value);
     sendButton.setAttribute("aria-label", value ? "Stop answering" : "Send follow-up");
     syncComposer();
   };
-  const syncComposer = () => { sendButton.disabled = !busy && !composerInput.value.trim(); };
+  // ------------------------------------------------------------ composer
+  const depthInput = find("[data-ai-depth]");
+  const depthOptions = [...followup.querySelectorAll("[data-depth]")];
+  const threadContext = find("[data-ai-thread-context]");
+  const freshButton = find("[data-ai-fresh]");
+  const charCount = find("[data-ai-char-count]");
+  let fresh = false;  // ask without the earlier answer as context
+  const setDepth = (value, remember = false) => {
+    depthInput.value = value;
+    depthOptions.forEach(b => {
+      const on = b.dataset.depth === value;
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    if (remember) try { localStorage.setItem("archer-ai-depth", value); } catch {}
+  };
+  try { if (localStorage.getItem("archer-ai-depth") === "compact") setDepth("compact"); } catch {}
+  depthOptions.forEach(b => {
+    b.addEventListener("click", () => setDepth(b.dataset.depth, true));
+    b.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const next = depthOptions[(depthOptions.indexOf(b) + 1) % depthOptions.length];
+      setDepth(next.dataset.depth, true);
+      next.focus();
+    });
+  });
+  const followable = () => turn?.node.dataset.state === "complete" ? turn.runId : "";
+  const syncComposer = () => {
+    const text = composerInput.value.trim();
+    const parent = followable();
+    sendButton.disabled = !busy && !text;
+    followup.classList.toggle("has-text", Boolean(text));
+    threadContext.hidden = !parent;
+    threadContext.classList.toggle("is-fresh", fresh);
+    freshButton.setAttribute("aria-pressed", String(fresh));
+    freshButton.textContent = fresh ? "Follow up instead" : "New question";
+    find("[data-ai-thread-label]").textContent = fresh ? "New question about this search" : "Following up on the answer above";
+    composerInput.placeholder = busy ? "Archer is answering. Type your next question…"
+      : parent && !fresh ? "Ask a follow-up…" : "Ask anything about this search…";
+    const length = composerInput.value.length;
+    charCount.hidden = length < 480;
+    charCount.textContent = length + " / 600";
+  };
+  freshButton.addEventListener("click", () => { fresh = !fresh; syncComposer(); composerInput.focus(); });
+  syncComposer();
 
   const finish = (success, data = {}) => {
     if (!turn) return;
@@ -490,6 +636,7 @@ document.addEventListener("DOMContentLoaded", () => {
         turn.part("meta").textContent = "Incomplete answer · check the sources";
       }
     }
+    syncComposer();
     updatePrompt();
   };
   const consume = (event, data) => {
@@ -499,6 +646,7 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (event === "notice") notice(data.text);
     else if (event === "card") renderCard(data);
     else if (event === "block") renderBlock(data);
+    else if (event === "visuals" && data.verdict) applyVisuals(turn, data);
     else if (event === "complete" || event === "error") finish(event === "complete", data);
   };
 
@@ -658,10 +806,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (busy) { stop(); return; }
     const question = composerInput.value.trim();
     if (!question) return;
-    const parent = turn?.node.dataset.state === "complete" ? turn.runId : "";
+    const parent = fresh ? "" : followable();
     composerInput.value = "";
     composerInput.style.height = "";
-    start(find("[data-ai-depth]").value, { ...(parent ? { parent } : {}), question });
+    fresh = false;
+    start(depthInput.value, { ...(parent ? { parent } : {}), question });
   });
   composerInput.addEventListener("input", () => {
     composerInput.style.height = "auto";
@@ -678,6 +827,12 @@ document.addEventListener("DOMContentLoaded", () => {
   find("[data-ai-back]").addEventListener("click", leaveFullView);
   find("[data-ai-web]").addEventListener("click", leaveFullView);
   document.addEventListener("keydown", event => {
+    // "/" jumps to the composer in AI Mode, as it jumps to the search box elsewhere.
+    if (event.key === "/" && isFull() && !followup.hidden && !/input|textarea|select/i.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+      event.preventDefault();
+      composerInput.focus();
+      return;
+    }
     if (event.key !== "Escape") return;
     if (!settingsPanel.hidden) closeSettings();
     else if (document.body.classList.contains("ai-sources-open")) document.body.classList.remove("ai-sources-open");
@@ -720,9 +875,27 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   if (root.dataset.fullview === "true") {
     enterFullView(false);
-    restore();
-  } else if (defaultMode === "balanced" && root.dataset.eligible === "true" && consent && configured) start("compact", { automatic: true });
-  else updatePrompt();
+    // Set only by a submit on the home page in AI Mode, for this exact query, and used once.
+    let autostart = null;
+    try { autostart = sessionStorage.getItem("archer-ai-autostart"); sessionStorage.removeItem("archer-ai-autostart"); } catch {}
+    if (autostart && autostart.trim() === (root.dataset.query || "").trim()) start("research");
+    else restore();
+  } else if (defaultMode === "balanced" && root.dataset.eligible === "true" && consent && configured) {
+    // Paid only once the results are actually in front of you: not in a background tab, and not
+    // when you click a result straight away (leaving the page cancels the pending start).
+    let timer = 0;
+    const arm = () => {
+      clearTimeout(timer);
+      if (document.visibilityState !== "visible") return;
+      timer = setTimeout(() => {
+        document.removeEventListener("visibilitychange", arm);
+        if (!busy && !answered() && document.visibilityState === "visible") start("compact", { automatic: true });
+      }, 700);
+    };
+    document.addEventListener("visibilitychange", arm);
+    addEventListener("pagehide", () => clearTimeout(timer));
+    arm();
+  } else updatePrompt();
 });
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -917,7 +1090,7 @@ if (headerBar) {
   addEventListener("pageshow", () => headerBar.classList.remove("is-busy"));
 }
 document.addEventListener("keydown", (e) => {
-  if (e.key === "/" && box && document.activeElement !== box && !/input|textarea|select/i.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+  if (e.key === "/" && box && !document.body.classList.contains("ai-fullview") && document.activeElement !== box && !/input|textarea|select/i.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
     e.preventDefault(); box.focus(); box.select();
   }
 });
@@ -1760,25 +1933,46 @@ if (viewer) {
 // A grid of rounded squares that is densest at the bottom and thins out and fades toward the top.
 // The horizon curves: the fade starts lower in the middle and climbs higher at the edges. Each dot
 // steps between a few ink levels at random intervals. Used on the home page and at the foot of
-// the results page; it only animates while on screen.
-function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1 } = {}) {
+// the results page; it only animates while on screen. With `pointer`, cells near the cursor light
+// up; `energy` (0..1, settable later) makes the bright flashes more frequent.
+// `span` is the share of the canvas (from the bottom) the field fills; the cursor glow can use all of it.
+function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1, pointer = false, energy = 0, span = 1 } = {}) {
   const ctx = canvas.getContext("2d");
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const LEVELS = [0.05, 0.12, 0.24, 0.42, 0.7];
   let cols, fade, level, next, sprite, dpr, visible = true, last = 0;
+  // The cursor glow lives on its own canvas above the field and redraws every frame while it moves,
+  // so it stays smooth while the field keeps its stepped ~15fps. Its position and strength ease
+  // toward the pointer instead of jumping.
+  const REACH = 110;
+  const glow = pointer && !still ? Object.assign(document.createElement("canvas"), { className: canvas.className }) : null;
+  const gctx = glow?.getContext("2d");
+  let tx = 0, ty = 0, gx = 0, gy = 0, on = 0, target = 0, placed = false, painted = false, prev = 0;
+  if (glow) {
+    canvas.after(glow);
+    addEventListener("pointermove", (e) => {
+      const r = canvas.getBoundingClientRect();
+      tx = e.clientX - r.left; ty = e.clientY - r.top; target = 1;
+      if (!placed) { gx = tx; gy = ty; placed = true; }   // first sighting: appear in place, don't fly in
+    }, { passive: true });
+    document.documentElement.addEventListener("pointerleave", () => { target = 0; });
+    addEventListener("blur", () => { target = 0; });
+  }
 
   const layout = () => {
     dpr = devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    if (glow) { glow.width = canvas.width; glow.height = canvas.height; painted = true; }
     cols = Math.ceil(w / pitch);
     const rows = Math.ceil(h / pitch), now = performance.now();
+    const top = rows - Math.ceil(rows * span);           // rows above this stay empty
     fade = new Float32Array(cols * rows); level = new Float32Array(cols * rows); next = new Float64Array(cols * rows);
     for (let c = 0; c < cols; c++) {
       const u = ((c + 0.5) / cols) * 2 - 1;             // -1 at the left edge, 1 at the right
       const horizon = curve * (1 - u * u);              // how far down the field starts in this column
       for (let r = 0; r < rows; r++) {
-        const depth = ((r + 1) / rows - horizon) / (1 - horizon);   // 0 at the horizon, 1 at the bottom
+        const depth = ((r - top + 1) / (rows - top) - horizon) / (1 - horizon);   // 0 at the horizon, 1 at the bottom
         if (depth <= 0) continue;
         const k = r * cols + c;
         // Fewer dots survive higher up, and the ones that do are fainter.
@@ -1802,7 +1996,7 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
       if (!fade[k]) continue;
       if (!still && now >= next[k]) {
         // Mostly dim, sometimes a bright flash that holds only briefly.
-        const i = Math.random() < 0.08 ? LEVELS.length - 1 : (Math.random() * (LEVELS.length - 1)) | 0;
+        const i = Math.random() < 0.08 + energy * 0.14 ? LEVELS.length - 1 : (Math.random() * (LEVELS.length - 1)) | 0;
         level[k] = LEVELS[i];
         next[k] = now + (i === LEVELS.length - 1 ? 180 + Math.random() * 400 : 600 + Math.random() * 2800);
       }
@@ -1811,17 +2005,288 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
     }
   };
 
+  // The cursor lights a soft disc of cells, including ones the field leaves empty. Like the field,
+  // the disc fades out toward the top of the page.
+  const drawGlow = (now) => {
+    const dt = Math.min(64, now - (prev || now)); prev = now;
+    const k1 = 1 - Math.exp(-dt / 55), k2 = 1 - Math.exp(-dt / 140);
+    gx += (tx - gx) * k1; gy += (ty - gy) * k1; on += (target - on) * k2;
+    const settled = Math.abs(tx - gx) < 0.3 && Math.abs(ty - gy) < 0.3 && Math.abs(target - on) < 0.004;
+    if (settled) { gx = tx; gy = ty; on = target; if (!painted) return; }   // at rest: nothing to redraw
+    gctx.setTransform(1, 0, 0, 1, 0, 0);
+    gctx.clearRect(0, 0, glow.width, glow.height);
+    painted = !settled;                                     // one last frame once it comes to rest
+    if (on < 0.004) return;
+    const off = (pitch - sq) / 2, size = sprite.width, rows = fade.length / cols;
+    const c0 = Math.max(0, Math.floor((gx - REACH) / pitch)), c1 = Math.min(cols - 1, Math.floor((gx + REACH) / pitch));
+    const r0 = Math.max(0, Math.floor((gy - REACH) / pitch)), r1 = Math.min(rows - 1, Math.floor((gy + REACH) / pitch));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const d = Math.hypot(c * pitch + pitch / 2 - gx, r * pitch + pitch / 2 - gy) / REACH;
+      if (d >= 1) continue;
+      const k = r * cols + c;
+      const height = (r + 1) / rows;                        // fades linearly to nothing at the top edge
+      // Smoothstep falloff: no hard rim as the disc slides across the grid.
+      const fall = 1 - d * d * (3 - 2 * d);
+      gctx.globalAlpha = Math.max(0, fall * 0.6 * height * on - level[k] * fade[k] * 0.5);
+      gctx.drawImage(sprite, Math.round((c * pitch + off) * dpr), Math.round((r * pitch + off) * dpr), size, size);
+    }
+  };
+
   const tick = (now) => {
     if (visible && now - last > 66) { draw(now); last = now; }   // ~15fps: the motion is stepped anyway
+    if (glow && visible) drawGlow(now);
     requestAnimationFrame(tick);
   };
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(canvas);
   layout();
   if (still) draw(performance.now()); else requestAnimationFrame(tick);
   addEventListener("resize", () => { layout(); if (still) draw(performance.now()); });
+  return { set energy(value) { energy = value; } };
+}
+
+// ------------------------------------------------------ AI loading and reveal
+// The AI skeleton: lines of "text" drawn as the brand's rounded-square dots. Each dot holds one of
+// a few stepped ink levels; a bright band sweeps diagonally across, and stray dots flash, so it
+// reads as the pixel mark thinking. `lines` are line lengths as a share of the width; 0 is a gap.
+// Returns { stop() }; the loop also ends by itself once the canvas leaves the page.
+function pixelSkeleton(canvas, lines) {
+  const ctx = canvas.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const SQ = 4.5, PITCH = 6.5, ROWS = 2, LEAD = 9;        // two dot rows per line, LEAD px between lines
+  const LEVELS = [0.07, 0.13, 0.22, 0.38, 0.62, 0.9];
+  let width = 0, dpr = 1, dots = [], sprite = null, running = true, last = 0;
+  const born = performance.now();
+  const height = lines.reduce((h, len) => h + (len ? ROWS * PITCH : PITCH * 0.6) + LEAD, -LEAD);
+  canvas.style.height = height + "px";
+
+  const layout = () => {
+    width = canvas.clientWidth; dpr = devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
+    const cols = Math.floor(width / PITCH);
+    dots = [];
+    let y = 0;
+    for (const len of lines) {
+      if (!len) { y += PITCH * 0.6 + LEAD; continue; }
+      const end = Math.max(4, Math.round(cols * len));
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < end; c++) {
+        // The line's tail dissolves, like the mark's legs: fewer, fainter dots toward the end.
+        const tail = Math.max(0, (c - (end - 7)) / 7);
+        if (Math.random() < tail * 0.8) continue;
+        dots.push({ x: c * PITCH, y: y + r * PITCH, c, row: Math.round(y / PITCH) + r, fade: 1 - tail * 0.6,
+          level: LEVELS[(Math.random() * 3) | 0], next: 0, at: c * 9 + Math.random() * 260 });
+      }
+      y += ROWS * PITCH + LEAD;
+    }
+    sprite = document.createElement("canvas");
+    sprite.width = sprite.height = Math.ceil(SQ * dpr);
+    const g = sprite.getContext("2d");
+    g.scale(dpr, dpr); g.fillStyle = "#ededed";
+    g.beginPath(); g.roundRect(0, 0, SQ, SQ, SQ * 0.28); g.fill();
+  };
+
+  const draw = now => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const t = now - born, size = sprite.width;
+    const span = width + 240, band = ((t / 1700) % 1) * span - 120;   // sweep position, px
+    for (const d of dots) {
+      if (t < d.at) continue;                                         // dots ignite left to right
+      if (!still && now >= d.next) {
+        const flash = Math.random() < 0.05;
+        d.level = LEVELS[flash ? LEVELS.length - 1 : (Math.random() * 3) | 0];
+        d.next = now + (flash ? 140 + Math.random() * 220 : 380 + Math.random() * 1600);
+      }
+      // The sweep leans: lower rows lag, so the band runs diagonally like the mark's wave.
+      const reach = Math.abs(d.x - (band - d.row * PITCH * 1.4)) / 70;
+      const lift = still ? 0 : Math.max(0, 1 - reach);
+      const alpha = Math.max(d.level, LEVELS[Math.min(LEVELS.length - 1, Math.round(lift * (LEVELS.length - 1)))]);
+      ctx.globalAlpha = alpha * d.fade * Math.min(1, (t - d.at) / 120);
+      ctx.drawImage(sprite, Math.round(d.x * dpr), Math.round(d.y * dpr), size, size);
+    }
+  };
+
+  const tick = now => {
+    if (!running || !canvas.isConnected) return;
+    if (canvas.clientWidth && canvas.clientWidth !== width) layout();
+    if (width && now - last > 55) { draw(now); last = now; }          // ~18fps: the motion is stepped
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return { stop() { running = false; } };
+}
+
+// Decode a freshly rendered answer part: its text first shows as a field of pulsing dots, the dots
+// turn into random letters that keep changing, and then the letters lock onto the real text in a
+// wave that spreads outward from the top-left corner. Each character keeps its real width the whole
+// time, so nothing reflows; when it is done the original text nodes come back.
+function decodeReveal(root) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const WIDE = "ABCDEFGHKNPRSTUVXYZabcdeghknopqsuvxyz0123456789#*+=<>/";
+  const NARROW = "iIl1!|:;.,'fjrt";
+  const TICK = 60;                                                   // a scrambling letter changes every TICK ms
+  const pick = set => set[(Math.random() * set.length) | 0];
+
+  const nodes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT,
+    { acceptNode: n => n.nodeValue.trim() && !n.parentElement.closest("svg, style, script") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const cells = [];
+  for (const node of nodes) {
+    const frag = document.createDocumentFragment();
+    for (const part of node.nodeValue.split(/(\s+)/)) {
+      if (!part) continue;
+      if (!part.trim()) { frag.append(part); continue; }
+      const word = document.createElement("span");
+      word.className = "ai-gw";                                      // no-wrap: a word never breaks between letters
+      for (const ch of part) {
+        const cell = document.createElement("span");
+        cell.className = "ai-gl";
+        cell.textContent = ch;
+        word.append(cell);
+        cells.push({ node: cell, ch });
+      }
+      frag.append(word);
+    }
+    node.replaceWith(frag);
+  }
+  const restore = () => {
+    for (const cell of cells) cell.node.textContent = cell.ch;
+    root.querySelectorAll(".ai-gw").forEach(w => w.replaceWith(w.textContent));
+    root.normalize();
+    root.classList.remove("is-decoding");
+    root.removeAttribute("aria-busy");
+  };
+  const box = root.getBoundingClientRect();
+  if (!cells.length || !box.width) { restore(); return; }            // hidden: nothing to animate
+
+  // One read pass, then one write pass, so the measuring costs a single layout.
+  const rects = cells.map(c => c.node.getBoundingClientRect());
+  const sizes = new Map();
+  const far = Math.hypot(box.width, box.height * 1.6) || 1;
+  const scale = Math.min(1.35, 0.75 + cells.length / 900);            // longer parts take a little longer
+  cells.forEach((cell, i) => {
+    const r = rects[i];
+    const parent = cell.node.parentElement.parentElement;
+    if (!sizes.has(parent)) sizes.set(parent, parseFloat(getComputedStyle(parent).fontSize) || 15);
+    cell.set = r.width < sizes.get(parent) * 0.36 ? NARROW : WIDE;
+    const d = Math.hypot(r.left - box.left, (r.top - box.top) * 1.6) / far;   // 0 at the corner, 1 at the far edge
+    cell.dot = d * 260 * scale;
+    cell.scramble = (300 + d * 520) * scale + Math.random() * 140;
+    cell.settle = cell.scramble + (360 + d * 700) * scale + Math.random() * 200;
+    cell.width = r.width;
+  });
+  root.classList.add("is-decoding");
+  root.setAttribute("aria-busy", "true");
+  for (const cell of cells) {
+    cell.node.style.width = cell.width + "px";
+    cell.node.style.setProperty("--d", (cell.dot / 1000).toFixed(3) + "s");
+    cell.node.classList.add("is-wait");
+    cell.phase = 0;
+  }
+
+  const start = performance.now();
+  const end = Math.max(...cells.map(c => c.settle));
+  let last = 0;
+  const tick = now => {
+    if (!root.isConnected || !cells[0].node.isConnected) return;     // re-rendered or removed meanwhile
+    const t = now - start;
+    if (t >= end) { restore(); return; }
+    if (now - last >= TICK) {
+      last = now;
+      for (const cell of cells) {
+        const n = cell.node;
+        if (cell.phase === 3) continue;
+        if (t >= cell.settle) { n.className = "ai-gl"; n.textContent = cell.ch; cell.phase = 3; }
+        else if (t >= cell.scramble) {
+          if (cell.phase !== 2) { n.className = "ai-gl is-scramble"; cell.phase = 2; }
+          n.textContent = pick(cell.set);
+        } else if (t >= cell.dot && cell.phase === 0) { n.className = "ai-gl is-dot"; cell.phase = 1; }
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 const homeField = $(".home-field");
-if (homeField) dotField(homeField);
+const homeDots = homeField ? dotField(homeField, { pointer: true, span: 0.56 }) : null;
+
+// ------------------------------------------------------------ home
+// One search box, two destinations: Search goes to /search, AI Mode to /ai. AI Mode only *opens*
+// the AI workspace; the paid run starts there because this submit (a user gesture) leaves a
+// one-shot sessionStorage flag for that exact query. Reloads, history and prefetch never start it.
+const home = $("[data-home]");
+if (home) {
+  const form = $(".searchbar--home", home), input = $("input[name='q']", form);
+  const go = $(".searchbar-go", form), goLabel = [...go.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+  const buttons = $$("[data-home-mode]", home), thumb = $(".home-modes-thumb", home);
+  const COPY = {
+    search: { placeholder: "Search the web privately", go: "Search", action: "/search" },
+    ai: { placeholder: "Ask Archer anything", go: "Ask", action: "/ai" },
+  };
+  let current = "search";
+  const placeThumb = () => {
+    const b = buttons.find((n) => n.dataset.homeMode === current);
+    thumb.style.setProperty("--w", b.offsetWidth + "px");
+    thumb.style.setProperty("--x", b.offsetLeft - 3 + "px");
+  };
+  const setMode = (value, { remember = true } = {}) => {
+    current = value === "ai" ? "ai" : "search";
+    document.body.classList.toggle("home-ai", current === "ai");
+    buttons.forEach((b) => { const on = b.dataset.homeMode === current; b.classList.toggle("is-active", on); b.setAttribute("aria-checked", String(on)); b.tabIndex = on ? 0 : -1; });
+    $$("[data-hint-for]", home).forEach((n) => { n.hidden = n.dataset.hintFor !== current; });
+    input.placeholder = COPY[current].placeholder;
+    if (goLabel) goLabel.textContent = COPY[current].go;
+    form.action = COPY[current].action;
+    placeThumb();
+    if (homeDots) homeDots.energy = current === "ai" ? 1 : 0;
+    if (remember) try { localStorage.setItem("archer-home-mode", current); } catch { /* storage blocked */ }
+  };
+  buttons.forEach((b) => {
+    b.addEventListener("click", () => { setMode(b.dataset.homeMode); input.focus(); });
+    b.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setMode(current === "ai" ? "search" : "ai");
+      buttons.find((n) => n.dataset.homeMode === current).focus();
+    });
+  });
+  form.addEventListener("submit", (e) => {
+    const q = input.value.trim();
+    if (!q) { e.preventDefault(); input.focus(); return; }
+    // Bangs are a search feature; they never go to AI.
+    const ai = current === "ai" && !q.startsWith("!");
+    form.action = ai ? "/ai" : "/search";
+    if (ai) try { sessionStorage.setItem("archer-ai-autostart", q); } catch { /* AI Mode then waits for a click */ }
+  });
+  // Ctrl+Enter sends the query to the other mode without switching first.
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.isComposing) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    setMode(current === "ai" ? "search" : "ai", { remember: false });
+    form.requestSubmit();
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyM") { e.preventDefault(); setMode(current === "ai" ? "search" : "ai"); }
+  });
+
+  // Greeting and a quiet clock, both local.
+  const greeting = $("[data-home-greeting]"), clock = $("[data-home-clock]");
+  const tick = () => {
+    const now = new Date(), h = now.getHours();
+    greeting.textContent = (h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening.") + " What are you looking for?";
+    clock.textContent = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) + "  ·  " + now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  };
+  tick();
+  setInterval(tick, 15000);
+
+  let saved = "search";
+  try { saved = localStorage.getItem("archer-home-mode") || "search"; } catch { /* default */ }
+  setMode(saved, { remember: false });
+  // Animate only real switches, not the restore of a saved mode on first paint.
+  requestAnimationFrame(() => requestAnimationFrame(() => $(".home-modes", home).classList.add("is-ready")));
+  addEventListener("resize", placeThumb);
+  document.fonts?.ready.then(placeThumb);
+}
 const serpField = $(".serp-field");
 if (serpField) dotField(serpField, { pitch: 10, sq: 7.5, density: 0.55, curve: 0.55, ink: 0.8 });

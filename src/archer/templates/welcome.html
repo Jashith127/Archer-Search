@@ -1,0 +1,120 @@
+{% extends "companion_base.html" %}
+{% from "pixel_mark.html" import pixel_mark %}
+{% from "companion_fields.html" import field, named, switch, copy_rows, browser_list %}
+{% block title %}Set up Archer{% endblock %}
+{% block body_class %}c-welcome{% endblock %}
+{% block content %}
+{% set steps = [("hello", "Welcome"), ("search", "Search"), ("ai", "AI"), ("personal", "Personal"), ("startup", "Startup"), ("browser", "Browser"), ("done", "Done")] %}
+<div class="w-shell">
+  <aside class="w-rail">
+    <div class="c-brand">{{ pixel_mark(30) }}<div><b>Archer</b><span>Setup</span></div></div>
+    <ol class="w-steps">
+      {% for key, label in steps %}
+      <li data-step-dot="{{ key }}"><span class="w-num">{{ loop.index }}</span><span class="w-check" aria-hidden="true"><svg><use href="#c-check"/></svg></span>{{ label }}</li>
+      {% endfor %}
+    </ol>
+    <a class="w-skip" href="/app" data-skip>Skip setup</a>
+  </aside>
+
+  <main class="w-main">
+    {# --------------------------------------------------------------- hello #}
+    <section class="w-step" data-step="hello">
+      <div class="w-hello">
+        {{ pixel_mark(72, 'w-mark') }}
+        <h1>Welcome to Archer</h1>
+        <p class="w-lede">A search engine that runs on your computer. Clean results, useful answer cards, and AI only when you want it.</p>
+        <ul class="w-points">
+          <li><svg aria-hidden="true"><use href="#u-shield"/></svg><div><b>Private by default</b><span>No account, no history, no tracking. Settings stay in a file on this computer.</span></div></li>
+          <li><svg aria-hidden="true"><use href="#c-search"/></svg><div><b>Your choice of results</b><span>DuckDuckGo with no setup, your own SearXNG, Google or Brave.</span></div></li>
+          <li><svg aria-hidden="true"><use href="#u-sparkle"/></svg><div><b>Any AI, or none</b><span>DeepSeek, OpenAI, Claude, OpenRouter, or local models with Ollama.</span></div></li>
+        </ul>
+        <p class="w-time">Takes about two minutes. You can change everything later.</p>
+      </div>
+    </section>
+
+    {# -------------------------------------------------------------- search #}
+    <section class="w-step" data-step="search" hidden>
+      <header><p class="w-kicker">Step 2 of 7</p><h2>Where should results come from?</h2><p>DuckDuckGo works right away. Pick another provider if you have one.</p></header>
+      <div class="w-detect" data-searxng-found hidden><span class="c-dot is-ok" aria-hidden="true"></span><span>Found SearXNG running at <code data-searxng-url></code>.</span></div>
+      {{ named("search_provider", intro, items, "-w") }}
+      <div class="w-fields">
+        {% for name in ("searxng_url", "google_backend", "serper_api_key", "google_api_key", "google_cx", "brave_api_key", "search_fallback") %}{{ named(name, intro, items, "-w") }}{% endfor %}
+      </div>
+    </section>
+
+    {# ------------------------------------------------------------------ ai #}
+    <section class="w-step" data-step="ai" hidden>
+      <header><p class="w-kicker">Step 3 of 7</p><h2>Choose an AI for answers</h2><p>DeepSeek is recommended: fast, cited, and a typical answer costs a fraction of a cent. You can skip AI entirely.</p></header>
+      {{ named("ai_provider", intro, items, "-w") }}
+      <label class="w-none"><input type="checkbox" data-no-ai> <span>Skip AI for now. Archer works as a normal search engine.</span></label>
+      <div class="w-fields" data-ai-fields>
+        {% for name in ("deepseek_api_key", "openai_api_key", "anthropic_api_key", "openrouter_api_key", "ai_api_key", "ai_model", "ollama_context") %}{{ named(name, intro, items, "-w") }}{% endfor %}
+        {% for spec in intro.ai[2] if spec.name == "ai_base_url" %}{{ field(spec, items, "-w") }}{% endfor %}
+        <div class="c-row" data-ai-mode-row>
+          <div class="c-label"><span class="c-label-text" id="w-mode-label">When should AI answer?</span><p>Only when you ask, or automatically for searches that read like questions.</p></div>
+          <div class="c-control">
+            <div class="c-segment" role="radiogroup" aria-labelledby="w-mode-label">
+              <label><input type="radio" name="ai-mode" value="classic"{% if state.ai.mode != 'balanced' %} checked{% endif %}><span>When I ask</span></label>
+              <label><input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}><span>Automatically</span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {# ------------------------------------------------------------ personal #}
+    <section class="w-step" data-step="personal" hidden>
+      <header><p class="w-kicker">Step 4 of 7</p><h2>Make it yours</h2><p>Used for weather, local time, prices and regional results when a search doesn't say.</p></header>
+      <div class="w-detect w-detect--action"><span>Fill these from this computer's time zone and language.</span><button type="button" class="c-button" data-detect>Detect</button></div>
+      <div class="w-fields">
+        {% for name in ("home_location", "home_country", "home_currency", "search_language", "safesearch") %}{{ named(name, intro, items, "-w") }}{% endfor %}
+      </div>
+    </section>
+
+    {# ------------------------------------------------------------- startup #}
+    <section class="w-step" data-step="startup" hidden>
+      <header><p class="w-kicker">Step 5 of 7</p><h2>Start with Windows</h2><p>Your address bar needs Archer running to search. It sits quietly in the tray and uses very little memory.</p></header>
+      <div class="w-fields">
+        {% if state.autostart.available %}
+        {{ switch("w-autostart", "Start Archer when I sign in", "Recommended. No admin rights needed; turn it off any time.", 'data-autostart data-autostart-setup', true) }}
+        {% endif %}
+        {% for name in ("startup_open", "startup_notify") %}{{ named(name, intro, items, "-w") }}{% endfor %}
+        <div data-when="search_provider=searxng">{{ named("searxng_container", intro, items, "-w") }}</div>
+      </div>
+    </section>
+
+    {# ------------------------------------------------------------- browser #}
+    <section class="w-step" data-step="browser" hidden>
+      <header><p class="w-kicker">Step 6 of 7</p><h2>Search from your address bar</h2><p>Browsers don't let apps change their search engine, so this one takes three clicks. Archer opens the right page for you.</p></header>
+      {{ browser_list(state.app.browsers) }}
+      <ol class="c-steps">
+        <li>Under <b>Site search</b>, click <b>Add</b>.</li>
+        <li>Copy in the details below.</li>
+        <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
+      </ol>
+      <div class="w-copy">{{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL", suggest_url)]) }}</div>
+    </section>
+
+    {# ---------------------------------------------------------------- done #}
+    <section class="w-step" data-step="done" hidden>
+      <div class="w-hello">
+        <span class="w-done-mark" aria-hidden="true"><svg><use href="#c-check"/></svg></span>
+        <h1>You're all set</h1>
+        <p class="w-lede">Archer is running. Search from your address bar, or open it below.</p>
+        <ul class="w-summary" data-summary></ul>
+        <div class="w-actions-final">
+          <a class="c-button c-button--primary c-button--big" href="/" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#c-search"/></svg>Start searching</a>
+          <a class="c-button c-button--big" href="/app">Open the companion app</a>
+        </div>
+        <p class="w-time">Archer lives in the tray (near the clock). Right-click it to open this app or quit.</p>
+      </div>
+    </section>
+
+    <footer class="w-nav" data-wizard-nav>
+      <button type="button" class="c-button c-button--quiet" data-back><svg aria-hidden="true"><use href="#c-back"/></svg>Back</button>
+      <p class="w-status" data-step-status role="status"></p>
+      <button type="button" class="c-button c-button--primary c-button--big" data-next>Get started<svg aria-hidden="true"><use href="#c-arrow"/></svg></button>
+    </footer>
+  </main>
+</div>
+{% endblock %}

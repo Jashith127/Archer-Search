@@ -1,4 +1,4 @@
-"""Settings app: the /settings page and its guarded JSON API.
+"""Companion app: the /app settings window, the /app/welcome setup, and their guarded JSON API.
 
 Reads return masked state only. Every change is a same-origin POST carrying the session's CSRF
 token (the same guard as AI actions), so another website can't alter Archer's configuration.
@@ -12,8 +12,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from archer import __version__
-from archer.ai_provider import AIError
+from archer import __version__, companion, websearch
+from archer.ai_provider import PROVIDERS, AIError, readiness, resolve
 from archer.ai_routes import guard, service as ai_service, set_cookie
 from archer.config import DATA_DIR, ROOT, settings
 from archer.settings_service import SECTIONS_ORDER, SPECS, SettingsError, SettingsService, apply_runtime, check_connection
@@ -46,12 +46,30 @@ def usage(ai):
             "token_limit": settings.ai_daily_tokens, "usd_limit": settings.ai_daily_usd, "priced": ai.budget.priced}
 
 
+def providers():
+    """Readiness of the live search and AI providers, for the overview and setup."""
+    ai_ready, ai_missing = readiness(settings)
+    r = resolve(settings)
+    search_ready, search_missing = websearch.configured()
+    return {
+        "search": {"id": settings.search_provider, "label": websearch.LABELS[settings.search_provider],
+                   "ready": search_ready, "missing": search_missing, "fallback": settings.search_fallback,
+                   "suggest": websearch.suggestion_source()},
+        "ai": {"id": r.provider, "label": r.info.label, "model": r.model, "ready": ai_ready, "missing": ai_missing,
+               "defaults": {name: {"model": info.model, "base": info.base, "models": list(info.models), "key": info.key}
+                            for name, info in PROVIDERS.items()}},
+    }
+
+
 def state(request):
     ai, service = ai_service(request), store(request)
     saved = service.stored()
     return {
         "fields": service.fields(),
-        "ai": {"consent": ai.consent, "mode": ai.mode, "configured": bool(settings.deepseek_api_key)},
+        "providers": providers(),
+        "app": {"onboarded": companion.onboarded(), "browsers": companion.browsers() if sys.platform == "win32" else [],
+                "docker": companion.docker_available()},
+        "ai": {"consent": ai.consent, "mode": ai.mode, "configured": readiness(settings)[0]},
         "autostart": autostart_state(),
         "usage": usage(ai),
         "system": {
@@ -70,6 +88,7 @@ def page_context(request):
     intro = {key: (title, text, [s for s in SPECS if s.section == key]) for key, title, text in SECTIONS_ORDER}
     current = state(request)
     return session, {"intro": intro, "items": {f["name"]: f for f in current["fields"]}, "state": current, "csrf": session.csrf,
+        "ai_providers": PROVIDERS, "search_labels": websearch.LABELS,
         "search_url": f"{settings.base_url}/search?q=%s", "suggest_url": f"{settings.base_url}/suggest?q=%s",
         "fallback_search_url": f"http://127.0.0.1:{settings.port}/search?q=%s"}
 
@@ -88,9 +107,16 @@ class Values(Input):
 
 
 class Test(Input):
-    target: Literal["ai", "tmdb", "searxng"]
+    target: Literal["ai", "tmdb", "searxng", "duckduckgo", "serper", "google", "brave"]
     value: str = Field(default="", max_length=500)
     base: str = Field(default="", max_length=300)
+    provider: Literal["", "deepseek", "openai", "anthropic", "ollama", "openrouter", "custom"] = ""
+    model: str = Field(default="", max_length=120)
+    extra: str = Field(default="", max_length=120)
+
+
+class Browser(Input):
+    browser: Literal["helium", "chrome", "edge", "brave", "vivaldi", "opera", "firefox"]
 
 
 class Toggle(Input):
@@ -117,7 +143,27 @@ async def save_settings(request: Request, body: Values):
 @router.post("/api/settings/test")
 async def test_settings(request: Request, body: Test):
     guard(request, ai_service(request))
-    return JSONResponse(await check_connection(request.app.state.ext, body.target, body.value.strip(), body.base.strip()))
+    return JSONResponse(await check_connection(request.app.state.ext, body.target, body.value.strip(), body.base.strip(),
+                                               body.provider, body.model.strip(), body.extra.strip()))
+
+
+@router.post("/api/app/onboarded")
+async def finish_setup(request: Request, body: Toggle):
+    guard(request, ai_service(request))
+    try:
+        companion.set_onboarded(body.enabled)
+    except OSError:
+        raise HTTPException(500, "Archer couldn't write to its data folder.")
+    return JSONResponse({"onboarded": body.enabled})
+
+
+@router.post("/api/app/browser")
+async def browser_settings(request: Request, body: Browser):
+    """Open a detected browser at its search-engine settings page (a fixed page, never a client URL)."""
+    guard(request, ai_service(request))
+    if sys.platform != "win32" or not companion.open_search_settings(body.browser):
+        raise HTTPException(400, "That browser isn't installed where Archer can find it. Open its settings yourself.")
+    return JSONResponse({"opened": body.browser})
 
 
 @router.post("/api/settings/autostart")
@@ -165,4 +211,4 @@ async def restart(request: Request):
     # Answer first; the launcher stops the server and starts a fresh process.
     asyncio.get_running_loop().call_later(0.4, restart_app)
     saved = store(request).stored()
-    return JSONResponse({"restarting": True, "url": f"http://{saved.public_host}:{saved.port}/settings"})
+    return JSONResponse({"restarting": True, "url": f"http://{saved.public_host}:{saved.port}/app"})

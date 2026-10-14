@@ -39,8 +39,9 @@ class FakeProvider:
             return {"tool_calls": [{"function": {"name": "loan_payment", "arguments": json.dumps({"principal": 1000000, "annual_rate": 10, "months": 60})}}]}, {"prompt_tokens": 100, "completion_tokens": 60}
         return {"content": "Ready"}, {"prompt_tokens": 100, "completion_tokens": 5}
 
-    async def generate(self, system, payload, max_output, on_block):
+    async def generate(self, system, payload, max_output, on_block, on_visuals=None):
         self.answers += 1
+        self.payload = payload
         if self.slow:
             await asyncio.sleep(30)
         block = {"kind": "paragraph", "text": "The source supports this explanation.", "citations": ["FAKE" if self.invalid else payload["evidence"][0]["id"]]}
@@ -157,7 +158,7 @@ def test_no_consent_and_no_key_are_explicit(ai_client):
     enable(ai_client, headers)
     app.state.ai.settings.deepseek_api_key = ""
     response = ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid})
-    assert "DEEPSEEK_API_KEY" in response.text
+    assert "DeepSeek API key" in response.text
 
 
 def test_balanced_needs_saved_default_and_eligible_query(ai_client):
@@ -461,8 +462,10 @@ def test_new_full_view_composer_can_start_a_question(ai_client):
 def test_native_media_tool_returns_real_source_linked_urls():
     async def search(query, category):
         assert category == "images"
-        return SearchResponse(results=[Result("Camera product photograph", "https://example.com/camera", "example.com", [],
-            "A source image", ["one"], img_src="https://example.com/camera.jpg", thumbnail="https://example.com/thumb.jpg", resolution="1200x800")])
+        return SearchResponse(results=[Result(f"Camera product photograph {n}", f"https://example.com/camera{n}", "example.com", [],
+            "A source image", ["one"], img_src=f"https://example.com/camera{n}.jpg", thumbnail=f"https://example.com/thumb{n}.jpg", resolution="1200x800")
+            for n in ("", 2, 3)] + [Result("Holiday beach sunset", "https://example.com/beach", "example.com", [], "Off topic", ["one"],
+            img_src="https://example.com/beach.jpg", thumbnail="https://example.com/beach-thumb.jpg", resolution="1200x800")])
     async def run():
         box = Toolbox(SimpleNamespace(search=search), None, None, Settings(_env_file=None), [], lambda *args: None)
         await box.call("search_media", '{"query":"camera product photograph","category":"images"}')
@@ -470,6 +473,7 @@ def test_native_media_tool_returns_real_source_linked_urls():
         assert card["kind"] == "media"
         assert card["data"]["items"][0]["url"] == "https://example.com/camera"
         assert card["data"]["items"][0]["image"] == "https://example.com/camera.jpg"
+        assert [i["ref"] for i in card["data"]["items"]] == ["S1.1", "S1.2", "S1.3"]  # the beach photo didn't match
     asyncio.run(run())
 
 
@@ -481,21 +485,23 @@ def test_image_followup_prefetches_media_without_paid_planning(ai_client):
     async def search(query, category="general", page=1):
         queries.append((query, category))
         if category == "images":
-            return SearchResponse(results=[Result("Cats kneading blanket", "https://example.com/cat", "example.com", [], "Cat photo", ["one"],
-                img_src="https://example.com/cat.jpg", thumbnail="https://example.com/cat-thumb.jpg", resolution="1200x800")])
+            return SearchResponse(results=[Result(f"Cats kneading blanket {n}", f"https://example.com/cat{n}", "example.com", [], "Cat photo", ["one"],
+                img_src=f"https://example.com/cat{n}.jpg", thumbnail=f"https://example.com/cat-thumb{n}.jpg", resolution="1200x800") for n in range(3)])
         return await original(query, category, page)
     app.state.ai.searx.search = search
     result = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research", "question": "show me images"}))
     assert result[-1]["event"] == "complete", result
     assert any(e["event"] == "card" and e["data"]["kind"] == "media" for e in result)
-    assert ("why do cats knead", "images") in queries
+    assert ("cats knead", "images") in queries
+    verdict = [e["data"] for e in result if e["event"] == "visuals" and "verdict" in e["data"]]
+    assert verdict and verdict[0]["verdict"] == "show" and len(verdict[0]["keep"]) == 3
     assert app.state.ai.provider.plans == 0
 
 
 def test_one_bad_quantity_does_not_discard_other_supported_sections(ai_client):
     sid, headers = prepare(ai_client)
     enable(ai_client, headers)
-    async def generate(system, payload, output, accept):
+    async def generate(system, payload, output, accept, on_visuals=None):
         blocks = [{"text": "The source mentions 987654321 people.", "citations": ["S1"]},
                   {"text": "The source supports this explanation.", "citations": ["S1"]}]
         for block in blocks:
@@ -518,8 +524,9 @@ def test_lists_have_item_level_evidence():
 
 
 def test_media_context_keeps_urls_out_of_the_text_token_budget(tmp_path):
-    from archer.ai_service import Run, Snapshot, media_request, relevant_tools
-    assert media_request("show me pictures", "Apple HomeView", []) == {"query":"Apple HomeView", "category":"images"}
+    from archer.ai_service import Run, Snapshot, relevant_tools
+    from archer.visuals import plan
+    assert plan("show me pictures", "Apple HomeView") == {"need": "required", "category": "images", "query": "Apple HomeView", "reason": "You asked for visuals."}
     assert "lookup_entity" not in relevant_tools("Apple HomeView images and features")
     settings = Settings(_env_file=None)
     ai = AIService(settings, tmp_path)
@@ -557,3 +564,245 @@ def test_bounded_gzip_pages_are_read_and_bombs_rejected(monkeypatch):
             else:
                 assert "induction" in await PageReader().read("https://example.com/")
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("question,subject,need,query", [
+    ("what does a quokka look like", "", "required", "quokka"),
+    ("why do cats knead", "", "helpful", "cats knead"),
+    ("eiffel tower bridges and buildings", "", "helpful", "eiffel tower bridges and buildings"),
+    ("how does induction cooking work", "", "none", "induction cooking"),
+    ("compare loan repayment options", "", "none", "compare loan repayment options"),
+    ("python list comprehension error", "", "none", "python list comprehension error"),
+    ("what is the meaning of stoicism", "", "none", "meaning stoicism"),
+    ("show me a trailer", "Dune Part Two", "required", "trailer"),
+])
+def test_visual_need_is_decided_before_any_model_call(question, subject, need, query):
+    from archer.visuals import plan
+    result = plan(question, subject)
+    assert result["need"] == need
+    assert result["query"] == query
+
+
+def test_followups_and_comparisons_do_not_repeat_pictures():
+    from archer.visuals import plan
+    assert plan("how long does the battery last", "pixel 9 phone", followup=True)["need"] == "none"
+    assert plan("show me photos of it", "pixel 9 phone", followup=True)["need"] == "required"
+    assert plan("best camera phone", "", comparison=True)["need"] == "none"
+    assert plan("trailer", "Dune")["category"] == "videos"
+
+
+def test_relevant_images_drop_pictures_that_only_appeared_for_the_query():
+    from archer.imagerank import relevant_images
+    results = [Result("Sony WH-1000XM5 review", "https://a.example/xm5", "a.example", [], "", ["one"], img_src="https://a.example/1.jpg", resolution="1200x800"),
+               Result("Best headphones of 2026", "https://b.example/list", "b.example", [], "", ["one"], img_src="https://b.example/2.jpg", resolution="1200x800"),
+               Result("Sony logo", "https://c.example/sony", "c.example", [], "", ["one"], img_src="https://c.example/3.jpg", resolution="1200x800")]
+    kept = relevant_images("sony wh-1000xm5", results)
+    assert [r.url for r in kept] == ["https://a.example/xm5"]
+
+
+def test_summary_facts_callouts_and_highlights_are_validated():
+    evidence = [Evidence("S1", "Spec", "https://example.com/", "The battery is 5000 mAh and lasts about two days. Avoid fast chargers above 45 W.")]
+    summary = validate_block({"kind": "summary", "text": "It lasts ==about two days== on a ==5000 mAh== cell.", "citations": ["S1"]}, evidence, first=True)
+    assert summary["kind"] == "summary"
+    assert summary["text"] == "It lasts ==about two days== on a 5000 mAh cell."  # one highlight per summary
+    later = validate_block({"kind": "summary", "text": "It lasts about two days.", "citations": ["S1"]}, evidence)
+    assert later["kind"] == "paragraph"  # only the first block is the bottom line
+    facts = validate_block({"kind": "facts", "items": [{"label": "Battery", "text": "5000 mAh", "citations": ["S1"]}]}, evidence)
+    assert facts["items"][0]["label"] == "Battery"
+    with pytest.raises(AIError):  # unsupported figure
+        validate_block({"kind": "facts", "items": [{"label": "Battery", "text": "6000 mAh", "citations": ["S1"]}]}, evidence)
+    with pytest.raises(AIError):  # figures need labels
+        validate_block({"kind": "facts", "items": [{"text": "5000 mAh", "citations": ["S1"]}]}, evidence)
+    callout = validate_block({"kind": "callout", "tone": "warning", "text": "Avoid chargers above 45 W.", "citations": ["S1"]}, evidence)
+    assert callout["tone"] == "warning"
+    with pytest.raises(AIError):  # a callout is a factual claim
+        validate_block({"kind": "callout", "tone": "tip", "text": "Charge overnight."}, evidence)
+
+
+def test_visual_verdict_respects_what_the_user_asked_for(tmp_path):
+    from archer.ai_service import Run, Snapshot, visual_verdict
+    snap = Snapshot("snap", "owner", "q", [], False, [])
+    items = [{"ref": f"S3.{n}", "title": "t", "url": "https://example.com/"} for n in (1, 2, 3)]
+    run = Run("run", "owner", snap, "compact", "q", "key", [], ui={"S3": {"kind": "media", "data": {"category": "images", "items": items}}})
+    run.visual = {"need": "helpful"}
+    assert visual_verdict({"show": False, "keep": []}, run) == {"verdict": "hide", "keep": []}
+    assert visual_verdict({"show": True, "keep": ["S3.2", "S3.1", "S9.9"]}, run) == {"verdict": "show", "keep": ["S3.2", "S3.1"]}
+    assert visual_verdict({"show": True, "keep": ["S3.2"]}, run)["verdict"] == "hide"  # one stray photo isn't a gallery
+    assert visual_verdict(None, run) == {"verdict": "show", "keep": ["S3.1", "S3.2", "S3.3"]}
+    run.visual = {"need": "required"}
+    assert visual_verdict({"show": False}, run) == {"verdict": "show", "keep": ["S3.1", "S3.2", "S3.3"]}
+    run.ui = {}
+    assert visual_verdict({"show": True}, run) is None
+
+
+def test_visuals_verdict_streams_before_the_blocks():
+    parser = JSONBlocks()
+    assert parser.feed('{"visuals":{"show":fal') == []
+    assert parser.visuals is None
+    parser.feed('se,"keep":[]},"blocks":[{"kind":"summary","text":"x"}')
+    assert parser.visuals == {"show": False, "keep": []}
+
+
+def test_abstract_question_gets_no_image_search(ai_client):
+    sid, headers = prepare(ai_client, "how does induction cooking work")
+    enable(ai_client, headers)
+    queries = []
+    original = app.state.ai.searx.search
+    async def search(query, category="general", page=1):
+        queries.append(category)
+        return await original(query, category, page)
+    app.state.ai.searx.search = search
+    result = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research"}))
+    assert result[-1]["event"] == "complete"
+    assert "images" not in queries and "videos" not in queries
+    assert {"need": "none", "reason": "Pictures wouldn't add to this answer."} in [e["data"] for e in result if e["event"] == "visuals"]
+    assert app.state.ai.provider.payload["visual_need"] == "none"
+
+
+def test_key_fact_pictures_must_name_the_value():
+    evidence = [Evidence("S1", "Cast", "https://example.com/", "Red John is portrayed by Xander Berkeley since 1988.")]
+    facts = validate_block({"kind": "facts", "items": [
+        {"label": "Portrayed by", "text": "==Xander Berkeley==", "picture": "Xander Berkeley", "citations": ["S1"]},
+        {"label": "First killing", "text": "1988", "picture": "Xander Berkeley", "citations": ["S1"]},
+        {"label": "Actor", "text": "Xander Berkeley", "picture": "Xander|Berkeley", "citations": ["S1"]}]}, evidence)
+    assert [i["picture"] for i in facts["items"]] == ["Xander Berkeley", "", ""]
+    listed = validate_block({"kind": "list", "items": [{"text": "Xander Berkeley", "picture": "Xander Berkeley", "citations": ["S1"]}]}, evidence)
+    assert listed["items"][0]["picture"] == ""
+
+
+def test_portraits_use_exact_titles_and_follow_redirects():
+    from archer.sources import wiki
+    calls = []
+    def reply(request):
+        calls.append(request.url.params["titles"])
+        return httpx.Response(200, json={"query": {
+            "normalized": [{"from": "xander berkeley", "to": "Xander berkeley"}],
+            "redirects": [{"from": "Xander berkeley", "to": "Xander Berkeley"}],
+            "pages": [{"title": "Xander Berkeley", "pageprops": {"wikibase_item": "Q1"}, "thumbnail": {"source": "https://upload.wikimedia.org/x.jpg"}},
+                      {"title": "Mercury", "pageprops": {"wikibase_item": "Q2", "disambiguation": ""}, "thumbnail": {"source": "https://upload.wikimedia.org/m.jpg"}}]}})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+            first = await wiki.portraits(client, ["xander berkeley", "Mercury"])
+            again = await wiki.portraits(client, ["xander berkeley", "Mercury"])
+        return first, again
+    first, again = asyncio.run(run())
+    assert first == again == {"xander berkeley": "https://upload.wikimedia.org/x.jpg"}
+    assert len(calls) == 1 and "generator" not in calls[0]  # cached, and never a search
+
+
+def test_numbers_that_end_a_sentence_are_still_supported():
+    evidence = [Evidence("S1", "Cast", "https://example.com/", "The first killing was in 1988.")]
+    assert validate_block({"text": "It began in 1988.", "citations": ["S1"]}, evidence)["text"] == "It began in 1988."
+
+
+def test_rich_layout_blocks_stay_grounded():
+    evidence = [Evidence("S1", "Amazon listing", "https://amazon.example/msi", "MSI MAG 255F E20 now 8,600 INR, 200Hz IPS. “A superb budget panel for esports.”",
+                         thumbnail="https://m.media-amazon.example/msi.jpg"),
+                Evidence("S2", "Price history", "https://prices.example/msi", "Usual price 9999 INR; lowest 8199 INR in 2025.")]
+    products = validate_block({"kind": "products", "items": [{"label": "MSI MAG 255F E20", "value": "₹8,600", "text": "200Hz IPS",
+        "citations": ["S1"], "image": "https://evil.example/x.jpg", "url": "https://evil.example/"}]}, evidence)
+    assert products["items"][0]["image"] == "https://m.media-amazon.example/msi.jpg"  # from the source, not the model
+    assert products["items"][0]["url"] == "https://amazon.example/msi"
+    with pytest.raises(AIError, match="quantity"):
+        validate_block({"kind": "products", "items": [{"label": "MSI", "value": "₹7,100", "citations": ["S1"]}]}, evidence)
+    bars = validate_block({"kind": "bars", "items": [{"label": "This deal", "value": "8600", "citations": ["S1"]},
+                                                     {"label": "Usual", "value": "9999", "citations": ["S2"]}]}, evidence)
+    assert [i["value"] for i in bars["items"]] == ["8600", "9999"]
+    with pytest.raises(AIError, match="layout"):  # one bar is not a comparison
+        validate_block({"kind": "bars", "items": [{"label": "This deal", "value": "8600", "citations": ["S1"]}]}, evidence)
+    with pytest.raises(AIError, match="quantity"):  # timeline dates are claims
+        validate_block({"kind": "timeline", "items": [{"label": "2024", "text": "Lowest price", "citations": ["S2"]},
+                                                      {"label": "2025", "text": "Now", "citations": ["S1"]}]}, evidence)
+    quote = validate_block({"kind": "quote", "text": "\"a superb budget panel for esports\"", "citations": ["S1"]}, evidence)
+    assert quote["kind"] == "quote"
+    paraphrase = validate_block({"kind": "quote", "text": "A great cheap esports monitor.", "citations": ["S1"]}, evidence)
+    assert paraphrase["kind"] == "paragraph"  # not verbatim, so not presented as a quote
+    verdict = validate_block({"kind": "verdict", "heading": "Good buy", "tone": "warning", "text": "Below the usual 9999 INR.", "citations": ["S2"]}, evidence)
+    assert verdict["tone"] == "mixed"
+    pc = validate_block({"kind": "proscons", "pros": [{"text": "200Hz IPS", "citations": ["S1"]}], "cons": [{"text": "Not the lowest", "citations": ["S2"]}]}, evidence)
+    assert len(pc["pros"]) == len(pc["cons"]) == 1 and pc["items"] == []
+    with pytest.raises(AIError):
+        validate_block({"kind": "proscons", "pros": [{"text": "Fast"}]}, evidence)
+
+
+def test_malformed_visual_drops_only_that_section(ai_client):
+    sid, headers = prepare(ai_client)
+    enable(ai_client, headers)
+    async def generate(system, payload, output, accept, on_visuals=None):
+        blocks = [{"kind": "summary", "text": "The source supports this explanation.", "citations": ["S1"]},
+                  {"kind": "bars", "items": [{"label": "Only", "value": "12", "citations": ["S1"]}]}]
+        for block in blocks:
+            accept(block)
+        return {"blocks": blocks}, {"prompt_tokens": 100, "completion_tokens": 100}
+    app.state.ai.provider.generate = generate
+    result = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research"}))
+    assert result[-1]["event"] == "complete"
+    assert [e["data"]["kind"] for e in result if e["event"] == "block"] == ["summary"]
+
+
+def test_same_question_replays_a_saved_answer_without_a_model_call(ai_client):
+    sid, headers = prepare(ai_client)
+    enable(ai_client, headers)
+    first = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research"}))
+    assert first[-1]["event"] == "complete" and app.state.ai.provider.answers == 1
+    app.state.ai.sessions.clear()  # a later visit: new browser session, new snapshot
+    ai_client.cookies.clear()
+    sid, headers = prepare(ai_client)
+    again = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research"}))
+    assert app.state.ai.provider.answers == 1
+    assert again[-1]["data"]["saved"] is True and again[-1]["data"]["model_calls"] == 0
+    assert again[0]["data"]["id"] != first[0]["data"]["id"]
+    assert [e for e in again if e["event"] == "block"] == [e for e in first if e["event"] == "block"]
+    # A follow-up on the replayed answer still works, and regenerate pays for a fresh one.
+    follow = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research", "parent": again[0]["data"]["id"], "question": "And kittens?"}))
+    assert follow[-1]["event"] == "complete" and app.state.ai.provider.answers == 2
+    events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research", "regenerate": True}))
+    assert app.state.ai.provider.answers == 3
+
+
+def test_payload_puts_stable_evidence_before_the_question(tmp_path):
+    from archer.ai_service import Run, Snapshot
+    ai = AIService(Settings(_env_file=None), tmp_path)
+    evidence = [Evidence(f"S{n}", f"Source {n}", f"https://example.com/{n}", "cats knead " * n) for n in range(1, 5)]
+    run = Run("run", "owner", Snapshot("snap", "owner", "q", evidence, False, []), "research", "why do cats knead", "key", evidence)
+    payload = ai.context(run, [], [], 2800)
+    assert list(payload)[0] == "evidence" and list(payload)[-1] == "question"
+    assert [e["id"] for e in payload["evidence"]] == ["S1", "S2", "S3", "S4"]  # fixed order, not relevance order
+
+
+@pytest.mark.parametrize("question,expected", [
+    ("emi for 10 lakh loan at 9% for 5 years or 4 years", [("loan_payment", {"principal": 1000000.0, "annual_rate": 9.0, "months": 60}),
+                                                         ("loan_payment", {"principal": 1000000.0, "annual_rate": 9.0, "months": 48})]),
+    ("emi for 15 lakh loan", []),  # no rate or term: the planner decides
+    ("compare loan repayment options", []),
+    ("rtx 4070 vs rx 7800 xt for 1440p gaming", [("search_web", {"query": "rtx 4070 1440p gaming"}), ("search_web", {"query": "rx 7800 xt 1440p gaming"})]),
+    ("will it rain in Pune tomorrow", [("weather", {"place": "Pune"})]),
+    ("why do cats knead", []),
+])
+def test_obvious_tool_work_skips_the_paid_planner(question, expected):
+    from archer.ai_service import direct_tools
+    assert direct_tools(question) == expected
+
+
+def test_direct_loan_research_makes_one_model_call(ai_client):
+    sid, headers = prepare(ai_client, "emi for 10 lakh loan at 10% for 5 years")
+    enable(ai_client, headers)
+    result = events(ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid, "depth": "research"}))
+    assert result[-1]["event"] == "complete", result
+    assert app.state.ai.provider.plans == 0 and result[-1]["data"]["model_calls"] == 1
+    card = next(e["data"] for e in result if e["event"] == "card")
+    assert card["data"]["monthly_payment"] == 21247.04
+
+
+def test_off_topic_and_repeated_snippets_stay_out_of_the_prompt():
+    from archer.ai_service import useful_evidence
+    evidence = [Evidence("S1", "Why cats knead", "https://a.example/", "Cats knead to mark territory."),
+                Evidence("S2", "Mirror", "https://b.example/", "Cats knead to mark territory."),
+                Evidence("S3", "Cookie settings", "https://c.example/", "Accept all cookies."),
+                Evidence("S4", "Kneading dough", "https://d.example/", "Knead bread for ten minutes, unlike cats."),
+                Evidence("S5", "Forecast", "", "{}", kind="tool"),
+                Evidence("S6", "Vet guide", "https://e.example/", "Kneading cats are often content.")]
+    kept = [e.id for e in useful_evidence(evidence, "why do cats knead")]
+    assert "S2" not in kept and "S3" not in kept and {"S1", "S4", "S5", "S6"} <= set(kept)
+    terse = [e.id for e in useful_evidence(evidence[2:3], "why do cats knead")]
+    assert terse == ["S3"]  # too little left: the best dropped snippet comes back

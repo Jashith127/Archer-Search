@@ -28,12 +28,12 @@ try {
         $lnk.Arguments = ''
         $lnk.WorkingDirectory = $root
         $lnk.IconLocation = $ico
-        $lnk.Description = 'Archer search engine'
+        $lnk.Description = 'Archer search engine and companion app'
         $lnk.Save()
     }
 
-    Start-Process $exe -ArgumentList '--open'
-    Write-Host 'Archer is installed and running. Its Settings window is opening at Browser setup.'
+    Start-Process $exe
+    Write-Host 'Archer is installed and running. Setup is opening in the companion app.'
 }
 finally {
     Pop-Location

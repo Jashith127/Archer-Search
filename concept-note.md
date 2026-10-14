@@ -5,6 +5,26 @@ Archer is a self-hosted search engine you set as Helium's default. It works like
 
 Archer runs as a small Windows tray app that serves the engine on `http://archer.localhost:4747`. You fill in Helium's "Add search engine" dialog once, using `/search?q=%s` and `/suggest?q=%s`.
 
+### Companion app and providers · 14 October 2026
+
+Archer is being prepared for people other than its author, so setup no longer assumes Docker,
+SearXNG or a DeepSeek key.
+
+- **Companion app** (`/app`, opened as its own window from the Start menu or tray) replaces the
+  Settings page: Overview, Search, AI, Personal, Startup, Browser, Connections, Privacy & data.
+  **First-run setup** (`/app/welcome`) walks through search, AI, personal defaults, startup and
+  browser in seven steps and opens automatically until it is finished.
+- **Search providers:** DuckDuckGo (no key; its HTML page, since it has no official results API),
+  SearXNG, Google (Serper, because Google's own JSON API takes no new customers and ends on
+  1 January 2027; legacy Programmable Search keys still work) and Brave's official API. A failing
+  provider falls back to DuckDuckGo with a visible notice. Setup detects a running SearXNG and
+  otherwise suggests DuckDuckGo.
+- **AI providers:** DeepSeek stays recommended; OpenAI, Claude (native Messages API), OpenRouter,
+  Ollama (native API, so the context window is set) and any OpenAI-compatible server also work.
+  Spending caps price known models from list prices; local models cost nothing.
+- **Startup:** Start with Windows passes `--startup`, which honours a sign-in delay, a ready
+  notification, what to open (tray, companion or search) and an optional SearXNG container.
+
 ### Implementation status · 14 October 2026
 
 AI search is implemented in the workspace. See [AI search design](ai-search-design.md) for
@@ -17,8 +37,12 @@ image/video retrieval, weather, OSM places, regional watch providers, determinis
 It can request structured forecast/place/entity/provider/calculation UI, compare sources
 in cited tables, and continue with follow-ups. Research is bounded by time, searches,
 pages, tool calls, tokens and optional configured dollar caps. Source limitations remain
-visible; missing evidence does not become an invented result. An editable multiline
-composer uses the app's dark surfaces and a compact source/model/depth toolbar.
+visible; missing evidence does not become an invented result. The multiline composer carries
+Archer's pixel mark (fast wave and a pixel scan along its top edge while answering), a context
+row saying what the next question builds on with a "New question" toggle to drop that context,
+a Quick / Research segmented control (remembered per browser), a labelled source count, key
+hints while typing, a character count near the 600 limit, and a white send button that becomes
+a labelled Stop. "/" focuses it in AI Mode.
 
 AI mode now opens a full-page reading workspace with a source sidebar and pinned composer.
 Follow-up turns remain visible, and cached session restores make no new model calls. Ordinary
@@ -28,6 +52,33 @@ it is prompted for developed, useful sections rather than a summary. Media is re
 Archer's existing image/video search instead of guessed URLs. Gzip/deflate pages are read with
 strict compressed/decompressed limits. Source failures appear in collapsed notes. Built-in
 Flash pricing ceilings, reported token usage and model-call counts make spending visible.
+
+AI answers are shaped answer-first. The model classifies the question (fact, explanation,
+how-to, comparison, recommendation, overview, current event, media) and composes from typed
+blocks: a highlighted bottom-line **summary** first, then key-fact tiles (a fact naming a
+person, place or work shows its Wikipedia photo, exact titles only), a **verdict** card,
+**pros/cons**, **product** cards (photo and link from the cited listing, never the model),
+**bars** for comparable numbers, a **timeline**, a verbatim **quote** (downgraded to a paragraph
+if it isn't word for word in the source), one tip/warning **callout**, tables, lists and steps.
+`==phrase==` highlights at most one phrase per block. Every figure must appear in a cited
+source; a malformed visual block drops only itself.
+
+Pictures are decided before any model call (`visuals.py`): *required* when asked for, *helpful*
+for visual subjects (species, places, products, food, art, entities), otherwise *none*, so
+calculations, code, finance and abstract explanations get no image search. Follow-ups only get
+pictures when they ask. Images must name the subject in their title or URL (`relevant_images`),
+three or more or none; the answer model then keeps only refs that show the actual subject or
+hides the gallery, and that verdict streams before the text.
+
+Cost controls: a finished answer is replayed for the same question and depth for an hour, across
+sessions, at no cost (regenerate still pays). The payload sends evidence in a fixed order before
+the question so DeepSeek's prefix cache (about 2% of the input price) covers the system prompt
+and most of a follow-up's evidence. Research pages are cut to 2,800 characters and answers aim
+for 300-600 words. Automatic Balanced answers start only once the results tab is visible, after
+0.7 s, so background tabs and immediate result clicks cost nothing. Snippets sharing no word
+with the question, and repeated snippets, stay out of the prompt (at least three text sources
+are kept). Fully specified loans, "A vs B" comparisons and forecasts run Archer's tools directly
+instead of a paid planning call, and the image search runs alongside planning and reading.
 
 Archer's existing rounded-square matrix is also the research activity language: cells
 gather while finding evidence, scan while reading, soften while writing and settle when
@@ -125,7 +176,7 @@ Queries pass through three layers, and each layer only handles what the previous
 
 **AI answers (DeepSeek)**
 - **Compact explanation (Balanced):** uses results and card evidence, with selective page reads for comparison/current-information queries and a deterministic weather adapter where useful. Validated blocks stream with source references.
-- **Investigate further:** reuses the evidence bundle; additional research and generation are separately bounded and take time. Provider prompt-cache savings are not assumed.
+- **Investigate further:** reuses the evidence bundle; additional research and generation are separately bounded and take time. The payload is ordered so provider prompt caching can apply, but budgets still reserve the uncached price.
 - **AI mode:** native tool calls gather the evidence required by the task. Archer validates arguments, provenance and UI components; the model cannot execute arbitrary scripts or network requests.
 
 ---
@@ -203,6 +254,8 @@ Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnai
   - **Thin panels** (3 facts or fewer, such as a fictional character, a book or a generic topic) drop the tall facts bento. Media sits on the left; on the right, the facts become stat chips on top of a scrollable About panel.
 - **Type tags:** an entity's Wikidata types ("fictional human", "television character") show as dashed tag chips beside the link chips, not as a fact tile.
 - **Archer's mark:** a 7x7 dot matrix of slightly rounded squares forming the chevron "A", with the bottom row fading out (`templates/pixel_mark.html`). It uses one monochrome ink at stepped opacities. In the results header it sits alone at 32px with no wordmark. A CSS-only wave rises through the cells every 4.8s, and runs faster while the next search loads. The favicon and tray icon use the same bitmap on a dark tile. Dot fields (`dotField` in `archer.js`, a canvas drawn at about 15fps and only while on screen) sit along the bottom of the home page and at the foot of the results page. Each is densest at the bottom and thins and fades toward a curved horizon, which sits lower in the middle than at the edges. Each dot steps between ink levels at random, with an occasional brief bright flash. While the next results page loads, a row of 3px dots on the header's bottom edge runs a stepped scanning band. The wider pixel-grid exploration is in `mockups/brand.html`.
+- **AI loading and reveal:** while an AI answer is being worked out, the turn shows its shape in brand dots (`pixelSkeleton` in `archer.js`, a canvas at about 18fps): lines of rounded squares at stepped ink levels whose tails dissolve like the mark's legs, a bright band sweeping diagonally across and stray flashes. Once the first part arrives, a two-line tail of the same dots stays under the answer until it is complete. Each arriving block and tool card decodes (`decodeReveal`): every character is first a pulsing dot, then a random letter that changes every 60ms, then locks onto the real character, in a wave spreading outward from the top-left corner. Characters keep their real widths throughout, so the layout never reflows, and the original text nodes are restored afterwards. Reduced motion skips the decode.
+- **Home page:** one search box with a Search / AI Mode switch (sliding segmented control, Alt+M, remembered per browser in `localStorage`). Search submits to `/search`; AI Mode submits to `/ai`, changes the copy, the suggestion chips and the button ("Ask"), and adds a soft glow behind the bar. Ctrl+Enter sends the query to the other mode. Bangs always go to search. The paid run starts on `/ai` only because the home submit leaves a one-shot `sessionStorage` flag for that exact query, so a reload, history entry or prefetch of `/ai` never starts generation. The top bar has a local clock and a settings icon linking to `/settings`; without an API key, the AI Mode hint links to the AI settings (only whether a key exists reaches the page, never the key). The home dot field covers the whole viewport: the field itself fills the bottom 56%, and the cursor lights a disc of cells anywhere on the page that fades toward the top. It flashes more often in AI Mode.
 - **Fonts:** DM Sans (primary) and DM Mono (secondary: badges, eyebrow labels, numbers), self-hosted.
 - **Link chips:** no Facebook. X shows as its logo only.
 - **Flags:**

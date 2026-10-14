@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="setup-token" content="{{token}}">
+<title>Archer Setup</title>
+<link rel="stylesheet" href="setup.css">
+<script src="setup.js" defer></script>
+</head>
+<body class="is-intro">
+<svg xmlns="http://www.w3.org/2000/svg" class="sprites">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5m5 5-5-5 5-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><path d="M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.3 3 7.6 7 9 4-1.4 7-4.7 7-9V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></g></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5c.6 4.4 2.1 5.9 6.5 6.5-4.4.6-5.9 2.1-6.5 6.5-.6-4.4-2.1-5.9-6.5-6.5 4.4-.6 5.9-2.1 6.5-6.5zM18.5 15.5c.3 1.9.9 2.5 2.8 2.8-1.9.3-2.5.9-2.8 2.8-.3-1.9-.9-2.5-2.8-2.8 1.9-.3 2.5-.9 2.8-2.8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="i-windows" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></g></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14h4"/><circle cx="16.5" cy="14" r=".8" fill="currentColor"/></g></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.5 5.4 3.5 8.5s-1.1 5.9-3.5 8.5c-2.4-2.6-3.5-5.4-3.5-8.5s1.1-5.9 3.5-8.5z"/></g></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></g></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></g></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></g></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h5.5V10M19.5 4.5 11 13"/><path d="M17 14v4a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V8.5A1.5 1.5 0 0 1 6 7h4"/></g></symbol>
+  <symbol id="i-window" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18"/><circle cx="6.5" cy="6.8" r=".6" fill="currentColor"/><circle cx="9" cy="6.8" r=".6" fill="currentColor"/></g></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></g></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></g></symbol>
+</svg>
+
+<div class="shell">
+  <div class="stage" aria-hidden="true"><canvas class="field" data-field></canvas></div>
+  <header class="setup-header">
+    <div class="identity"><span class="pxmark" data-pxmark></span><b>Archer</b><span class="header-label">Setup</span></div>
+    <span class="stage-version">Windows · v{{version}}</span>
+  </header>
+  <nav class="setup-progress" aria-label="Installation progress">
+    <ol class="rail" data-rail>
+      <li data-rail-step="welcome"><i></i><span>01</span>Welcome</li>
+      <li data-rail-step="check"><i></i><span>02</span>Check</li>
+      <li data-rail-step="search"><i></i><span>03</span>Search</li>
+      <li data-rail-step="install"><i></i><span>04</span>Install</li>
+      <li data-rail-step="configure"><i></i><span>05</span>Configure</li>
+      <li data-rail-step="browser"><i></i><span>06</span>Browser</li>
+    </ol>
+  </nav>
+  <main class="panel">
+    <!-- ------------------------------------------------------------- welcome -->
+    <section class="view" data-view="welcome" hidden>
+      <p class="kicker" data-rise>Archer {{version}} for Windows</p>
+      <h1 data-rise>Your search.<br>Your computer.</h1>
+      <p class="lede" data-rise>A quieter place to search. Clean results, useful answers, and AI when you choose.</p>
+      <ul class="points">
+        <li data-rise><span class="tile"><svg><use href="#i-shield"/></svg></span><div><b>Private by default</b><span>No account, no history. Settings stay in a file on this PC.</span></div></li>
+        <li data-rise><span class="tile"><svg><use href="#i-target"/></svg></span><div><b>Your own results</b><span>Your own SearXNG through Docker, or DuckDuckGo with no setup.</span></div></li>
+        <li data-rise><span class="tile"><svg><use href="#i-sparkle"/></svg></span><div><b>Any AI, or none</b><span>DeepSeek, OpenAI, Claude, OpenRouter or local Ollama.</span></div></li>
+      </ul>
+      <div class="where" data-rise>
+        <span class="tile tile--sm"><svg><use href="#i-folder"/></svg></span>
+        <div><span class="where-label">Install location <em class="badge" data-existing hidden>Update · settings kept</em></span><code data-dir></code></div>
+        <button type="button" class="btn" data-pick-dir>Change</button>
+      </div>
+      <label class="toggle" data-rise>
+        <input type="checkbox" data-autostart checked>
+        <span class="switch" aria-hidden="true"></span>
+        <span><b>Start with Windows</b><span>Archer, Docker and SearXNG come up at sign-in. The shortcut does the same.</span></span>
+      </label>
+    </section>
+
+    <!-- --------------------------------------------------------------- check -->
+    <section class="view" data-view="check" hidden>
+      <p class="kicker" data-rise>Step 2 of 6</p>
+      <h2 data-rise>Checking this PC</h2>
+      <p class="lede" data-rise>A few quick checks before anything is installed.</p>
+      <ul class="checks" data-rise>
+        <li data-check="windows"><span class="state"></span><svg class="ico"><use href="#i-windows"/></svg><b>Windows</b><span class="detail"></span></li>
+        <li data-check="disk"><span class="state"></span><svg class="ico"><use href="#i-disk"/></svg><b>Disk space</b><span class="detail"></span></li>
+        <li data-check="online"><span class="state"></span><svg class="ico"><use href="#i-globe"/></svg><b>Internet connection</b><span class="detail"></span></li>
+        <li data-check="docker"><span class="state"></span><svg class="ico"><use href="#i-box"/></svg><b>Docker</b><span class="detail"></span></li>
+      </ul>
+      <p class="note" data-check-note hidden></p>
+    </section>
+
+    <!-- -------------------------------------------------------------- search -->
+    <section class="view" data-view="search" hidden>
+      <p class="kicker" data-rise>Step 3 of 6</p>
+      <h2 data-rise>Private results with SearXNG</h2>
+      <p class="lede" data-rise>Docker is installed, so Archer can run its own SearXNG: a private metasearch engine that gathers results from many engines without tracking you.</p>
+      <div class="sx" data-rise>
+        <div class="card card--ok" data-sx="ready" hidden>
+          <span class="seal"><svg><use href="#i-check"/></svg></span>
+          <div><b>SearXNG is set up and running</b><span>Found at <code data-sx-url></code><span data-sx-container></span>. Archer will use it.</span></div>
+        </div>
+        <div class="card card--warn" data-sx="docker-off" hidden>
+          <span class="seal"><svg><use href="#i-power"/></svg></span>
+          <div><b>Docker Desktop isn't running</b><span data-docker-hint>Start it and Archer will carry on as soon as Docker is ready.</span></div>
+          <button type="button" class="btn" data-start-docker>Start Docker</button>
+        </div>
+        <div class="card card--warn" data-sx="nojson" hidden>
+          <span class="seal"><svg><use href="#i-target"/></svg></span>
+          <div><b>A SearXNG is running, but without JSON results</b><span>The one at <code data-sx-url></code> refuses JSON, which Archer reads. Set up a separate SearXNG for Archer below, or add <code>json</code> to <code>search.formats</code> in its settings.yml.</span></div>
+        </div>
+        <div class="offer" data-sx="offer" hidden>
+          <div class="offer-head">
+            <span class="tile"><svg><use href="#i-box"/></svg></span>
+            <div><b data-offer-title>Set up SearXNG for Archer</b><span data-offer-text>One click. Docker downloads the official image and runs it on this PC only.</span></div>
+          </div>
+          <dl class="specs">
+            <div><dt>Image</dt><dd>searxng/searxng</dd></div>
+            <div><dt>Address</dt><dd>127.0.0.1 only</dd></div>
+            <div><dt>Container</dt><dd>archer-searxng</dd></div>
+            <div><dt>Starts</dt><dd>with Docker</dd></div>
+          </dl>
+        </div>
+        <div class="work" data-sx="work" hidden>
+          <div class="meter"><span class="pct" data-pct="sx">0</span><div class="dotbar" data-dotbar="sx"></div></div>
+          <ol class="tasks" data-tasks="sx">
+            <li data-task="pull"><span class="state"></span>Download the SearXNG image</li>
+            <li data-task="config"><span class="state"></span>Write its settings</li>
+            <li data-task="start"><span class="state"></span>Start the container</li>
+            <li data-task="wait"><span class="state"></span>Wait for the first answer</li>
+          </ol>
+          <pre class="console" data-console="sx"></pre>
+        </div>
+        <p class="error" data-sx-error hidden></p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------- install -->
+    <section class="view" data-view="install" hidden>
+      <p class="kicker" data-rise>Step 4 of 6</p>
+      <h2 data-rise data-install-title>Installing Archer</h2>
+      <p class="lede" data-rise>uv fetches Python and Archer's packages into Archer's own folder. Your existing Python installation stays separate.</p>
+      <div class="work" data-rise>
+        <div class="meter meter--big"><span class="pct" data-pct="install">0</span><div class="dotbar" data-dotbar="install"></div></div>
+        <ol class="tasks" data-tasks="install">
+          <li data-task="files"><span class="state"></span>Unpack Archer<em></em></li>
+          <li data-task="uv"><span class="state"></span>Get uv, the Python installer<em></em></li>
+          <li data-task="packages"><span class="state"></span>Python and packages<em></em></li>
+          <li data-task="shortcuts"><span class="state"></span>Desktop and Start menu shortcuts<em></em></li>
+          <li data-task="finish"><span class="state"></span>Save settings<em></em></li>
+        </ol>
+        <details class="log"><summary>Details</summary><pre class="console" data-console="install"></pre></details>
+      </div>
+      <p class="error" data-install-error hidden></p>
+    </section>
+
+    <!-- ----------------------------------------------------------- configure -->
+    <section class="view" data-view="configure" hidden>
+      <p class="kicker" data-rise>Step 5 of 6</p>
+      <h2 data-rise>Make Archer yours</h2>
+      <p class="lede" data-rise>Archer's own setup just opened in its own window. Pick your results, add an AI key or skip AI, and set your home location. It takes about a minute.</p>
+      <div class="handoff" data-rise>
+        <div class="mini">
+          <div class="mini-bar"><i></i><i></i><i></i><span>Set up Archer</span></div>
+          <div class="mini-body">
+            <div class="mini-rail"><b></b><b></b><b></b><b></b><b></b></div>
+            <div class="mini-main"><b class="w60"></b><b class="w90"></b><b class="w75"></b><span class="mini-btn"></span></div>
+          </div>
+        </div>
+        <ul class="hints">
+          <li><svg><use href="#i-search"/></svg>Where results come from</li>
+          <li><svg><use href="#i-sparkle"/></svg>Which AI answers, if any</li>
+          <li><svg><use href="#i-pin"/></svg>Your location and currency</li>
+          <li><svg><use href="#i-power"/></svg>Start with Windows</li>
+        </ul>
+      </div>
+      <p class="waiting" data-rise data-waiting><span class="pulse"></span><span data-waiting-text>Waiting for you to finish in the Archer window…</span></p>
+    </section>
+
+    <!-- ------------------------------------------------------------- browser -->
+    <section class="view" data-view="browser" hidden>
+      <p class="kicker" data-rise>Step 6 of 6</p>
+      <h2 data-rise>Search from your address bar</h2>
+      <p class="lede" data-rise>Browsers don't let apps change their search engine, so this takes a few clicks. After that it's just normal: type in the address bar and Archer answers.</p>
+      <div class="browser" data-rise>
+        <span class="tile tile--letter" data-browser-letter></span>
+        <div><span class="where-label">Your default browser</span><b data-browser-name></b></div>
+        <button type="button" class="btn" data-open-settings hidden><svg><use href="#i-external"/></svg><span data-open-settings-label>Open search settings</span></button>
+      </div>
+      <ol class="steps" data-rise data-steps-chromium>
+        <li>Under <b>Site search</b>, click <b>Add</b>.</li>
+        <li>Copy in the four details below.</li>
+        <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
+      </ol>
+      <ol class="steps" data-rise data-steps-firefox hidden>
+        <li>Under <b>Search Shortcuts</b>, click <b>Add</b>.</li>
+        <li>Copy in the name, URL and keyword below.</li>
+        <li>Pick <b>Archer</b> under <b>Default Search Engine</b>.</li>
+      </ol>
+      <div class="copies" data-rise data-copies></div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- done -->
+    <section class="view view--done" data-view="done" hidden>
+      <p class="kicker" data-rise>All set</p>
+      <h1 data-rise>Archer is ready.</h1>
+      <p class="lede" data-rise>Search from your address bar, or try your first one here.</p>
+      <form class="searchbar" data-rise data-try>
+        <svg><use href="#i-search"/></svg>
+        <input type="search" name="q" placeholder="Try “weather tomorrow” or “10 usd in inr”" autocomplete="off" spellcheck="false">
+        <kbd>Enter</kbd>
+      </form>
+      <ul class="summary" data-rise data-summary></ul>
+      <p class="foot" data-rise>Archer lives in the tray, near the clock. Right-click it for Settings or Quit. Remove it any time from Apps &amp; features.</p>
+    </section>
+
+    <footer class="nav">
+      <button type="button" class="btn btn--quiet" data-back><svg><use href="#i-back"/></svg>Back</button>
+      <p class="status" data-status role="status" aria-live="polite"></p>
+      <button type="button" class="btn btn--quiet" data-secondary hidden></button>
+      <button type="button" class="btn btn--primary btn--big" data-primary><span data-primary-label>Install Archer</span><svg><use href="#i-arrow"/></svg></button>
+    </footer>
+  </main>
+</div>
+<div class="toast" data-toast role="status"></div>
+</body>
+</html>

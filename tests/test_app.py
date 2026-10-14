@@ -99,6 +99,17 @@ def test_page_has_security_headers(client):
     assert resp.headers["referrer-policy"] == "no-referrer"
 
 
+@pytest.mark.parametrize("key,label", [("", "AI Mode needs an API key"), ("sk-test-secret-123", "answers cite sources")])
+def test_home_offers_both_modes_and_settings(client, monkeypatch, key, label):
+    monkeypatch.setattr(settings, "deepseek_api_key", key)
+    html = client.get("/").text
+    assert 'action="/search"' in html                      # works without JS; AI Mode switches the target
+    assert 'data-home-mode="search"' in html and 'data-home-mode="ai"' in html
+    assert 'class="home-settings" href="/app"' in html
+    assert label in html
+    assert "sk-test-secret-123" not in html                 # only readiness reaches the page, never the key
+
+
 def test_empty_search_goes_home(client):
     resp = client.get("/search", params={"q": "  "}, follow_redirects=False)
     assert resp.headers["location"] == "/"

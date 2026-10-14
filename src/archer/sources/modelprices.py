@@ -115,3 +115,19 @@ async def ensure(client: httpx.AsyncClient, wait: float = 3) -> dict[tuple, Pric
 
 def lookup(table: dict[tuple, Price], name: str) -> Price | None:
     return table.get(key(name)) if table else None
+
+
+def cached_price(model: str) -> Price | None:
+    """A model's price from the cached list, without network. "claude-haiku-5-5" and
+    "anthropic/claude-haiku-5.5" name the same model, so dashed versions are tried dotted too."""
+    global _table, _loaded_at
+    if _table is None and CACHE_FILE.exists():
+        try:
+            _table, _loaded_at = _parse(CACHE_FILE.read_bytes()), CACHE_FILE.stat().st_mtime
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+    name = model.split("/")[-1]
+    for variant in (name, re.sub(r"(\d)-(\d)(?!\d)", r"\1.\2", name)):
+        if price := lookup(_table or {}, variant):
+            return price
+    return None

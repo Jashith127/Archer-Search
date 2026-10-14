@@ -75,6 +75,18 @@ def rank_images(q: str, results: list[Result]) -> list[Result]:
     return [r for _, r in kept]
 
 
+def relevant_images(q: str, results: list[Result], minimum: float = 0.5) -> list[Result]:
+    """Ranked images whose title/URLs carry at least `minimum` of the query's weighted terms.
+
+    `rank_images` only reorders; this drops pictures that merely appeared for the query, so an
+    AI answer shows nothing rather than off-topic photos.
+    """
+    tokens = _tokens(q)
+    if not tokens:
+        return []
+    return [r for r in rank_images(q, results) if score(tokens, r) >= minimum]
+
+
 _SPLIT = re.compile(r"\s+[|\-–—]\s+")
 
 

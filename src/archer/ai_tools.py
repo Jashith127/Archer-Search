@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from archer import utilities, views
 from archer.evidence import add
 from archer.sources import weather, wiki, watch
-from archer.imagerank import rank_images
+from archer.imagerank import relevant_images
 from archer.evidence import public_url
 
 
@@ -119,7 +119,8 @@ class Toolbox:
                 raise ValueError("Media search limit reached or unsupported query.")
             self.media_searches = getattr(self, "media_searches", 0) + 1
             response = await self.searx.search(args.query, args.category)
-            results = rank_images(args.query, response.results) if args.category == "images" else response.results
+            # Only pictures whose title or address names the subject; the rest merely appeared for the query.
+            results = relevant_images(args.query, response.results)
             found = []
             for result in results:
                 thumb = public_url(result.thumbnail or result.img_src)
@@ -131,10 +132,14 @@ class Toolbox:
                 found.append(item)
                 if len(found) >= (6 if args.category == "images" else 3):
                     break
-            if not found:
-                raise ValueError("No usable media results were returned by the image/video engines.")
-            self.record("media", ("Images" if args.category == "images" else "Videos") + " · " + args.query, "",
+            # A gallery of one or two loosely related photos looks like a mistake; show none instead.
+            if len(found) < (3 if args.category == "images" else 1):
+                raise ValueError("No closely matching media results were returned by the image/video engines.")
+            gallery = self.record("media", ("Images" if args.category == "images" else "Videos") + " · " + args.query, "",
                 {"category": args.category, "items": found}, "Retrieved media results, linked to their original pages. Images are not proof of specifications or availability.")
+            # Stable references let the answer model keep or drop individual pictures.
+            for index, item in enumerate(found, 1):
+                item["ref"] = f"{gallery.id}.{index}"
         elif name == "show_cards":
             for sid in args.source_ids:
                 if sid not in self.ui:

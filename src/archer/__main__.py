@@ -1,4 +1,9 @@
-"""Launcher: runs the server with a tray icon, or opens the page if Archer is already running."""
+"""Launcher: runs the server with a tray icon, or opens the companion app if Archer is already running.
+
+- Started from the Start menu or a shortcut: opens the companion app (setup on first run).
+- Started by Windows at sign-in (`--startup`): waits the configured delay, optionally starts
+  SearXNG's Docker container, then does what Settings → Startup says (tray only by default).
+"""
 
 import argparse
 import json
@@ -38,13 +43,39 @@ def _relaunch_command() -> list[str]:
     return [str(launcher)] if launcher.exists() else [sys.executable, "-m", "archer"]
 
 
-def _run_tray(server: uvicorn.Server, settings_url: str, restart: threading.Event) -> None:
+def _companion_url(page: str = "") -> str:
+    from archer import companion
+    if not companion.onboarded():
+        return f"{settings.base_url}/app/welcome"
+    return f"{settings.base_url}/app{page}"
+
+
+def _first_view(args) -> str | None:
+    """What to open once the server is up, or None for tray only."""
+    from archer import companion
+    if args.startup:
+        if not companion.onboarded():
+            return _companion_url()
+        return {"app": _companion_url(), "search": settings.base_url + "/"}.get(settings.startup_open)
+    if args.open:
+        return _companion_url("#browser")
+    return None if args.no_window else _companion_url()
+
+
+def _show(url: str) -> None:
+    from archer.window import open_app
+    if url.rstrip("/") == settings.base_url:
+        webbrowser.open(url)  # the search page belongs in the real browser
+    else:
+        open_app(url)
+
+
+def _run_tray(server: uvicorn.Server, restart: threading.Event, notify: bool) -> None:
     import pystray
 
     from archer import autostart
     from archer.app import app
     from archer.icon import make_icon
-    from archer.window import open_app
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
@@ -57,32 +88,39 @@ def _run_tray(server: uvicorn.Server, settings_url: str, restart: threading.Even
         restart.set()
         stop(tray)
 
+    def ready(icon):
+        icon.visible = True
+        if notify:
+            try:
+                icon.notify("Archer is running. Search from your address bar.", "Archer")
+            except Exception:  # notifications are a nicety; some shells refuse them
+                pass
+
     menu = pystray.Menu(
-        pystray.MenuItem("Open Archer", lambda: webbrowser.open(settings.base_url + "/"), default=True),
-        pystray.MenuItem("Settings", lambda: open_app(settings_url)),
+        pystray.MenuItem("Open Archer", lambda: _show(_companion_url()), default=True),
+        pystray.MenuItem("Search", lambda: webbrowser.open(settings.base_url + "/")),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Start with Windows", toggle_autostart, checked=lambda item: autostart.enabled()),
         pystray.MenuItem("Restart", restart_app),
         pystray.MenuItem("Quit", lambda icon, item: stop(icon)),
     )
     tray = pystray.Icon("archer", make_icon(64), f"Archer · {settings.base_url}", menu)
-    # The Settings app can restart Archer too, to apply a new port or address.
+    # The companion app can restart Archer too, to apply a new port or address.
     app.state.restart = restart_app
-    tray.run()
+    tray.run(setup=ready)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="archer")
-    parser.add_argument("--open", action="store_true", help="open browser setup in the Settings app")
+    parser.add_argument("--open", action="store_true", help="open the companion app at browser setup")
+    parser.add_argument("--startup", action="store_true", help="started by Windows at sign-in")
+    parser.add_argument("--no-window", action="store_true", help="start in the tray without opening a window")
     parser.add_argument("--no-tray", action="store_true", help="run in the foreground without a tray icon")
     args = parser.parse_args()
 
-    from archer.window import open_app
-
-    settings_url = f"{settings.base_url}/settings"
-    setup_url = settings_url + "#browser"
     if _already_running():
-        open_app(setup_url if args.open else settings_url)
+        if not args.startup:
+            _show(_companion_url("#browser" if args.open else ""))
         return
 
     DATA_DIR.mkdir(exist_ok=True)
@@ -91,6 +129,19 @@ def main() -> None:
         sys.stdout = sys.stderr = open(DATA_DIR / "archer.log", "a", buffering=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(levelname)s:    %(name)s: %(message)s")
 
+    if args.startup and settings.startup_delay:
+        time.sleep(settings.startup_delay)
+    if sys.platform == "win32":
+        from archer import autostart
+        try:
+            autostart.refresh()  # older entries lack --startup; keep the registry pointing at this install
+        except OSError:
+            pass
+    if settings.searxng_container and settings.search_provider == "searxng":
+        from archer import companion
+        # In the background: Docker can take a while, and the fallback covers searches meanwhile.
+        threading.Thread(target=companion.start_container, args=(settings.searxng_container,), daemon=True).start()
+
     # Search URLs contain private queries; do not write them into the tray app's log.
     server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port, access_log=False))
     thread = threading.Thread(target=server.run, daemon=True)
@@ -98,8 +149,8 @@ def main() -> None:
     if not _wait_started(server, thread):
         print(f"Archer could not start on port {settings.port}; is another program using it?", file=sys.stderr)
         sys.exit(1)
-    if args.open:
-        open_app(setup_url)
+    if view := _first_view(args):
+        _show(view)
 
     if args.no_tray:
         try:
@@ -109,11 +160,12 @@ def main() -> None:
             server.should_exit = True
     else:
         restart = threading.Event()
-        _run_tray(server, settings_url, restart)
+        _run_tray(server, restart, notify=args.startup and settings.startup_notify)
         thread.join(timeout=5)
         if restart.is_set():
             # A fresh process re-reads .env, including a new port or address.
-            subprocess.Popen(_relaunch_command(), close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+            subprocess.Popen([*_relaunch_command(), "--no-window"], close_fds=True,
+                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
             return
     thread.join(timeout=5)
 

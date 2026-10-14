@@ -24,6 +24,16 @@
         "4748"
       ],
       "port": 4748
+    },
+    {
+      "name": "companion-fixture",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "python",
+        "tests/companion_browser_server.py"
+      ],
+      "port": 4790
     }
   ]
 }

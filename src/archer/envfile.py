@@ -20,6 +20,11 @@ def read(path: Path) -> str:
         return ""
 
 
+def keys(text: str) -> list[str]:
+    """Names set by active (uncommented) lines."""
+    return [match[2] for line in text.splitlines() if (match := _LINE.match(line)) and match[1] is None]
+
+
 def update(text: str, changes: dict[str, str | None]) -> str:
     """Return text with each NAME set to a value, or commented out when the value is None.
 

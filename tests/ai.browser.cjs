@@ -24,10 +24,13 @@ const path = require('node:path');
     assert.equal(paid, 0);
     await page.locator('[data-ai-save]').click();  // "Turn on and continue" (consent is pre-ticked)
 
-    // Balanced: a small card with an image row by default, expandable in place.
+    // Balanced: a small card led by the highlighted bottom line, expandable in place.
+    // A loan question gets no pictures: they would only be decoration.
     await page.locator('#ai-search[data-stage=complete]').waitFor();
     assert.equal(paid, 1);
-    assert.ok(await page.locator('.ai-visual').count() >= 3);
+    assert.equal(await page.locator('.ai-visual').count(), 0);
+    assert.equal(await page.locator('.ai-turn').last().locator('.ai-block').first().evaluate(n => n.classList.contains('ai-block--summary')), true);
+    assert.ok(await page.locator('.ai-block--summary mark.ai-mark').count() === 1);
     assert.equal(await page.locator('#ai-search').evaluate(n => n.classList.contains('is-small')), true);
     await page.locator('[data-turn-more]').click();
     assert.equal(await page.locator('[data-turn-size]').getAttribute('aria-expanded'), 'true');
@@ -64,7 +67,7 @@ const path = require('node:path');
     await page.locator('[data-ai-compare]').click();
     await page.locator('#ai-search[data-stage=complete]').waitFor();
     assert.equal(paid, 4);
-    assert.equal(await turn.locator('[data-turn-label]').innerText(), 'Comparison');
+    assert.equal((await turn.locator('[data-turn-label]').textContent()).trim(), 'Comparison');
 
     // Reload restores from the session without a new AI call.
     await page.reload();

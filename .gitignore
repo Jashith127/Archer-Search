@@ -5,3 +5,7 @@ __pycache__/
 .env
 data/
 screenshots/
+!docs/screenshots/
+installer/obj/
+installer/dist/
+.build-cache/

@@ -1,22 +1,27 @@
 # Archer
 
-Personal AI search engine served on `http://archer.localhost:4747`, used as the default search engine in Helium (a Chromium browser) on Windows. Design and build order are in `concept-note.md`. Keep that note current when a design decision changes.
+Personal AI search engine served on `http://archer.localhost:4747`, used as the default search engine in Helium (a Chromium browser) or any browser on Windows, with a companion app for setup and settings. Design and build order are in `concept-note.md`. Keep that note current when a design decision changes.
 
 ## Layout
-- `src/archer/app.py`: FastAPI routes (`/search` renders the results page, `/suggest`, the lazy `/api/strip/{images|news|videos}`, `/api/similar` (side-panel similar images), `/api/works`, `/api/weather`, `/settings`, `/health`; `/setup` redirects to `/settings#browser`) and template filters
+- `src/archer/app.py`: FastAPI routes (`/search` renders the results page, `/suggest`, the lazy `/api/strip/{images|news|videos}`, `/api/similar` (side-panel similar images), `/api/portraits` (Wikipedia thumbnails for AI key facts), `/api/works`, `/api/weather`, `/app` (companion app), `/app/welcome` (first-run setup), `/health`; `/settings` redirects to `/app` and `/setup` to `/app#browser`) and template filters
 - `src/archer/views.py`: builds the page view model (SearXNG results plus one hero per query type, discussions, lazy-module flags)
 - `src/archer/query.py`: query typing (utility, weather, time and define patterns; entity candidate)
 - `src/archer/utilities.py`: local instant answers (calculator, units, colour, timestamp, random, currency parsing)
 - `src/archer/imagerank.py`: image relevance re-ranking (title/URL term overlap, model numbers weighted, dedupe, drops tiny images and svg icons) and the "similar images" query; used by the Images tab, the strip and `/api/similar`
-- `src/archer/searxng.py`: SearXNG JSON client with a 10-minute cache
+- `src/archer/visuals.py`: decides before any model call whether an AI answer needs pictures (required / helpful / none) and the image query; `ai_service.visual_verdict` applies the model's keep/hide choice
+- AI answer blocks: `Block` in `ai_service.py` (summary, facts, callout, verdict, proscons, products, bars, timeline, quote, table, list, steps, inference, limitation), validated in `validate_block` and drawn by `renderBlock` in `archer.js`. A new kind needs all three plus a line in `ANSWER_PROMPT`
+- `src/archer/searxng.py`: the search front (`Search`, alias `SearXNG`): 10-minute cache, dispatch to the configured provider, DuckDuckGo fallback (`SearchResponse.notice`), and suggestions from the configured source. The SearXNG JSON client lives here too
+- `src/archer/websearch.py`: the other search backends (DuckDuckGo HTML + its image/news/video JSON, Brave API, Google via Serper or a legacy Programmable Search key), keyless Google/DuckDuckGo suggestions, provider labels and 'view on' links. DuckDuckGo has no official results API; Google's Custom Search API takes no new customers and ends 1 Jan 2027
+- `src/archer/ai_provider.py`: `PROVIDERS` (DeepSeek recommended, OpenAI, Claude, Ollama, OpenRouter, custom), `resolve`/`readiness`, and one `Provider` speaking three protocols (OpenAI chat completions, Anthropic Messages, Ollama's native `/api/chat` for its context window); `plan` always returns OpenAI-shaped `tool_calls`
 - `src/archer/sources/`: `wiki.py` (Wikipedia + Wikidata entity panels by kind and person subtype, spelling suggestions, filmography via SPARQL, Retry-After backoff), `weather.py` (Open-Meteo weather, sun, geocoding), `dictionary.py` (Wiktionary), `crypto.py` (CoinGecko), `translate.py` (MyMemory), `places.py` (Photon geocoding, Overpass with a Photon fallback; loaded lazily via `/api/places`), `aimodels.py` (AI model panels from Epoch AI's benchmark zip, cached in `data/` and refreshed daily; matched locally before the Wikipedia entity lookup), `modelprices.py` (API prices from OpenRouter's public model list, cached in `data/` daily; the AI model charts plot score against price when at least three of a chart's models have one; the card's token-pricing section shows input/output/cached rates), `fx.py` (USD exchange rate for the home currency: ECB via Frankfurter, CoinGecko fallback, cached 6 h; the AI model card shows rupees by default and switches live in `archer.js`)
 - Adding a query type: a pattern in `query.py` (or a utility in `utilities.py`), a builder in `views.py` (`LOCAL_KINDS` or `ASYNC_HEROES`), a `templates/heroes/<kind>.html`, styles in `archer.css`, and a mocked test in `tests/test_heroes.py`
 - `src/archer/templates/`: Jinja templates; `heroes/<kind>.html` holds one hero per query type
 - `src/archer/static/`: `archer.css` (dark theme tokens at the top) and `archer.js` (lazy modules, converters, clock; DOM-only, no innerHTML)
-- `src/archer/__main__.py`: launcher. Runs uvicorn in a thread plus a pystray tray icon; if Archer is already running, it only opens the page. It runs windowless as `.venv\Scripts\archerw.exe`.
+- `src/archer/__main__.py`: launcher. Runs uvicorn in a thread plus a pystray tray icon; if Archer is already running, it only opens the companion app (setup on first run). `--startup` (from the Run key) honours the sign-in delay, SearXNG container and `startup_open`. It runs windowless as `.venv\Scripts\archerw.exe`.
 - `src/archer/config.py`: settings, loaded from `ARCHER_*` env vars and `.env`
-- `src/archer/autostart.py`: the tray's "Start with Windows" toggle (HKCU Run key)
-- Settings app: `settings_service.py` (field schema, validate-then-write `.env`, live apply, masked secrets, free connection tests), `settings_routes.py` (`/api/settings*`, guarded like AI POSTs), `envfile.py` (comment-preserving `.env` edits), `window.py` (opens a page as a Chromium `--app` window), `templates/settings.html`, `static/settings.css`, `static/settings.js`. A new setting needs a field in `config.py` and a `Spec` in `settings_service.py`.
+- `src/archer/autostart.py`: the "Start with Windows" toggle (HKCU Run key, with `--startup`; `refresh` rewrites older entries)
+- `src/archer/companion.py`: first-run state (`data/companion.json`), installed-browser detection and opening a browser's search-engine settings, `docker start` for SearXNG
+- Companion app: `settings_service.py` (field schema with provider cards and `when` conditions, validate-then-write `.env`, live apply, masked secrets, connection tests), `settings_routes.py` (`/api/settings*`, `/api/app/*`, guarded like AI POSTs), `envfile.py` (comment-preserving `.env` edits), `window.py` (opens a page as a Chromium `--app` window), `templates/companion_base.html`, `companion.html` (panes), `welcome.html` (setup wizard), `companion_fields.html` (shared field macros), `static/companion.css`, `static/companion.js`. A new setting needs a field in `config.py` and a `Spec` in `settings_service.py`; place it in a pane or setup step by name. `tests/companion_browser_server.py` serves it on a throwaway config at :4790
 - AI UI: `templates/ai_panel.html` (one panel; Balanced card or AI Mode via `body.ai-fullview`, turns cloned from a `<template>`), AI section of `archer.js` and `archer.css`
 - `scripts/install.ps1`, `install.cmd`: one-click install (uv sync, shortcuts, launch)
 
@@ -27,7 +32,7 @@ Personal AI search engine served on `http://archer.localhost:4747`, used as the 
 
 ## Rules
 - Bind to 127.0.0.1 only, and keep `TrustedHostMiddleware` in place. The public host must stay a `*.localhost` name.
-- Never return a full API key to the browser; Settings shows masked hints only. Tests must use a temporary `.env`, never the real one.
+- Never return a full API key to the browser; the companion app shows masked hints only. Tests must use a temporary `.env`, never the real one.
 - A plain `GET /search` must never trigger a paid AI call. AI generation goes through a POST that checks `Sec-Fetch-Site: same-origin`.
 - Keep the `/suggest` response in OpenSearch JSON format: `[query, [completions], ...]`.
 - The results page sends a strict CSP (`script-src 'self'`) and `no-referrer`. Keep scripts in `static/archer.js`, not inline.

@@ -4,7 +4,8 @@ import json
 import math
 from pathlib import Path
 
-from archer.ai_provider import AIError
+from archer.ai_provider import AIError, resolve
+from archer.sources import modelprices
 
 
 class Budget:
@@ -51,9 +52,17 @@ class Budget:
         s = self.settings
         if s.ai_input_price is not None and s.ai_output_price is not None:
             return s.ai_input_price, s.ai_output_price, s.ai_input_price
-        if s.ai_base_url.rstrip("/") == "https://api.deepseek.com" and s.ai_model == "deepseek-flash":
+        r = resolve(s)
+        if r.provider == "ollama":
+            return 0.0, 0.0, 0.0  # runs on this computer
+        if r.provider == "deepseek" and r.base == "https://api.deepseek.com" and r.model == "deepseek-flash":
             # Official peak ceilings, reviewed 2026-10-14. Off-peak bills can be lower.
             return .30, 1.20, .006
+        if r.provider in ("openai", "anthropic", "openrouter", "deepseek"):
+            # OpenRouter's public list carries the labs' own list prices; unknown models keep token caps only.
+            price = modelprices.cached_price(r.model)
+            if price:
+                return price.input, price.output, price.cached if price.cached is not None else price.input
         return None
 
     def cost(self, inputs, outputs, cached=0):

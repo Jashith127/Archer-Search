@@ -14,13 +14,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from archer import __version__, views
+from archer import __version__, views, websearch
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
 from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH
 from archer.sources import USER_AGENT, TTLCache, aimodels, lyrics, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
+from archer.ai_provider import readiness
 from archer.ai_service import AIService
 from archer.settings_routes import page_context as settings_context, router as settings_router
 from archer.config import DATA_DIR
@@ -150,7 +151,8 @@ templates.env.filters["money"] = aimodels.money
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "home.html", {})
+    # Only whether a key exists; the key itself never reaches the page.
+    return templates.TemplateResponse(request, "home.html", {"ai_ready": readiness(settings)[0]})
 
 
 @app.get("/search")
@@ -158,8 +160,9 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
     if not q.strip() and not full:
         return RedirectResponse("/", status_code=302)
     if any(tok.startswith("!") for tok in q.split()):
-        # Bangs: SearXNG's own page handles !engine and !!external redirects.
-        return RedirectResponse(settings.results_url.format(q=quote_plus(q)), status_code=302)
+        # Bangs: SearXNG's own page handles !engine and !!external redirects; otherwise DuckDuckGo's bangs do.
+        target = settings.results_url if settings.search_provider == "searxng" else "https://duckduckgo.com/?q={q}"
+        return RedirectResponse(target.format(q=quote_plus(q)), status_code=302)
     tab = tab if tab in views.TABS else "all"
     view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p) if q.strip() else views.View("", "all", 1, classify(""))
     if view.response and view.response.redirect:
@@ -167,8 +170,10 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
     ai = ai_service(request)
     session = ai.session(request.cookies.get("archer_session"))
     snapshot = ai.snapshot(session, view) if tab == "all" and p == 1 else None
+    provider = view.response.provider if view.response else settings.search_provider
     response = templates.TemplateResponse(request, "search.html", {
-        "v": view, "searxng_page": settings.results_url.format(q=quote_plus(q)),
+        "v": view, "provider_page": websearch.page_url(provider, q, views.TABS[tab]),
+        "provider_label": websearch.LABELS.get(provider, provider),
         "ai": ai.info(session, snapshot),
         "ai_view": full,
     })
@@ -253,6 +258,18 @@ async def api_watch(request: Request, media: str, tmdb: str) -> JSONResponse:
     return JSONResponse(data)
 
 
+@app.get("/api/portraits")
+async def api_portraits(request: Request, t: list[str] = Query([], max_length=6)) -> JSONResponse:
+    """Wikipedia thumbnails for the people, places and works an AI answer's key facts name."""
+    titles = [title[:120] for title in t if title.strip()]
+    if not titles:
+        return JSONResponse({})
+    try:
+        return JSONResponse(await wiki.portraits(request.app.state.ext, titles))
+    except (httpx.HTTPError, ValueError, KeyError):
+        return JSONResponse({})
+
+
 @app.get("/api/works")
 async def api_works(request: Request, qid: str, role: str) -> JSONResponse:
     try:
@@ -317,19 +334,35 @@ async def api_weather(request: Request, lat: float, lon: float) -> JSONResponse:
 
 # ------------------------------------------------------------------- setup
 
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
+def _companion(request: Request, template: str):
     session, context = settings_context(request)
-    response = templates.TemplateResponse(request, "settings.html", context)
+    response = templates.TemplateResponse(request, template, context)
     response.headers["Cache-Control"] = "no-store"
     ai_cookie(response, session)
     return response
 
 
+@app.get("/app", response_class=HTMLResponse)
+async def companion_page(request: Request):
+    """The companion app: overview and every setting. Opens as its own window from the tray."""
+    return _companion(request, "companion.html")
+
+
+@app.get("/app/welcome", response_class=HTMLResponse)
+async def welcome_page(request: Request):
+    """First-run setup: search, AI, personal defaults, startup and browser, one step at a time."""
+    return _companion(request, "welcome.html")
+
+
+@app.get("/settings")
+def settings_redirect() -> RedirectResponse:
+    # Settings became the companion app; the browser keeps any #section across the redirect.
+    return RedirectResponse("/app", status_code=307)
+
+
 @app.get("/setup")
 def setup() -> RedirectResponse:
-    # Browser setup now lives in the Settings app.
-    return RedirectResponse("/settings#browser", status_code=307)
+    return RedirectResponse("/app#browser", status_code=307)
 
 
 @app.get("/opensearch.xml")

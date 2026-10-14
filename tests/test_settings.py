@@ -65,7 +65,7 @@ def test_apply_rejects_invalid_values_without_writing(service):
 
 def test_secrets_are_masked_and_aliases_cleared(service):
     item = next(f for f in service.fields() if f["name"] == "tmdb_api_key")
-    assert item == {"name": "tmdb_api_key", "locked": False, "set": True, "hint": "•••• 1234"}
+    assert item == {"name": "tmdb_api_key", "locked": False, "explicit": True, "set": True, "hint": "•••• 1234"}
     service.apply({"tmdb_api_key": "fresh-key-5678"})
     text = service.path.read_text(encoding="utf-8")
     # The new key uses the conventional name, and the old spelling no longer overrides it.
@@ -106,14 +106,14 @@ def client(tmp_path):
 
 
 def headers_for(client):
-    html = client.get("/settings").text
+    html = client.get("/app").text
     csrf = re.search(r'data-csrf="([^"]+)"', html)[1]
     return html, {"Origin": BASE, "Sec-Fetch-Site": "same-origin", "X-Archer-CSRF": csrf}
 
 
 def test_settings_page_never_contains_full_keys(client):
     html, _ = headers_for(client)
-    assert "Archer Settings" in html and "•••• abcd" in html
+    assert "Companion" in html and "•••• abcd" in html
     assert "sk-very-secret-value" not in html
     assert "sk-very-secret-value" not in client.get("/api/settings").text
 
@@ -137,7 +137,7 @@ def test_restart_needs_the_tray_launcher(client):
 
 def test_setup_moves_into_settings(client):
     response = client.get("/setup", follow_redirects=False)
-    assert response.status_code == 307 and response.headers["location"] == "/settings#browser"
+    assert response.status_code == 307 and response.headers["location"] == "/app#browser"
 
 
 def test_connection_checks_spend_nothing():

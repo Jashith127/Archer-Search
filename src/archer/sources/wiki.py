@@ -721,3 +721,42 @@ async def works(client: httpx.AsyncClient, qid: str, role: str) -> list[dict]:
         out.append({"title": title, "year": year,
                     "type": _TYPE_LABEL.get(row["type"]["value"].rsplit("/", 1)[-1], "Book" if role == "author" else "")})
     return _works_cache.put(key, out[:20])
+
+
+_portrait_cache = TTLCache(ttl=86400)
+
+
+async def portraits(client: httpx.AsyncClient, titles: list[str]) -> dict[str, str]:
+    """Small Wikipedia thumbnails for exact article titles, as {requested title: image URL}.
+
+    Used beside AI key facts ("Portrayed by: Xander Berkeley"). Exact titles only, never a search,
+    so a fact can't pick up someone else's photo; disambiguation pages and pages without a
+    Wikidata item get nothing. One batched request covers every uncached title.
+    """
+    out, missing = {}, []
+    for title in dict.fromkeys(t.strip() for t in titles if t.strip()):
+        hit = _portrait_cache.get(title.lower())
+        if hit is None:
+            missing.append(title)
+        elif hit:
+            out[title] = hit
+    if not missing:
+        return out
+    data = (await _get(client, WP_API, action="query", format="json", formatversion=2, redirects=1,
+                       titles="|".join(missing), prop="pageimages|pageprops", piprop="thumbnail",
+                       pithumbsize=160, ppprop="wikibase_item|disambiguation")).get("query", {})
+    # Follow "xander berkeley" -> "Xander Berkeley" -> redirect target back to what was asked.
+    alias = {t: t for t in missing}
+    for step in data.get("normalized", []) + data.get("redirects", []):
+        for asked, current in alias.items():
+            if current == step.get("from"):
+                alias[asked] = step.get("to")
+    pages = {p.get("title"): p for p in data.get("pages", [])}
+    for asked, final in alias.items():
+        page = pages.get(final, {})
+        source = page.get("thumbnail", {}).get("source", "") if _usable(page) else ""
+        source = source if source.startswith("https://") else ""
+        _portrait_cache.put(asked.lower(), source)
+        if source:
+            out[asked] = source
+    return out

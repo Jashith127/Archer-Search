@@ -37,7 +37,7 @@
     <h2 id="ai-settings-title">Connect an AI provider</h2>
     <p>Paste a DeepSeek API key in Settings. It stays in <code>.env</code> on this computer and works right away, without a restart.</p>
     <p class="ai-fine">Search, cards and tools keep working without it.</p>
-    <p><a class="ai-button ai-button--primary" href="/settings#ai">Add a key in Settings</a></p>
+    <p><a class="ai-button ai-button--primary" href="/app#ai">Add a key in Settings</a></p>
     {% else %}
     <h2 id="ai-settings-title" data-ai-settings-title>AI answers, on your terms</h2>
     <p>When you ask, Archer sends your question, the public sources it found, relevant card data and earlier turns to {{ ai.model|replace('-', ' ')|title }}. Your home location is shared only for local tools.</p>
@@ -48,7 +48,7 @@
       <button class="ai-button ai-button--quiet" type="button" data-ai-settings-cancel>Not now</button>
       <p class="ai-fine" data-ai-settings-status role="status"></p>
     </div>
-    <p class="ai-fine">Conversations live in memory for 30 minutes. Only spending totals are saved, for your limits. <a href="/settings#ai">All AI settings</a></p>
+    <p class="ai-fine">Conversations live in memory for 30 minutes. Only spending totals are saved, for your limits. <a href="/app#ai">All AI settings</a></p>
     {% endif %}
   </div>
 
@@ -63,18 +63,30 @@
           <button type="button" class="ai-button ai-button--primary" data-ai-begin{% if not v.q %} hidden{% endif %}>Research this <span aria-hidden="true">↗</span></button>
         </div>
       </div>
+      {# The composer: what the next question builds on, how deep to go, and one send/stop button. #}
       <form class="ai-followup" data-ai-followup hidden>
-        <label class="sr-only" for="ai-question">Ask a follow-up</label>
-        <textarea id="ai-question" name="question" placeholder="Ask a follow-up…" rows="1" maxlength="600" autocomplete="off" required></textarea>
+        <div class="ai-composer-context-row" data-ai-thread-context hidden>
+          <span class="ai-composer-thread"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M4 2v6.5A2.5 2.5 0 0 0 6.5 11H13m-3-3 3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-ai-thread-label>Following up on the answer above</span></span>
+          <button type="button" class="ai-composer-fresh" data-ai-fresh aria-pressed="false" title="Ask without the earlier answer as context">New question</button>
+        </div>
+        <div class="ai-composer-input">
+          {{ pixel_mark(18, 'ai-composer-mark') }}
+          <label class="sr-only" for="ai-question">Ask Archer</label>
+          <textarea id="ai-question" name="question" placeholder="Ask anything about this search…" rows="1" maxlength="600" autocomplete="off" required></textarea>
+        </div>
         <div class="ai-composer-toolbar">
           <div class="ai-composer-context">
-            <button type="button" class="ai-composer-sources" data-ai-composer-sources aria-label="Inspect or select sources" title="Sources"><svg aria-hidden="true"><use href="#u-layers"/></svg></button>
-            <label class="sr-only" for="ai-depth">Answer depth</label>
-            <select id="ai-depth" data-ai-depth title="Answer depth"><option value="research">Research</option><option value="compact">Quick answer</option></select>
+            <input type="hidden" id="ai-depth" data-ai-depth value="research">
+            <div class="ai-depth" role="radiogroup" aria-label="Answer depth">
+              <button type="button" role="radio" class="ai-depth-option" data-depth="compact" aria-checked="false" title="Quick: one AI call from the sources already found">Quick</button>
+              <button type="button" role="radio" class="ai-depth-option" data-depth="research" aria-checked="true" title="Research: reads pages and uses Archer's tools before answering">Research</button>
+            </div>
+            <button type="button" class="ai-composer-sources" data-ai-composer-sources aria-label="Show sources" title="Inspect or select sources"><svg aria-hidden="true"><use href="#u-layers"/></svg><span data-ai-composer-count>{{ ai.sources|length }}</span><span class="ai-composer-sources-word"> sources</span></button>
           </div>
           <div class="ai-composer-controls">
-            <span class="ai-composer-model" title="Configured AI model">{{ ai.model|replace('-', ' ') }}</span>
-            <button type="submit" class="ai-composer-send" aria-label="Send follow-up" disabled><svg class="ai-send-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ai-stop-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg></button>
+            <span class="ai-composer-hint" data-ai-composer-hint aria-hidden="true"><kbd>Enter</kbd> send <kbd>Shift</kbd><kbd>Enter</kbd> new line</span>
+            <span class="ai-composer-count" data-ai-char-count aria-live="polite" hidden></span>
+            <button type="submit" class="ai-composer-send" aria-label="Send" title="Send to {{ ai.model|replace('-', ' ') }}" disabled><svg class="ai-send-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ai-stop-label"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></svg>Stop</span></button>
           </div>
         </div>
       </form>
@@ -120,9 +132,9 @@
       </header>
       <div class="ai-visuals" data-turn-visuals hidden></div>
       <details class="ai-steps" data-turn-steps hidden><summary data-turn-steps-summary>Working</summary><ol data-turn-step-list></ol></details>
-      <div class="ai-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
       <div class="ai-error" data-turn-error role="alert" hidden><p data-turn-error-text></p><button type="button" class="ai-button ai-button--small" data-turn-retry-error>Try again</button></div>
       <div class="ai-answer" data-turn-answer><div class="ai-tool-cards" data-turn-cards></div></div>
+      <div class="ai-skeleton" aria-hidden="true"><canvas data-turn-skeleton></canvas><canvas data-turn-skeleton-tail></canvas></div>
       <button type="button" class="ai-more" data-turn-more>Show full answer</button>
       <footer class="ai-turn-foot" hidden data-turn-foot>
         <div class="ai-turn-actions">
