@@ -19,7 +19,7 @@ from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
 from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH
-from archer.sources import USER_AGENT, TTLCache, lyrics, watch, weather, wiki
+from archer.sources import USER_AGENT, TTLCache, aimodels, lyrics, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_service import AIService
 from archer.settings_routes import page_context as settings_context, router as settings_router
@@ -143,6 +143,7 @@ templates.env.filters["currency_flag"] = _currency_flag
 templates.env.filters["hue"] = _hue
 templates.env.filters["site_name"] = _site_name
 templates.env.filters["qs"] = quote_plus
+templates.env.filters["money"] = aimodels.money
 
 
 # ------------------------------------------------------------------- pages
@@ -284,13 +285,17 @@ async def favicon(request: Request, host: str) -> Response:
         return Response(status_code=404)
     hit = _favicons.get(host)
     if hit is None:
-        try:
-            resp = await request.app.state.ext.get(f"https://icons.duckduckgo.com/ip3/{host}.ico", timeout=4)
+        hit = ()
+        # Google's 64 px icon first (crisp on high-DPI badges; unknown sites get a 404), then DuckDuckGo's.
+        for url in (f"https://www.google.com/s2/favicons?domain={host}&sz=64", f"https://icons.duckduckgo.com/ip3/{host}.ico"):
+            try:
+                resp = await request.app.state.ext.get(url, timeout=4)
+            except httpx.HTTPError:
+                continue
             ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-            ok = resp.status_code == 200 and ctype in _FAVICON_TYPES and 0 < len(resp.content) < 200_000
-            hit = (resp.content, ctype) if ok else ()
-        except httpx.HTTPError:
-            hit = ()
+            if resp.status_code == 200 and ctype in _FAVICON_TYPES and 0 < len(resp.content) < 200_000:
+                hit = (resp.content, ctype)
+                break
         _favicons.put(host, hit, ttl=None if hit else 3600)
     if not hit:
         return Response(status_code=404)
