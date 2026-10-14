@@ -53,17 +53,9 @@
     <!-- ------------------------------------------------------------- welcome -->
     <section class="view" data-view="welcome" hidden>
       <div class="welcome-heading" data-rise>
-        <p class="kicker">Welcome to Archer</p>
-        <h1>A better way<br>to find things.</h1>
-        <p class="welcome-caption">Your personal search engine, right on this PC.</p>
-      </div>
-      <div class="welcome-intro" data-rise>
-        <p>Find what you need.<br>Leave the noise behind.</p>
-        <ul class="welcome-features">
-          <li><b>Results from sources you choose</b><span>DuckDuckGo, your own SearXNG, and more.</span></li>
-          <li><b>A little AI. Or none at all.</b><span>Bring your preferred model when you want an answer.</span></li>
-          <li><b>At home in your address bar</b><span>Search from the browser you already use.</span></li>
-        </ul>
+        <p class="kicker">Archer {{version}} · Windows setup</p>
+        <h1 data-welcome-title>Install Archer</h1>
+        <p class="welcome-caption">Setup will install Archer and the Python components it needs. Choose your installation options below, then select Next to check this PC.</p>
       </div>
       <div class="welcome-options" data-rise>
         <div class="where">
@@ -71,11 +63,15 @@
           <button type="button" class="btn btn--quiet" data-pick-dir>Change location<svg><use href="#i-folder"/></svg></button>
         </div>
         <label class="toggle">
-          <span><b>Ready when you sign in</b><span>Start Archer with Windows.</span></span>
+          <span><b>Start Archer with Windows</b><span>Run in the system tray when you sign in.</span></span>
           <input type="checkbox" data-autostart checked>
           <span class="switch" aria-hidden="true"></span>
         </label>
-        <p class="welcome-note">No account needed. Python is installed automatically.</p>
+        <dl class="install-requirements">
+          <div><dt>Required space</dt><dd>At least 1 GB</dd></div>
+          <div><dt>Connection</dt><dd>Internet required to download components</dd></div>
+        </dl>
+        <p class="welcome-note">Archer is installed for your Windows account. You can remove it later from Installed apps.</p>
       </div>
     </section>
 

@@ -6,7 +6,7 @@ Download **ArcherSetup.exe** below and run it on Windows 10 or 11. Setup downloa
 
 ### Included
 
-- Custom installer with a redesigned welcome screen, a full-background pixel field, morphing artwork in the clear margin, and a compact step indicator.
+- Custom installer with a straightforward setup page for location, startup and requirements, a full-background pixel field, morphing artwork in the clear margin, and a compact step indicator.
 - Install location and startup choices, desktop and Start menu shortcuts, and Windows Installed apps integration.
 - Guided search, AI, personal preferences and browser setup.
 - DuckDuckGo, SearXNG, Google and Brave search; optional cloud AI or local Ollama.

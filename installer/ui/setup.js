@@ -348,9 +348,10 @@ const VIEWS = {
     const dir = $("[data-dir]");
     dir.textContent = S.info.dir;
     dir.title = S.info.dir;
+    $("[data-welcome-title]").textContent = S.info.existing ? "Update Archer" : "Install Archer";
     $("[data-existing]").hidden = !S.info.existing;
     setNav({
-      label: S.info.existing ? "Update Archer" : "Install Archer",
+      label: "Next",
       primary: () => go("check"),
       status: S.info.dry ? "Preview mode: nothing will be installed." : "For you only. No admin rights needed.",
     });
@@ -650,7 +651,8 @@ async function start() {
     $("[data-dir]").textContent = r.dir;
     $("[data-dir]").title = r.dir;
     $("[data-existing]").hidden = !S.info.existing;
-    nav.label.textContent = S.info.existing ? "Update Archer" : "Install Archer";
+    nav.label.textContent = "Next";
+    $("[data-welcome-title]").textContent = S.info.existing ? "Update Archer" : "Install Archer";
   });
 
   await sleep(REDUCED ? 0 : 500);

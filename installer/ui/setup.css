@@ -89,14 +89,13 @@ body.is-intro .panel { opacity: 0; }
 .tile--letter { width: 40px; height: 40px; background: #f2f2f2; color: #111; font: 700 17px var(--font-display); }
 
 /* welcome */
-.view[data-view=welcome] { display: grid; grid-template-columns: 1.1fr 1fr; align-content: center; column-gap: 48px; row-gap: 34px; }
-.welcome-heading h1 { margin-top: 18px; font-size: 49px; line-height: 1.06; font-weight: 500; }
-.welcome-caption { margin: 20px 0 0; color: var(--text-2); font-size: 15px; max-width: 260px; }
-.welcome-intro > p { margin: 0 0 22px; font-size: 19px; line-height: 1.4; letter-spacing: -.02em; }
-.welcome-features { display: grid; gap: 17px; margin: 0; padding: 0; list-style: none; }
-.welcome-features li { display: grid; gap: 3px; }
-.welcome-features b { font-size: 13px; font-weight: 500; }
-.welcome-features span { color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.view[data-view=welcome] { display: block; padding-top: 44px; }
+.welcome-heading h1 { margin-top: 12px; font-size: 30px; line-height: 1.2; font-weight: 600; }
+.welcome-caption { margin: 14px 0 28px; color: var(--text-2); font-size: 14px; max-width: 650px; line-height: 1.65; }
+.install-requirements { display: grid; gap: 10px; margin: 24px 0; padding: 18px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.install-requirements > div { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 16px; font-size: 12px; }
+.install-requirements dt { color: var(--text-2); }
+.install-requirements dd { margin: 0; color: var(--text); }
 .welcome-options { grid-column: 1 / -1; border-top: 1px solid var(--border); }
 .welcome-options .where { margin: 0; padding: 18px 0; border: 0; border-radius: 0; background: transparent; }
 .welcome-options .toggle { justify-content: space-between; margin: 0; padding: 15px 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
@@ -287,10 +286,10 @@ kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; col
   .status { flex-basis: 45%; white-space: normal; font-size: 11px; }
   h1 { font-size: 38px; }
   h2 { font-size: 30px; }
-  .view[data-view=welcome] { grid-template-columns: 1fr; gap: 24px; align-content: start; }
-  .welcome-heading h1 { font-size: 38px; }
-  .welcome-intro > p { display: none; }
-  .welcome-caption { max-width: none; margin-top: 14px; }
+  .view[data-view=welcome] { padding-top: 26px; }
+  .welcome-heading h1 { font-size: 28px; }
+  .welcome-caption { max-width: none; }
+  .install-requirements > div { grid-template-columns: 110px minmax(0,1fr); gap: 10px; }
   .welcome-options .where { gap: 8px; }
   .welcome-options .where .btn { font-size: 11px; }
   .handoff { grid-template-columns: 1fr; }
