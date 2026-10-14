@@ -80,6 +80,10 @@ async def forecast(client: httpx.AsyncClient, lat: float, lon: float) -> dict:
     if icon == "sun" and not cur.get("is_day", 1):
         icon = "moon"
     out = {
+        "forecast_hours": [{"time": t, "temp": round(hourly["temperature_2m"][i]),
+                            "rain": hourly["precipitation_probability"][i] or 0}
+                           for i, t in enumerate(hourly["time"])],
+        "observed_at": cur["time"],
         "temp": round(cur["temperature_2m"]), "feels": round(cur["apparent_temperature"]),
         "humidity": cur["relative_humidity_2m"], "wind": round(cur["wind_speed_10m"]),
         "precip": cur["precipitation"], "label": label, "icon": icon,

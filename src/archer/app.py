@@ -17,9 +17,13 @@ from fastapi.templating import Jinja2Templates
 from archer import __version__, views
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
-from archer.query import PLACE_TYPES
-from archer.searxng import SearXNG
-from archer.sources import USER_AGENT, TTLCache, weather, wiki
+from archer.query import PLACE_TYPES, classify
+from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH
+from archer.sources import USER_AGENT, TTLCache, lyrics, watch, weather, wiki
+from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
+from archer.ai_service import AIService
+from archer.settings_routes import page_context as settings_context, router as settings_router
+from archer.config import DATA_DIR
 
 
 @asynccontextmanager
@@ -31,11 +35,15 @@ async def lifespan(app: FastAPI):
         app.state.searxng = searx_http
         app.state.searx = SearXNG(searx_http)
         app.state.ext = ext
+        app.state.ai = AIService(settings, DATA_DIR)
         yield
+        await app.state.ai.close()
 
 
 app = FastAPI(title="Archer", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+app.include_router(ai_router)
+app.include_router(settings_router)
 
 _PKG = files("archer")
 _STATIC = _PKG / "static"
@@ -43,8 +51,11 @@ _SUGGEST_MIME = "application/x-suggestions+json"
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
 
+# Frames: only the three music players, and only loaded after a click or tab switch.
 _CSP = ("default-src 'self'; img-src * data:; media-src *; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        "script-src 'self'; connect-src 'self'; "
+        "frame-src https://www.youtube-nocookie.com https://open.spotify.com https://embed.music.apple.com; "
+        "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
 
 @app.middleware("http")
@@ -124,6 +135,9 @@ def _asset(name: str) -> str:
 
 
 templates.env.globals["asset"] = _asset
+templates.env.globals["tmdb_enabled"] = lambda: bool(settings.tmdb_api_key)
+templates.env.globals["suggest_min"] = SUGGEST_MIN
+templates.env.globals["suggest_max_length"] = SUGGEST_MAX_LENGTH
 templates.env.filters["ago"] = _ago
 templates.env.filters["currency_flag"] = _currency_flag
 templates.env.filters["hue"] = _hue
@@ -133,49 +147,44 @@ templates.env.filters["qs"] = quote_plus
 
 # ------------------------------------------------------------------- pages
 
-def _page(name: str, **values: str) -> HTMLResponse:
-    html = (_STATIC / name).read_text(encoding="utf-8")
-    for key, value in values.items():
-        html = html.replace("{{" + key + "}}", escape(value))
-    return HTMLResponse(html)
-
-
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "home.html", {})
 
 
 @app.get("/search")
-async def search(request: Request, q: str = Query(""), tab: str = Query("all"), p: int = Query(1, ge=1, le=20)) -> Response:
-    if not q.strip():
+async def search(request: Request, q: str = Query(""), tab: str = Query("all"), p: int = Query(1, ge=1, le=20), full: bool = False) -> Response:
+    if not q.strip() and not full:
         return RedirectResponse("/", status_code=302)
     if any(tok.startswith("!") for tok in q.split()):
         # Bangs: SearXNG's own page handles !engine and !!external redirects.
         return RedirectResponse(settings.results_url.format(q=quote_plus(q)), status_code=302)
     tab = tab if tab in views.TABS else "all"
-    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p)
+    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p) if q.strip() else views.View("", "all", 1, classify(""))
     if view.response and view.response.redirect:
         return RedirectResponse(view.response.redirect, status_code=302)
-    return templates.TemplateResponse(request, "search.html", {
+    ai = ai_service(request)
+    session = ai.session(request.cookies.get("archer_session"))
+    snapshot = ai.snapshot(session, view) if tab == "all" and p == 1 else None
+    response = templates.TemplateResponse(request, "search.html", {
         "v": view, "searxng_page": settings.results_url.format(q=quote_plus(q)),
+        "ai": ai.info(session, snapshot),
+        "ai_view": full,
     })
+    ai_cookie(response, session)
+    return response
+
+
+@app.get("/ai")
+async def ai_page(request: Request, q: str = Query("", max_length=1000)):
+    # This renders a workspace/evidence only. Starting research still requires a user POST.
+    return await search(request, q, "all", 1, full=True)
 
 
 @app.get("/suggest")
 async def suggest(request: Request, q: str = Query("")) -> JSONResponse:
-    # OpenSearch suggestions format: [query, [completions], ...]. SearXNG's
-    # autocompleter already speaks it, so a valid reply is passed through as-is.
-    result: list = [q, []]
-    if q.strip():
-        try:
-            resp = await request.app.state.searxng.get("/autocompleter", params={"q": q})
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, list) and len(data) >= 2 and isinstance(data[1], list):
-                result = data
-        except (httpx.HTTPError, ValueError):
-            pass  # SearXNG down or slow: no suggestions beats a broken address bar
-    return JSONResponse(result, media_type=_SUGGEST_MIME)
+    result = await request.app.state.searx.autocomplete(q, timeout=settings.suggest_timeout)
+    return JSONResponse(result, media_type=_SUGGEST_MIME, headers={"Cache-Control": "no-store"})
 
 
 # ------------------------------------------------- lazy modules (JSON, GET-safe)
@@ -230,12 +239,35 @@ async def api_places(request: Request, cat: str, area: str = Query("", max_lengt
         return JSONResponse({"error": "OpenStreetMap's servers didn't answer in time. Try again in a minute."})
 
 
+@app.get("/api/watch")
+async def api_watch(request: Request, media: str, tmdb: str) -> JSONResponse:
+    """Country-specific streaming providers (TMDB / JustWatch). Needs TMDB_API_KEY."""
+    if media not in ("movie", "tv") or not re.fullmatch(r"\d{1,9}", tmdb) or not settings.tmdb_api_key:
+        return JSONResponse({"error": "unavailable"}, status_code=404)
+    try:
+        data = await watch.tmdb_providers(request.app.state.ext, settings.tmdb_api_key, media, tmdb,
+                                          settings.home_country)
+    except (httpx.HTTPError, ValueError, KeyError):
+        return JSONResponse({"error": "TMDB didn't respond"})
+    return JSONResponse(data)
+
+
 @app.get("/api/works")
 async def api_works(request: Request, qid: str, role: str) -> JSONResponse:
     try:
         return JSONResponse(await wiki.works(request.app.state.ext, qid, role))
     except (httpx.HTTPError, ValueError, KeyError):
         return JSONResponse([])
+
+
+@app.get("/api/lyrics")
+async def api_lyrics(request: Request, title: str = Query("", max_length=120),
+                     artist: str = Query("", max_length=120)) -> JSONResponse:
+    """Lyrics matched by song title and optional artist, loaded only for music panels."""
+    try:
+        return JSONResponse(await lyrics.lookup(request.app.state.ext, title, artist))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({})
 
 
 _FAVICON_HOST = re.compile(r"^(?=.{1,253}$)[a-z0-9-]+(?:\.[a-z0-9-]+)+$")
@@ -280,14 +312,19 @@ async def api_weather(request: Request, lat: float, lon: float) -> JSONResponse:
 
 # ------------------------------------------------------------------- setup
 
-@app.get("/setup", response_class=HTMLResponse)
-def setup() -> HTMLResponse:
-    return _page(
-        "setup.html",
-        search_url=f"{settings.base_url}/search?q=%s",
-        suggest_url=f"{settings.base_url}/suggest?q=%s",
-        fallback_search_url=f"http://127.0.0.1:{settings.port}/search?q=%s",
-    )
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    session, context = settings_context(request)
+    response = templates.TemplateResponse(request, "settings.html", context)
+    response.headers["Cache-Control"] = "no-store"
+    ai_cookie(response, session)
+    return response
+
+
+@app.get("/setup")
+def setup() -> RedirectResponse:
+    # Browser setup now lives in the Settings app.
+    return RedirectResponse("/settings#browser", status_code=307)
 
 
 @app.get("/opensearch.xml")

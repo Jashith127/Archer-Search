@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ai-fixture",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "python",
+        "tests/ai_browser_server.py"
+      ],
+      "port": 4749
+    },
+    {
+      "name": "archer-dev",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "uvicorn",
+        "archer.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4748"
+      ],
+      "port": 4748
+    }
+  ]
+}

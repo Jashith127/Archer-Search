@@ -1,0 +1,139 @@
+{% from "pixel_mark.html" import pixel_mark %}
+{% from "macros.html" import site_badge %}
+<section class="ai-search" id="ai-search" data-snapshot="{{ ai.snapshot }}" data-csrf="{{ ai.csrf }}"
+  data-configured="{{ 'true' if ai.configured else 'false' }}" data-consent="{{ 'true' if ai.consent else 'false' }}"
+  data-default="{{ ai.default_mode }}" data-query="{{ v.q }}" data-fullview="{{ 'true' if ai_view else 'false' }}"
+  data-eligible="{{ 'true' if ai.eligible else 'false' }}" aria-label="Archer AI">
+  <aside class="ai-nav-rail" aria-label="AI navigation">
+    <a href="/" aria-label="Archer home">{{ pixel_mark(30) }}</a>
+    <a href="/ai" aria-label="New AI conversation" title="New conversation"><svg aria-hidden="true"><use href="#u-pen"/></svg></a>
+    <button type="button" data-ai-back aria-label="Back to web results" title="Web results"><svg aria-hidden="true"><use href="#u-list"/></svg></button>
+    <button type="button" data-ai-rail-settings aria-label="AI settings" title="AI settings"><svg aria-hidden="true"><use href="#u-shield"/></svg></button>
+  </aside>
+  <header class="ai-full-top">
+    <nav class="ai-full-tabs" aria-label="Views">
+      <span class="ai-full-tab is-active" aria-current="page"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>AI Mode</span>
+      <button type="button" class="ai-full-tab" data-ai-web><svg aria-hidden="true"><use href="#i-globe"/></svg>All results</button>
+    </nav>
+    <button type="button" class="ai-full-sources" data-ai-toggle-sources aria-label="Show sources"><svg aria-hidden="true"><use href="#u-layers"/></svg><span data-ai-top-count>{{ ai.sources|length }}</span></button>
+  </header>
+
+  {# Classic: a quiet, contextual way in. Shown only when a question would benefit, or an answer is waiting. #}
+  <div class="ai-prompt" data-ai-prompt hidden>
+    {{ pixel_mark(18, 'ai-prompt-mark') }}
+    <span class="ai-prompt-text" data-ai-prompt-text>Archer can answer this from these results.</span>
+    <span class="ai-prompt-actions">
+      <button type="button" class="ai-link" data-ai-ask>Quick answer</button>
+      <button type="button" class="ai-link" data-ai-research>AI Mode <span aria-hidden="true">↗</span></button>
+    </span>
+  </div>
+
+  <div class="ai-settings" data-ai-settings-panel role="dialog" aria-labelledby="ai-settings-title" hidden>
+    <div class="ai-settings-head">
+      <p class="hero-badge"><span class="hero-badge-icon"><svg><use href="#u-shield"/></svg></span>AI settings</p>
+      <button type="button" class="ai-icon-button" data-ai-settings-close aria-label="Close AI settings"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    {% if not ai.configured %}
+    <h2 id="ai-settings-title">Connect an AI provider</h2>
+    <p>Paste a DeepSeek API key in Settings. It stays in <code>.env</code> on this computer and works right away, without a restart.</p>
+    <p class="ai-fine">Search, cards and tools keep working without it.</p>
+    <p><a class="ai-button ai-button--primary" href="/settings#ai">Add a key in Settings</a></p>
+    {% else %}
+    <h2 id="ai-settings-title" data-ai-settings-title>AI answers, on your terms</h2>
+    <p>When you ask, Archer sends your question, the public sources it found, relevant card data and earlier turns to {{ ai.model|replace('-', ' ')|title }}. Your home location is shared only for local tools.</p>
+    <label class="ai-check"><input type="checkbox" data-ai-consent{% if ai.consent %} checked{% endif %}><span><strong>Use cloud AI</strong><small>Nothing is sent until you choose Balanced, AI Mode or a follow-up.</small></span></label>
+    <label class="ai-check"><input type="checkbox" data-ai-balanced{% if ai.default_mode == 'balanced' %} checked{% endif %}><span><strong>Answer questions automatically</strong><small>Starts Balanced on searches that read like questions. Choosing Classic turns this off.</small></span></label>
+    <div class="ai-settings-actions">
+      <button class="ai-button ai-button--primary" type="button" data-ai-save>Save</button>
+      <button class="ai-button ai-button--quiet" type="button" data-ai-settings-cancel>Not now</button>
+      <p class="ai-fine" data-ai-settings-status role="status"></p>
+    </div>
+    <p class="ai-fine">Conversations live in memory for 30 minutes. Only spending totals are saved, for your limits. <a href="/settings#ai">All AI settings</a></p>
+    {% endif %}
+  </div>
+
+  <div class="ai-workspace" data-ai-workspace hidden>
+    <div class="ai-reading">
+      <div class="ai-main">
+      <div class="ai-thread" data-ai-thread>
+        <div class="ai-welcome" data-ai-welcome>
+          {{ pixel_mark(40, 'ai-welcome-mark') }}
+          <h2>{% if v.q %}{{ v.q }}{% else %}What do you want to understand?{% endif %}</h2>
+          <p>Archer searches, reads the sources and uses its own tools, then answers with citations you can check.</p>
+          <button type="button" class="ai-button ai-button--primary" data-ai-begin{% if not v.q %} hidden{% endif %}>Research this <span aria-hidden="true">↗</span></button>
+        </div>
+      </div>
+      <form class="ai-followup" data-ai-followup hidden>
+        <label class="sr-only" for="ai-question">Ask a follow-up</label>
+        <textarea id="ai-question" name="question" placeholder="Ask a follow-up…" rows="1" maxlength="600" autocomplete="off" required></textarea>
+        <div class="ai-composer-toolbar">
+          <div class="ai-composer-context">
+            <button type="button" class="ai-composer-sources" data-ai-composer-sources aria-label="Inspect or select sources" title="Sources"><svg aria-hidden="true"><use href="#u-layers"/></svg></button>
+            <label class="sr-only" for="ai-depth">Answer depth</label>
+            <select id="ai-depth" data-ai-depth title="Answer depth"><option value="research">Research</option><option value="compact">Quick answer</option></select>
+          </div>
+          <div class="ai-composer-controls">
+            <span class="ai-composer-model" title="Configured AI model">{{ ai.model|replace('-', ' ') }}</span>
+            <button type="submit" class="ai-composer-send" aria-label="Send follow-up" disabled><svg class="ai-send-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ai-stop-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg></button>
+          </div>
+        </div>
+      </form>
+      </div>
+      <details class="ai-sources" data-ai-sources>
+        <summary><span class="ai-sources-title">Sources</span><span class="ai-count" data-ai-source-count>{{ ai.sources|length }}</span><span class="ai-sources-peek" data-ai-sources-peek aria-hidden="true">{% for source in ai.sources if source.url %}{% if loop.index <= 4 %}{{ site_badge(source.url.split('/')[2]) }}{% endif %}{% endfor %}</span></summary>
+        <div class="ai-sources-tools">
+          <button type="button" class="ai-link" data-ai-select aria-pressed="false">Select to compare</button>
+          <button type="button" class="ai-icon-button ai-sources-close" data-ai-sources-close aria-label="Close sources"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="ai-source-list" data-ai-source-list>
+          {% for source in ai.sources %}
+          <div class="ai-source" data-source-id="{{ source.id }}" data-source-url="{{ source.url }}" data-source-kind="{{ source.kind }}">
+            <label class="ai-source-pick"><input type="checkbox" value="{{ source.id }}" aria-label="Select {{ source.title }} for comparison"></label>
+            <div class="ai-source-body">
+              <span class="ai-source-site">{% if source.url %}{{ site_badge(source.url.split('/')[2]) }}{{ source.url.split('/')[2]|replace('www.', '') }}{% else %}<span class="badge ai-badge-archer">{{ pixel_mark(14) }}</span>Archer {{ source.kind }}{% endif %}<span class="ai-source-id">{{ source.id }}</span></span>
+              {% if source.url %}<a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>{% else %}<strong>{{ source.title }}</strong>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="ai-compare-bar" data-ai-compare-bar hidden>
+          <span data-ai-compare-count>Pick two to four</span>
+          <button class="ai-button ai-button--primary" type="button" data-ai-compare disabled>Compare</button>
+        </div>
+        <div class="ai-notices" data-ai-notices></div>
+      </details>
+    </div>
+  </div>
+
+  {# One conversation turn; archer.js clones it for every question. #}
+  <template data-ai-turn-template>
+    <article class="ai-turn" aria-busy="false">
+      <p class="ai-query-bubble" data-turn-query></p>
+      <header class="ai-turn-head">
+        <p class="hero-badge ai-badge"><span class="hero-badge-icon">{{ pixel_mark(14, 'ai-mark') }}</span><span data-turn-label>AI answer</span><span class="hero-badge-extra" data-turn-status role="status" aria-live="polite">Gathering the evidence</span></p>
+        <span class="ai-turn-head-actions">
+          <button type="button" class="ai-button ai-button--quiet ai-button--small" data-turn-stop>Stop</button>
+          <button type="button" class="ai-icon-button ai-size-toggle" data-turn-size aria-expanded="true" aria-label="Make AI answer smaller" title="Smaller answer"><svg aria-hidden="true"><use href="#u-chevron"/></svg></button>
+          <button type="button" class="ai-icon-button" data-turn-settings aria-label="AI settings" title="AI settings"><svg aria-hidden="true"><use href="#u-shield"/></svg></button>
+          <button type="button" class="ai-icon-button" data-turn-close aria-label="Hide AI answer" title="Hide · switch to Classic"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+        </span>
+      </header>
+      <div class="ai-visuals" data-turn-visuals hidden></div>
+      <details class="ai-steps" data-turn-steps hidden><summary data-turn-steps-summary>Working</summary><ol data-turn-step-list></ol></details>
+      <div class="ai-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="ai-error" data-turn-error role="alert" hidden><p data-turn-error-text></p><button type="button" class="ai-button ai-button--small" data-turn-retry-error>Try again</button></div>
+      <div class="ai-answer" data-turn-answer><div class="ai-tool-cards" data-turn-cards></div></div>
+      <button type="button" class="ai-more" data-turn-more>Show full answer</button>
+      <footer class="ai-turn-foot" hidden data-turn-foot>
+        <div class="ai-turn-actions">
+          <button type="button" class="ai-button" data-turn-expand>Go deeper in AI Mode <span aria-hidden="true">↗</span></button>
+          <button type="button" class="ai-icon-button" data-turn-copy aria-label="Copy answer" title="Copy answer"><svg aria-hidden="true"><use href="#i-copy"/></svg></button>
+          <button type="button" class="ai-icon-button" data-turn-retry aria-label="Regenerate answer" title="Regenerate (new AI call)"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <p class="ai-meta" data-turn-meta></p>
+        </div>
+        <div class="ai-followups" data-turn-followups></div>
+      </footer>
+    </article>
+  </template>
+  <noscript><p class="ai-fine">AI answers need JavaScript. The cards and search results work as usual.</p></noscript>
+</section>

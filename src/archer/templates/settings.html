@@ -1,0 +1,210 @@
+{% from "pixel_mark.html" import pixel_mark %}
+{% macro field(spec) -%}
+{% set item = items[spec.name] %}
+<div class="set-row" data-field="{{ spec.name }}" data-kind="{{ spec.kind }}"{% if item.locked %} data-locked{% endif %}>
+  <div class="set-label">
+    <label for="f-{{ spec.name }}">{{ spec.label }}{% if spec.restart %}<span class="set-tag" title="Takes effect after Archer restarts">Restart</span>{% endif %}</label>
+    {% if spec.help %}<p>{{ spec.help }}</p>{% endif %}
+    {% if item.locked %}<p class="set-note">Set by a system environment variable, so it's read-only here.</p>{% endif %}
+    <p class="set-error" data-error role="alert" hidden></p>
+  </div>
+  <div class="set-control">
+    {% if spec.kind == "select" %}
+    <span class="set-select"><select id="f-{{ spec.name }}" data-input{% if item.locked %} disabled{% endif %}>
+      {% set known = spec.options|map(attribute="value")|list %}
+      {% if item.value not in known %}<option value="{{ item.value }}" selected>{{ item.value }}</option>{% endif %}
+      {% for o in spec.options %}<option value="{{ o.value }}"{% if o.value == item.value %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+    </select><svg aria-hidden="true"><use href="#u-chevron"/></svg></span>
+    {% elif spec.kind == "secret" %}
+    <div class="set-secret" data-secret data-set="{{ 'true' if item.set else 'false' }}">
+      <span class="set-secret-state"><span class="set-dot" aria-hidden="true"></span><span data-secret-hint>{{ item.hint if item.set else "Not set" }}</span></span>
+      <span class="set-secret-entry" hidden>
+        <input type="password" id="f-{{ spec.name }}" data-input autocomplete="off" spellcheck="false" placeholder="{{ spec.placeholder }}">
+        <button type="button" class="set-icon" data-reveal aria-label="Show key" title="Show"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+      </span>
+      {% if not item.locked %}
+      <span class="set-secret-actions">
+        <button type="button" class="set-button" data-secret-edit>{{ "Replace" if item.set else "Add key" }}</button>
+        <button type="button" class="set-button set-button--quiet" data-secret-remove{% if not item.set %} hidden{% endif %}>Remove</button>
+        {% if spec.test %}<button type="button" class="set-button set-test" data-test="{{ spec.test }}">Test</button>{% endif %}
+      </span>
+      {% endif %}
+    </div>
+    {% else %}
+    <span class="set-input{% if spec.unit %} has-unit{% endif %}">
+      <input id="f-{{ spec.name }}" data-input type="{{ 'number' if spec.kind == 'number' else 'text' }}" value="{{ item.value }}" placeholder="{{ spec.placeholder }}"
+        {% if spec.step %}step="{{ spec.step }}" {% endif %}{% if spec.minimum %}min="{{ spec.minimum }}" {% endif %}{% if spec.maximum %}max="{{ spec.maximum }}" {% endif %}
+        {% if spec.datalist %}list="list-{{ spec.name }}" {% endif %}{% if spec.kind == 'url' %}inputmode="url" {% endif %}autocomplete="off" spellcheck="false"{% if item.locked %} disabled{% endif %}>
+      {% if spec.unit %}<span class="set-unit">{{ spec.unit }}</span>{% endif %}
+    </span>
+    {% if spec.datalist %}<datalist id="list-{{ spec.name }}">{% for v in spec.datalist %}<option value="{{ v }}">{% endfor %}</datalist>{% endif %}
+    {% endif %}
+    {% if spec.test and spec.kind != "secret" %}<button type="button" class="set-button set-test" data-test="{{ spec.test }}">Test</button>{% endif %}
+  </div>
+  {% if spec.test %}<p class="set-result" data-test-result role="status"></p>{% endif %}
+</div>
+{%- endmacro %}
+{% macro group(key, heading=none) -%}
+{% set specs = intro[key][2] %}
+<div class="set-group">
+  {% if heading %}<h3 class="set-group-title">{{ heading }}</h3>{% endif %}
+  {% for spec in specs if not spec.advanced %}{{ field(spec) }}{% endfor %}
+  {% if specs|selectattr("advanced")|list %}
+  <details class="set-advanced"><summary>Advanced</summary>
+    {% for spec in specs if spec.advanced %}{{ field(spec) }}{% endfor %}
+  </details>
+  {% endif %}
+</div>
+{%- endmacro %}
+{% macro switch(id, label, help, attrs="", checked=false) -%}
+<div class="set-row set-row--switch">
+  <div class="set-label"><label for="{{ id }}">{{ label }}</label>{% if help %}<p>{{ help }}</p>{% endif %}<p class="set-error" data-error role="alert" hidden></p></div>
+  <div class="set-control"><input type="checkbox" role="switch" class="set-switch" id="{{ id }}" {{ attrs|safe }}{% if checked %} checked{% endif %}></div>
+</div>
+{%- endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Archer Settings</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{{ asset('archer.css') }}">
+<link rel="stylesheet" href="{{ asset('settings.css') }}">
+<script src="{{ asset('settings.js') }}" defer></script>
+</head>
+<body class="settings" data-csrf="{{ csrf }}">
+{% include "icons.html" %}
+{% include "ui_icons.html" %}
+<script type="application/json" id="settings-state">{{ state|tojson }}</script>
+<div class="set-app">
+  <aside class="set-sidebar">
+    <a class="set-brand" href="/" title="Back to Archer">{{ pixel_mark(28) }}<span>Archer</span></a>
+    <p class="set-sidebar-title">Settings</p>
+    <nav class="set-nav" aria-label="Settings sections">
+      {% for key, label, ic in [("general", "General", "#u-pin"), ("search", "Search", "#i-search"), ("ai", "AI", "#u-sparkle"), ("connections", "Connections", "#u-link"), ("browser", "Browser", "#i-globe"), ("system", "System", "#u-cube")] %}
+      <a href="#{{ key }}" data-nav="{{ key }}"><svg aria-hidden="true"><use href="{{ ic }}"/></svg>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="set-sidebar-foot">
+      <p class="set-status"><span class="set-dot is-ok" aria-hidden="true"></span><span>Running</span><span class="set-status-url" data-running-url>{{ state.system.running_url|replace('http://', '') }}</span></p>
+      <a class="set-back" href="/">← Back to search</a>
+    </div>
+  </aside>
+
+  <main class="set-main">
+    <div class="set-banner" data-restart-banner{% if not state.system.restart_pending %} hidden{% endif %} role="status">
+      <svg aria-hidden="true"><use href="#u-info"/></svg>
+      <p><strong>Restart to finish.</strong> Archer will move to <span data-saved-url>{{ state.system.saved_url|replace('http://', '') }}</span>.</p>
+      <button type="button" class="set-button set-button--primary" data-restart>Restart now</button>
+    </div>
+
+    <section class="set-section" id="general" aria-labelledby="h-general">
+      <header><h2 id="h-general">General</h2><p>{{ intro.general[1] }}</p></header>
+      {{ group("general") }}
+    </section>
+
+    <section class="set-section" id="search" aria-labelledby="h-search">
+      <header><h2 id="h-search">Search</h2><p>{{ intro.search[1] }}</p></header>
+      {{ group("search") }}
+    </section>
+
+    <section class="set-section" id="ai" aria-labelledby="h-ai">
+      <header><h2 id="h-ai">AI</h2><p>{{ intro.ai[1] }}</p></header>
+      <div class="set-group">
+        <h3 class="set-group-title">Answers</h3>
+        {{ switch("ai-consent", "Use cloud AI", "When you ask, Archer sends your question, the sources it found and earlier turns to your provider. Search works fully without it.", 'data-ai-consent', state.ai.consent) }}
+        <div class="set-row" data-ai-mode-row>
+          <div class="set-label"><span class="set-label-text" id="mode-label">Default level</span><p>Balanced answers searches that read like questions, automatically. AI Mode always starts with a click.</p></div>
+          <div class="set-control">
+            <div class="set-segment" role="radiogroup" aria-labelledby="mode-label">
+              <label><input type="radio" name="ai-mode" value="classic"{% if state.ai.mode == 'classic' %} checked{% endif %}><span><svg aria-hidden="true"><use href="#u-list"/></svg>Classic</span></label>
+              <label><input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}><span><svg aria-hidden="true"><use href="#u-scale"/></svg>Balanced</span></label>
+            </div>
+          </div>
+        </div>
+        {{ switch("ai-small", "Start Balanced answers small", "Shows a few lines and images with a “Show full answer” button. Saved in this browser.", 'data-local="archer-ai-small" data-local-default="1"') }}
+      </div>
+      {{ group("ai", "Provider") }}
+      <div class="set-group">
+        <h3 class="set-group-title">{{ intro.limits[0] }}</h3>
+        <div class="set-usage" data-usage>
+          <div class="set-meter"><span class="set-meter-label">Spent today</span><strong data-usage-usd>—</strong><span class="set-bar"><span data-usage-usd-bar></span></span></div>
+          <div class="set-meter"><span class="set-meter-label">Tokens today</span><strong data-usage-tokens>—</strong><span class="set-bar"><span data-usage-tokens-bar></span></span></div>
+          <p class="set-usage-note" data-usage-note></p>
+        </div>
+        {% for spec in intro.limits[2] if not spec.advanced %}{{ field(spec) }}{% endfor %}
+        <details class="set-advanced"><summary>Pricing</summary>
+          {% for spec in intro.limits[2] if spec.advanced %}{{ field(spec) }}{% endfor %}
+        </details>
+      </div>
+    </section>
+
+    <section class="set-section" id="connections" aria-labelledby="h-connections">
+      <header><h2 id="h-connections">Connections</h2><p>{{ intro.connections[1] }}</p></header>
+      {{ group("connections") }}
+    </section>
+
+    <section class="set-section" id="browser" aria-labelledby="h-browser">
+      <header><h2 id="h-browser">Browser</h2><p>Make Archer the default search engine in Helium, or any Chromium browser.</p></header>
+      <div class="set-group">
+        <ol class="set-steps">
+          <li>Open <b>Settings → Search engine → Manage search engines and site search</b>.</li>
+          <li>Next to <b>Site search</b>, click <b>Add</b> and fill in the fields below.</li>
+          <li>Open the <b>⋮</b> menu on the new entry and choose <b>Make default</b>.</li>
+        </ol>
+        {% for label, value in [("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL", suggest_url)] %}
+        <div class="set-row set-row--copy">
+          <div class="set-label"><span class="set-label-text">{{ label }}</span><code>{{ value }}</code></div>
+          <div class="set-control"><button type="button" class="set-button" data-copy="{{ value }}">Copy</button></div>
+        </div>
+        {% endfor %}
+        <p class="set-foot">If searches don't reach Archer, use <code>{{ fallback_search_url }}</code> instead. Suggestions need autocomplete turned on in SearXNG's settings.</p>
+      </div>
+    </section>
+
+    <section class="set-section" id="system" aria-labelledby="h-system">
+      <header><h2 id="h-system">System</h2><p>{{ intro.system[1] }}</p></header>
+      <div class="set-group">
+        {% if state.autostart.available %}
+        {{ switch("autostart", "Start with Windows", "Archer opens in the tray when you sign in, so searches always work.", 'data-autostart', state.autostart.enabled) }}
+        {% endif %}
+        {% for spec in intro.system[2] %}{{ field(spec) }}{% endfor %}
+        <div class="set-row">
+          <div class="set-label"><span class="set-label-text">Restart Archer</span><p>Reloads everything, including settings that can't change while running.</p></div>
+          <div class="set-control"><button type="button" class="set-button" data-restart{% if not state.system.restart_available %} disabled title="Restart is available when Archer runs from its tray icon"{% endif %}>Restart</button></div>
+        </div>
+      </div>
+      <div class="set-group">
+        <h3 class="set-group-title">Data</h3>
+        <div class="set-row">
+          <div class="set-label"><span class="set-label-text">Archer folder</span><code>{{ state.system.folder }}</code><p>Holds <code>.env</code>, where these settings and keys are saved.</p></div>
+          <div class="set-control"><button type="button" class="set-button" data-open="folder">Open</button></div>
+        </div>
+        <div class="set-row">
+          <div class="set-label"><span class="set-label-text">Data folder</span><code>{{ state.system.data_dir }}</code><p>The log, AI preferences and daily spending totals. No search history is stored.</p></div>
+          <div class="set-control"><button type="button" class="set-button" data-open="data">Open</button></div>
+        </div>
+        <div class="set-row">
+          <div class="set-label"><span class="set-label-text">AI conversations</span><p>Kept in memory for 30 minutes. <span data-conversations>{{ state.system.conversations }}</span> right now.</p></div>
+          <div class="set-control"><button type="button" class="set-button set-button--danger" data-clear>Clear</button></div>
+        </div>
+      </div>
+      <p class="set-about">{{ pixel_mark(16) }} Archer {{ state.system.version }} · runs only on this computer</p>
+    </section>
+  </main>
+</div>
+
+<div class="set-savebar" data-savebar hidden role="region" aria-label="Unsaved changes">
+  <p><span data-dirty-count>1 change</span> not saved</p>
+  <button type="button" class="set-button set-button--quiet" data-discard>Discard</button>
+  <button type="button" class="set-button set-button--primary" data-save>Save changes <kbd>Ctrl S</kbd></button>
+</div>
+<div class="set-toast" data-toast role="status" aria-live="polite"></div>
+<div class="set-overlay" data-overlay hidden>
+  <div>{{ pixel_mark(44, 'set-overlay-mark') }}<p data-overlay-text>Restarting Archer…</p></div>
+</div>
+</body>
+</html>

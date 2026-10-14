@@ -3,11 +3,13 @@
 import argparse
 import json
 import logging
+import subprocess
 import sys
 import threading
 import time
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 import uvicorn
 
@@ -30,39 +32,57 @@ def _wait_started(server: uvicorn.Server, thread: threading.Thread) -> bool:
     return False
 
 
-def _run_tray(server: uvicorn.Server, setup_url: str) -> None:
+def _relaunch_command() -> list[str]:
+    scripts = Path(sys.executable).parent
+    launcher = scripts / "archerw.exe"
+    return [str(launcher)] if launcher.exists() else [sys.executable, "-m", "archer"]
+
+
+def _run_tray(server: uvicorn.Server, settings_url: str, restart: threading.Event) -> None:
     import pystray
 
     from archer import autostart
+    from archer.app import app
     from archer.icon import make_icon
+    from archer.window import open_app
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
 
-    def quit_app(icon, item):
+    def stop(icon):
         server.should_exit = True
         icon.stop()
 
+    def restart_app(icon=None, item=None):
+        restart.set()
+        stop(tray)
+
     menu = pystray.Menu(
         pystray.MenuItem("Open Archer", lambda: webbrowser.open(settings.base_url + "/"), default=True),
-        pystray.MenuItem("Helium setup", lambda: webbrowser.open(setup_url)),
+        pystray.MenuItem("Settings", lambda: open_app(settings_url)),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Start with Windows", toggle_autostart, checked=lambda item: autostart.enabled()),
-        pystray.MenuItem("Quit", quit_app),
+        pystray.MenuItem("Restart", restart_app),
+        pystray.MenuItem("Quit", lambda icon, item: stop(icon)),
     )
-    pystray.Icon("archer", make_icon(64), f"Archer · {settings.base_url}", menu).run()
+    tray = pystray.Icon("archer", make_icon(64), f"Archer · {settings.base_url}", menu)
+    # The Settings app can restart Archer too, to apply a new port or address.
+    app.state.restart = restart_app
+    tray.run()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="archer")
-    parser.add_argument("--open", action="store_true", help="open the setup page in the default browser")
+    parser.add_argument("--open", action="store_true", help="open browser setup in the Settings app")
     parser.add_argument("--no-tray", action="store_true", help="run in the foreground without a tray icon")
     args = parser.parse_args()
 
-    setup_url = f"{settings.base_url}/setup"
+    from archer.window import open_app
+
+    settings_url = f"{settings.base_url}/settings"
+    setup_url = settings_url + "#browser"
     if _already_running():
-        if args.open:
-            webbrowser.open(setup_url)
+        open_app(setup_url if args.open else settings_url)
         return
 
     DATA_DIR.mkdir(exist_ok=True)
@@ -71,14 +91,15 @@ def main() -> None:
         sys.stdout = sys.stderr = open(DATA_DIR / "archer.log", "a", buffering=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(levelname)s:    %(name)s: %(message)s")
 
-    server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port))
+    # Search URLs contain private queries; do not write them into the tray app's log.
+    server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port, access_log=False))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     if not _wait_started(server, thread):
         print(f"Archer could not start on port {settings.port}; is another program using it?", file=sys.stderr)
         sys.exit(1)
     if args.open:
-        webbrowser.open(setup_url)
+        open_app(setup_url)
 
     if args.no_tray:
         try:
@@ -87,7 +108,13 @@ def main() -> None:
         except KeyboardInterrupt:
             server.should_exit = True
     else:
-        _run_tray(server, setup_url)
+        restart = threading.Event()
+        _run_tray(server, settings_url, restart)
+        thread.join(timeout=5)
+        if restart.is_set():
+            # A fresh process re-reads .env, including a new port or address.
+            subprocess.Popen(_relaunch_command(), close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+            return
     thread.join(timeout=5)
 
 

@@ -1,0 +1,33 @@
+{# Where to watch, for the user's country. Live (TMDB/JustWatch) when TMDB_API_KEY is set;
+   otherwise Wikidata's streaming IDs, which name a service but can't confirm your country. #}
+{% set w = e.watch %}
+{% set live = tmdb_enabled() and w.tmdb %}
+<section class="watch"{% if live %} data-watch-media="{{ w.media }}" data-watch-tmdb="{{ w.tmdb }}"{% endif %} aria-label="Where to watch">
+  <div class="watch-head">
+    <p class="about-label"><svg><use href="#u-tv"/></svg>Where to watch</p>
+    <span class="watch-country">{% if w.flag %}<img src="{{ w.flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ w.country_name }}</span>
+  </div>
+
+  {% if live %}
+  <div class="watch-groups" data-watch-groups>
+    <div class="watch-group skeleton"></div><div class="watch-group skeleton"></div>
+  </div>
+  {% endif %}
+
+  <div class="watch-fallback"{% if live %} data-watch-fallback hidden{% endif %}>
+    {% if w.services %}
+    <p class="watch-note">Found in the title's listings. Check current availability in {{ w.country_name }}.</p>
+    <div class="watch-services">
+      {% for s in w.services %}<a class="watch-service" href="{{ s.url }}"><span class="watch-service-icon"><svg><use href="#u-tv"/></svg></span><span><strong>{{ s.name }}</strong><small>Open service</small></span><svg class="tab-ext"><use href="#i-ext"/></svg></a>{% endfor %}
+    </div>
+    {% else %}
+    <p class="watch-note">No streaming listings on Wikidata for this title.</p>
+    {% endif %}
+  </div>
+
+  <a class="watch-more" href="{{ w.justwatch }}">Explore all viewing options <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+  <p class="watch-credit">
+    {% if live %}Data by JustWatch via TMDB · this product uses the TMDB API but is not endorsed or certified by TMDB
+    {% else %}Add a free TMDB API key (<code>TMDB_API_KEY</code> in <code>.env</code>) for live, country-specific availability{% endif %}
+  </p>
+</section>

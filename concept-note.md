@@ -1,9 +1,42 @@
 # Concept note: Archer, a personal AI search engine
 
 ## Summary
-Archer is a self-hosted search engine you set as Helium's default. It works like a normal search engine with useful cards. AI is added only as much as you've chosen in settings, and you can switch to a fully agentic mode with one click. A local GLiNER2 model decides how each query is handled, and DeepSeek writes the AI answers.
+Archer is a self-hosted search engine you set as Helium's default. It works like a normal search engine with useful cards. AI is added only as much as you've chosen in settings, and you can switch to bounded tool-driven research with one click. Conservative local rules decide when an automatic compact answer is useful; DeepSeek writes cited answers and calls Archer's tools. GLiNER2 remains an optional routing experiment.
 
 Archer runs as a small Windows tray app that serves the engine on `http://archer.localhost:4747`. You fill in Helium's "Add search engine" dialog once, using `/search?q=%s` and `/suggest?q=%s`.
+
+### Implementation status · 14 October 2026
+
+AI search is implemented in the workspace. See [AI search design](ai-search-design.md) for
+the refined architecture and [README](README.md#ai-search) for setup and limits. Classic
+remains the initial default. Balanced is opt-in; research is always explicit. Generation
+starts only through same-origin, CSRF-protected POSTs, after the ordinary results render.
+
+AI mode has native tools for web search, public-page reading, Wikipedia/Wikidata entities,
+image/video retrieval, weather, OSM places, regional watch providers, deterministic calculations and loan payments.
+It can request structured forecast/place/entity/provider/calculation UI, compare sources
+in cited tables, and continue with follow-ups. Research is bounded by time, searches,
+pages, tool calls, tokens and optional configured dollar caps. Source limitations remain
+visible; missing evidence does not become an invented result. An editable multiline
+composer uses the app's dark surfaces and a compact source/model/depth toolbar.
+
+AI mode now opens a full-page reading workspace with a source sidebar and pinned composer.
+Follow-up turns remain visible, and cached session restores make no new model calls. Ordinary
+explanations use one model call; research needing tools defaults to one lean planning round
+plus an answer. Research has a 5,000-token answer ceiling and a 75-second run deadline;
+it is prompted for developed, useful sections rather than a summary. Media is retrieved from
+Archer's existing image/video search instead of guessed URLs. Gzip/deflate pages are read with
+strict compressed/decompressed limits. Source failures appear in collapsed notes. Built-in
+Flash pricing ceilings, reported token usage and model-call counts make spending visible.
+
+Archer's existing rounded-square matrix is also the research activity language: cells
+gather while finding evidence, scan while reading, soften while writing and settle when
+done. Text status accompanies the animation, and reduced motion disables it.
+
+The detailed GLiNER2 thresholds, automatic navigation, inferred correction learning and
+historical price/latency estimates below are original planning material, not implemented
+behavior or measured guarantees. The refined design uses explicit feedback before any
+future classifier training. Page reading reuses evidence; model computation still takes time.
 
 ## Problem
 - Google is cluttered with ads and SEO spam. Its useful features (knowledge panels, where-to-watch, instant answers) are hard to get anywhere else.
@@ -17,8 +50,8 @@ Archer runs as a small Windows tray app that serves the engine on `http://archer
 | Mode | What you see | AI cost per query |
 |---|---|---|
 | **Classic** *(no AI)* | Links, cards, instant answers. No LLM call at all. | $0 |
-| **Balanced** | Links and cards. On question-type queries you also get a **compact AI summary** (2–3 sentences with citations) above the results. Click **Expand** to open the full AI mode. | ~$0.0005 when a summary runs |
-| **AI mode** *(agentic)* | Reads and compares several pages, may search more than once, and returns structured output (tables, steps, pros and cons). | ~$0.004–0.006 |
+| **Balanced** | Links and cards, plus a compact cited explanation for eligible questions. **Investigate further** reuses evidence in AI mode. | Depends on configured model and actual usage |
+| **AI mode** *(tool-driven research)* | Plans searches, reads public pages, calls Archer tools, and returns cited answers, tables and useful structured UI. | Depends on tools/model usage; bounded per run |
 
 ### How the default works
 - **Out of the box, the default is Classic.** It behaves like a clean, ordinary search engine.
@@ -47,7 +80,7 @@ Queries pass through three layers, and each layer only handles what the previous
 
 **Layer A: the browser (Helium)**
 - Typed URLs (`github.com`) go straight to the site.
-- Website suggestions served by your `/suggest` endpoint also go straight to the site. *Check in step 1 that Helium follows navigation-type suggestions from a custom engine.*
+- Current `/suggest` completions submit searches. Navigation-type website suggestions are planned separately; verify Helium's custom-engine support before adding them.
 
 **Layer B: fixed rules on the server** (under 1 ms)
 - Text that looks like a domain, checked against the public suffix list.
@@ -55,7 +88,7 @@ Queries pass through three layers, and each layer only handles what the previous
 - Your own shortcuts (`gh`, `mail`).
 - A single word that matches a known site, which redirects like "I'm Feeling Lucky".
 
-**Layer C: GLiNER2 intent model** (the only classifier)
+**Layer C: GLiNER2 intent model** (future experiment; current implementation uses conservative heuristics)
 - **Local, small (~205M parameters), runs on CPU.** It works offline and keeps queries on your machine. I estimate ~10–50 ms per short query; benchmark it on your hardware.
 - **One pass gives both the intent and the entities.**
   ```
@@ -91,9 +124,9 @@ Queries pass through three layers, and each layer only handles what the previous
 - **Instant answers:** calculator, currency, units, weather, time zones, definitions.
 
 **AI answers (DeepSeek)**
-- **Compact summary (Balanced):** built from search snippets only, streamed, with inline citations [1][2].
-- **Expand:** reuses what was already fetched for the compact summary, so it starts at once. DeepSeek's context caching makes this cheaper.
-- **AI mode:** fetches the full pages, can plan follow-up searches, and returns a structured answer with sources.
+- **Compact explanation (Balanced):** uses results and card evidence, with selective page reads for comparison/current-information queries and a deterministic weather adapter where useful. Validated blocks stream with source references.
+- **Investigate further:** reuses the evidence bundle; additional research and generation are separately bounded and take time. Provider prompt-cache savings are not assumed.
+- **AI mode:** native tool calls gather the evidence required by the task. Archer validates arguments, provenance and UI components; the model cannot execute arbitrary scripts or network requests.
 
 ---
 
@@ -133,6 +166,7 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 | Software | Software, languages, OSes, browsers | `python` | Developer, first release, latest version, licence; source-code link | Wikidata |
 | Holiday | Holidays and festivals | `diwali` | Date rule, religion, where observed | Wikidata |
 | Crypto | Coin name/ticker + price, or `btc to usd` | `bitcoin price` | Price (₹ uses lakh/crore grouping), 24 h and 7 d change, 7-day chart, market cap, volume, highs, all-time high, supply, converter | CoinGecko |
+| AI model | Name of a model in Epoch AI's capability index, optionally framed (`gpt 5 release date`, `openai o3`); very short names like `o3` need the framing word | `claude opus 4.5` | Release date, developer, family, open/closed weights, capability rank, previous and next model in the line; tabbed bar chart comparing it with its earlier versions and the strongest models from other labs released around the same time, on the Epoch Capabilities Index plus up to four well-known benchmarks (GPQA Diamond, SWE-bench Verified, FrontierMath, HLE…) | Epoch AI (CC BY 4.0), zip cached in `data/` and refreshed daily |
 | Sunrise / sunset | `sunset X`, `X sunrise` | `sunset mumbai` | Today's time, plus sunrise, sunset and daylight for today and tomorrow | Open-Meteo |
 | Translate | `X in <language>`, `translate X to Y`, `how do you say X in Y` (not `movies in hindi`) | `thank you in kannada` | Detected source → translation, alternatives, copy | MyMemory |
 | Local places | `<category> near me`, `<category> in <area>` (cafés, ATMs, pharmacies, hospitals… 40+ types) | `cafes in indiranagar` | Up to 8 places: distance, cuisine/brand, address, opening hours, website/call/map; "Open map". Loads after the page. A misspelled area is corrected from the results' own wording ("indranagar" → Indiranagar). Same-named areas resolve to the one nearest home. If Overpass is overloaded, a quicker list without hours comes from Photon, and a clear message shows if both fail | OpenStreetMap (Photon + Overpass, two servers raced) |
@@ -168,6 +202,7 @@ Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnai
   - **Rich panels** (4+ facts) show About as a full-width reading panel under the bento.
   - **Thin panels** (3 facts or fewer, such as a fictional character, a book or a generic topic) drop the tall facts bento. Media sits on the left; on the right, the facts become stat chips on top of a scrollable About panel.
 - **Type tags:** an entity's Wikidata types ("fictional human", "television character") show as dashed tag chips beside the link chips, not as a fact tile.
+- **Archer's mark:** a 7x7 dot matrix of slightly rounded squares forming the chevron "A", with the bottom row fading out (`templates/pixel_mark.html`). It uses one monochrome ink at stepped opacities. In the results header it sits alone at 32px with no wordmark. A CSS-only wave rises through the cells every 4.8s, and runs faster while the next search loads. The favicon and tray icon use the same bitmap on a dark tile. Dot fields (`dotField` in `archer.js`, a canvas drawn at about 15fps and only while on screen) sit along the bottom of the home page and at the foot of the results page. Each is densest at the bottom and thins and fades toward a curved horizon, which sits lower in the middle than at the edges. Each dot steps between ink levels at random, with an occasional brief bright flash. While the next results page loads, a row of 3px dots on the header's bottom edge runs a stepped scanning band. The wider pixel-grid exploration is in `mockups/brand.html`.
 - **Fonts:** DM Sans (primary) and DM Mono (secondary: badges, eyebrow labels, numbers), self-hosted.
 - **Link chips:** no Facebook. X shows as its logo only.
 - **Flags:**
@@ -190,8 +225,8 @@ Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnai
 **The app.** Archer is a Python app (FastAPI + uvicorn) with a tray icon. It listens on `127.0.0.1:4747` only, so nothing else on your network can reach it. Helium uses the name `archer.localhost`, which Chromium-based browsers resolve to your own machine without any hosts-file change.
 
 **One-click start.**
-1. Double-click `install.cmd` once. It installs dependencies with `uv`, adds **Archer** shortcuts to the desktop and Start menu, starts Archer and opens its setup page in Helium.
-2. After that, the Archer shortcut is the one click. If Archer is already running, the shortcut just opens the page.
+1. Double-click `install.cmd` once. It installs dependencies with `uv`, adds **Archer** shortcuts to the desktop and Start menu, starts Archer and opens Archer Settings at Browser setup.
+2. After that, the Archer shortcut is the one click. If Archer is already running, the shortcut opens Settings.
 3. To start Archer automatically when you log in, tick **Start with Windows** in the tray menu.
 
 **Adding it to Helium** (Settings → Search engine → Manage search engines and site search → Site search → **Add**):
@@ -203,7 +238,9 @@ Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnai
 | URL with %s in place of query | `http://archer.localhost:4747/search?q=%s` |
 | Suggestions URL with %s in place of query | `http://archer.localhost:4747/suggest?q=%s` |
 
-Then click **Add as default**. The setup page at `http://archer.localhost:4747/setup` shows the same values with copy buttons. If Helium won't load `archer.localhost`, use `127.0.0.1` in its place.
+Then click **Add as default**. Settings → Browser (`/settings#browser`; the old `/setup` redirects there) shows the same values with copy buttons. If Helium won't load `archer.localhost`, use `127.0.0.1` in its place.
+
+**Settings app.** `/settings` is the one place to configure Archer: preferences, API keys, search options, AI limits, startup and restart. The tray opens it as a chromeless window (Helium, then Edge or Chrome in `--app` mode), so it feels like a desktop app without bundling a webview. It edits `.env` in place after validating the candidate file with the same `Settings` loader used at startup, then updates the live settings object, so changes apply without a restart except for the port and address. Keys are shown masked, connection tests use free metadata endpoints, and every change is a same-origin POST with the session's CSRF token, like AI actions. The address name must stay `localhost`, `127.0.0.1` or `*.localhost`.
 
 ---
 
@@ -252,6 +289,7 @@ These use the rate from your current usage, about $0.16 per million tokens, and 
 | Balanced, heavy use | 150 searches a day | **~$2.50** |
 
 ## Main risks
+- **Song cards and lyrics.** A matching lyrics search result can identify a song even when Wikipedia has no article. Existing Wikidata player IDs drive video and Spotify embeds; songs without a Spotify ID get a Spotify search card. Lyrics load on demand from LRCLIB and show their source; unmatched songs retain a link to the original lyrics result.
 - **Search backend.** Self-hosted SearXNG is free but gets rate-limited by the engines it scrapes. A paid API is more reliable and will probably cost more than DeepSeek.
   - Seen on 13 Oct 2026: Brave was suspended ("too many requests") and Startpage hit a CAPTCHA. A 20-query burst also got DuckDuckGo a CAPTCHA, leaving Google CSE as the only reliable web engine.
   - Archer caches responses and loads the image, news and video strips only when the query calls for them. Adding a keyed engine (Brave Search API, Mojeek) to SearXNG would stabilise results.
@@ -265,7 +303,8 @@ These use the rate from your current usage, about $0.16 per million tokens, and 
 ## Build order
 0. ~~Workspace, tray app, `install.cmd`, Helium setup page, and placeholder `/search` and `/suggest` endpoints~~ (done)
 1. Real `/search` and `/suggest` endpoints, the rules layer, and SearXNG results
-   - Done: `/suggest` proxies SearXNG's `/autocompleter` (DuckDuckGo backend, about 0.2 s; degrades to no suggestions if SearXNG is down).
+   - Done: `/suggest` uses SearXNG's `/autocompleter` (DuckDuckGo by default), normalizes its OpenSearch response, and retains Chromium relevance scores. Lookups use a bounded 60-second memory cache (five seconds for successful empty results), coalesce identical in-flight queries, and time out after 1.5 seconds. No history is persisted. Partial query text reaches the configured provider through SearXNG.
+   - Done: home and every results tab share an accessible autocomplete dropdown: two-character minimum (short bang/category syntax allowed), 180 ms debounce, eight results, cancellation and stale-response protection, IME handling, arrow/Enter selection, Escape restoration, and normal Tab dismissal. Suggestions submit the existing form and preserve the active results tab. Related searches prefer SearXNG's search-response suggestions, with autocomplete as a fallback; SearXNG correction links also retain the tab.
    - Done: `/search` renders SearXNG's JSON in Archer's own UI, with the hero modules and inline modules above. SearXNG's `settings.yml` now allows `json` (a backup is at `settings.yml.bak-archer`). Bangs (`!g`, `!!w`) still hand off to SearXNG's page.
    - Next: the rest of the rules layer (domain detection, own shortcuts, "I'm Feeling Lucky" redirects).
 2. GLiNER2 router with the confidence levels and entity rescue, plus the knowledge and where-to-watch cards
