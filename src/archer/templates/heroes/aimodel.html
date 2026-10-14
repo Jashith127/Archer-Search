@@ -1,9 +1,14 @@
 {% from "macros.html" import hero_badge %}
 {% set m = v.hero.data %}
-{% macro org_mark(row) -%}
-<span class="badge am-org" style="--h: {{ row.org|hue }}" title="{{ row.org }}" aria-hidden="true">{{ (row.org[:1] or "?")|upper }}{% if row.site %}<img class="badge-icon" src="/api/favicon/{{ row.site }}" alt="" loading="lazy">{% endif %}</span>
+{% set cur = m.fx %}{# prices render in the home currency when a rate is known; archer.js switches live #}
+{% macro org_mark(row, cls="am-org") -%}
+<span class="badge {{ cls }}" style="--h: {{ row.org|hue }}" title="{{ row.org }}" aria-hidden="true">{{ (row.org[:1] or "?")|upper }}{% if row.site %}<img class="badge-icon" src="/api/favicon/{{ row.site }}" alt="" loading="lazy">{% endif %}</span>
 {%- endmacro %}
-<section class="hero hero-aimodel">
+{% macro money(usd, suffix="", alt=False) -%}
+<span data-money="{{ usd }}"{% if suffix %} data-suffix="{{ suffix }}"{% endif %}{% if alt %} data-money-alt{% endif %}>{{ usd|money(None if alt else cur) if not (alt and not cur) else "" }}{{ suffix }}</span>
+{%- endmacro %}
+{% set facts = namespace(n=4) %}{% if m.family %}{% set facts.n = facts.n + 1 %}{% endif %}{% if m.weights %}{% set facts.n = facts.n + 1 %}{% endif %}{% if m.previous %}{% set facts.n = facts.n + 1 %}{% endif %}{% if m.successor %}{% set facts.n = facts.n + 1 %}{% endif %}
+<section class="hero hero-aimodel" data-am-card{% if cur %} data-fx-code="{{ cur.code }}" data-fx-symbol="{{ cur.symbol }}" data-fx-rate="{{ cur.per_usd }}"{% endif %}>
   <div class="hero-head">
     <div class="hero-head-main">
       {{ hero_badge("sparkle", "AI model", m.org) }}
@@ -13,16 +18,92 @@
   </div>
 
   <div class="am-body">
-    <dl class="am-facts">
-      <div><dt><svg><use href="#u-building"/></svg>Developer</dt><dd>{{ m.org or "Unknown" }}</dd></div>
+    {# One strip of tiles; at medium widths it splits into two even rows, never one orphan. #}
+    <dl class="am-facts" style="--n: {{ facts.n }}; --half: {{ (facts.n / 2)|round(0, 'ceil')|int }}">
+      <div><dt><svg><use href="#u-building"/></svg>Developer</dt><dd class="am-dev">{{ org_mark({"org": m.org, "site": m.site}, "am-org am-org--lg") }}<span>{{ m.org or "Unknown" }}</span></dd></div>
       <div><dt><svg><use href="#u-calendar"/></svg>Released</dt><dd>{{ m.released }}</dd></div>
       {% if m.family %}<div><dt><svg><use href="#u-layers"/></svg>Family</dt><dd>{{ m.family }}</dd></div>{% endif %}
       {% if m.weights %}<div><dt><svg><use href="#u-package"/></svg>Weights</dt><dd>{{ m.weights }}</dd></div>{% endif %}
-      {% if m.price %}<div><dt><svg><use href="#u-coins"/></svg>API price</dt><dd>{{ m.price }} <span class="muted">/ M tokens</span></dd><dd class="am-sub">blended 3:1 input:output</dd></div>{% endif %}
       <div><dt><svg><use href="#u-award"/></svg>Capability rank</dt><dd>#{{ m.rank }} <span class="muted">of {{ m.total }}</span></dd><dd class="am-sub">ECI score {{ m.eci }}</dd></div>
+      <div><dt><svg><use href="#u-coins"/></svg>API price</dt>{% if m.pricing %}<dd>{{ money(m.pricing.blended) }} <span class="muted">/ M tokens</span></dd><dd class="am-sub">blended, 3 input : 1 output</dd>{% else %}<dd class="muted">Not listed</dd>{% endif %}</div>
       {% if m.previous %}<div><dt><svg><use href="#u-clock"/></svg>Previous</dt><dd><a href="/search?q={{ m.previous[0]|qs }}">{{ m.previous[0] }}</a></dd></div>{% endif %}
       {% if m.successor %}<div><dt><svg><use href="#u-sparkle"/></svg>Succeeded by</dt><dd><a href="/search?q={{ m.successor|qs }}">{{ m.successor }}</a></dd></div>{% endif %}
     </dl>
+
+    {% if m.pricing %}
+    {% set p = m.pricing %}
+    <section class="am-pricing" aria-labelledby="am-pricing-title" data-am-pricing data-in="{{ p.input }}" data-out="{{ p.output }}">
+      <header class="am-pricing-head">
+        <div>
+          <h2 class="am-pricing-title" id="am-pricing-title"><svg aria-hidden="true"><use href="#u-coins"/></svg>Token pricing</h2>
+          <p class="am-pricing-sub">Per million tokens through the API{% if p.rank_note %} · {{ p.rank_note }}{% endif %}</p>
+        </div>
+        {% if cur %}
+        <div class="am-cur" role="group" aria-label="Currency">
+          <button type="button" data-am-cur="{{ cur.code }}" aria-pressed="true">{{ cur.symbol }} {{ cur.code }}</button>
+          <button type="button" data-am-cur="USD" aria-pressed="false">$ USD</button>
+        </div>
+        {% endif %}
+      </header>
+
+      <div class="am-pricing-grid">
+        <div class="am-rates">
+          <div class="am-rate am-rate--in"><span class="am-rate-label">Input</span><span class="am-rate-val">{{ money(p.input) }}</span><span class="am-rate-alt">{{ money(p.input, alt=True) }}</span><span class="am-rate-note">prompt tokens you send</span></div>
+          <div class="am-rate am-rate--out"><span class="am-rate-label">Output</span><span class="am-rate-val">{{ money(p.output) }}</span><span class="am-rate-alt">{{ money(p.output, alt=True) }}</span><span class="am-rate-note">tokens the model writes</span></div>
+          {% if p.cached %}<div class="am-rate"><span class="am-rate-label">Cached input</span><span class="am-rate-val">{{ money(p.cached) }}</span><span class="am-rate-alt">{{ money(p.cached, alt=True) }}</span><span class="am-rate-note">re-reading a cached prompt</span></div>{% endif %}
+          <div class="am-rate am-rate--blend{% if not p.cached %} am-rate--wide{% endif %}"><span class="am-rate-label">Blended</span><span class="am-rate-val">{{ money(p.blended) }}</span><span class="am-rate-alt">{{ money(p.blended, alt=True) }}</span><span class="am-rate-note">3 input : 1 output, as charted</span></div>
+          <div class="am-ratio" aria-hidden="true" title="Output costs {{ '%.1f'|format(p.output / p.input) if p.input else '–' }}× input">
+            <span class="am-ratio-in" style="flex: {{ p.input }}"></span><span class="am-ratio-out" style="flex: {{ p.output }}"></span>
+          </div>
+          <p class="am-ratio-note">Output costs {{ '%.1f'|format(p.output / p.input) if p.input else '–' }}× as much as input</p>
+        </div>
+
+        <div class="am-estimate" data-am-estimate role="group" aria-labelledby="am-estimate-title">
+          <h3 class="am-estimate-title" id="am-estimate-title">Estimate a workload</h3>
+          <div class="am-presets" role="group" aria-label="Presets">
+            <button type="button" data-am-preset="1500,600,1" aria-pressed="true">Chat reply</button>
+            <button type="button" data-am-preset="60000,2000,1" aria-pressed="false">Long document</button>
+            <button type="button" data-am-preset="250000,25000,1" aria-pressed="false">Agent task</button>
+            <button type="button" data-am-preset="1500,600,10000" aria-pressed="false">10k chats</button>
+          </div>
+          <div class="am-fields">
+            <label><span>Input tokens</span><input type="number" inputmode="numeric" min="0" step="100" value="1500" data-am-field="in"></label>
+            <label><span>Output tokens</span><input type="number" inputmode="numeric" min="0" step="100" value="600" data-am-field="out"></label>
+            <label><span>Requests</span><input type="number" inputmode="numeric" min="1" step="1" value="1" data-am-field="n"></label>
+          </div>
+          {% set ci, co = 1500 * p.input / 1000000, 600 * p.output / 1000000 %}
+          <div class="am-split" aria-label="Where the cost goes">
+            <div class="am-split-bar" aria-hidden="true"><span class="am-split-in" data-am-split-bar="in" style="flex: {{ ci }}"></span><span class="am-split-out" data-am-split-bar="out" style="flex: {{ co }}"></span></div>
+            <div class="am-split-rows">
+              <span class="am-split-key am-split-key--in">Input</span><span class="am-split-val" data-am-split="in">{{ money(ci) }}</span>
+              <span class="am-split-key am-split-key--out">Output</span><span class="am-split-val" data-am-split="out">{{ money(co) }}</span>
+            </div>
+          </div>
+          <output class="am-total" data-am-total aria-live="polite">
+            <span class="am-total-label">Estimated cost</span>
+            <span class="am-total-val" data-am-total-val>{{ money((1500 * p.input + 600 * p.output) / 1000000) }}</span>
+            <span class="am-total-sub" data-am-total-sub></span>
+          </output>
+        </div>
+
+        {% if p.compare %}
+        <div class="am-compare">
+          <h3 class="am-estimate-title">Blended price vs. this chart</h3>
+          <ul>
+            {% for c in p.compare %}
+            <li class="am-bar am-bar--{{ c.role }}">
+              {{ org_mark(c) }}<span class="am-bar-name" title="{{ c.name }} · {{ c.org }}">{{ c.name }}</span>
+              <span class="am-bar-track"><span class="am-bar-fill" style="width: {{ c.width }}%"></span></span>
+              <span class="am-bar-val">{{ money(c.usd) }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% if cur %}<p class="am-fx-note">1 USD = {{ 1|money(cur) }}{% if cur.as_of %} · {{ cur.source }} reference rate, {{ cur.as_of }}{% else %} · via {{ cur.source }}{% endif %}. Prices are set in US dollars; rupee figures follow the day's rate.</p>{% endif %}
+    </section>
+    {% endif %}
 
     <figure class="am-chart" data-am-tabs>
       <div class="am-tabs" role="tablist" aria-label="Benchmark">
@@ -34,11 +115,12 @@
       {% set pl = c.plot %}
       <div class="am-panel" role="tabpanel" id="am-panel-{{ c.id }}" aria-labelledby="am-tab-{{ c.id }}"{% if not loop.first %} hidden{% endif %}>
         <p class="am-about">{{ c.about }} <span class="am-count">· {{ c.count }} {{ "models by price" if pl.by_price else "results by release date" }}</span></p>
-        <svg class="am-plot" viewBox="0 0 {{ pl.w }} {{ pl.h + (14 if pl.by_price else 0) }}" role="img" aria-label="{{ c.label }} score against {{ 'API price' if pl.by_price else 'release date' }}, with the models listed below highlighted" data-am-plot data-right="{{ pl.right }}" data-top="{{ pl.top }}" data-bottom="{{ pl.bottom }}">
+        <div class="am-plot-wrap" tabindex="0" aria-label="Chart; scroll sideways on small screens">
+        <svg class="am-plot" viewBox="0 0 {{ pl.w }} {{ pl.h + (14 if pl.by_price else 0) }}" role="img" aria-label="{{ c.label }} score against {{ 'API price' if pl.by_price else 'release date' }}, with the models listed below highlighted" data-am-plot data-left="{{ pl.left }}" data-right="{{ pl.right }}" data-top="{{ pl.top }}" data-bottom="{{ pl.bottom }}"{% if pl.by_price %} data-lx0="{{ pl.lx0 }}" data-lx1="{{ pl.lx1 }}"{% endif %}>
           {% for g in pl.grid %}<line class="am-grid" x1="{{ pl.left }}" x2="{{ pl.right }}" y1="{{ g.y }}" y2="{{ g.y }}"/><text class="am-tick" x="{{ pl.left - 8 }}" y="{{ g.y + 4 }}" text-anchor="end">{{ g.label }}</text>{% endfor %}
-          {% for t in pl.xt %}<line class="am-grid" x1="{{ t.x }}" x2="{{ t.x }}" y1="{{ pl.bottom }}" y2="{{ pl.bottom + 5 }}"/><text class="am-tick" x="{{ t.x }}" y="{{ pl.bottom + 21 }}" text-anchor="middle">{{ t.label }}</text>{% endfor %}
+          <g data-am-xticks>{% for t in pl.xt %}<line class="am-grid" x1="{{ t.x }}" x2="{{ t.x }}" y1="{{ pl.bottom }}" y2="{{ pl.bottom + 5 }}"/><text class="am-tick" x="{{ t.x }}" y="{{ pl.bottom + 21 }}" text-anchor="middle">{{ t.label }}</text>{% endfor %}</g>
           {% if pl.base %}<line class="am-base" x1="{{ pl.left }}" x2="{{ pl.right }}" y1="{{ pl.base.y }}" y2="{{ pl.base.y }}"/><text class="am-tick" x="{{ pl.left + 6 }}" y="{{ pl.base.y - 6 }}">{{ pl.base.label }}</text>{% endif %}
-          {% if pl.x_label %}<text class="am-tick am-axis" x="{{ (pl.left + pl.right) / 2 }}" y="{{ pl.bottom + 38 }}" text-anchor="middle">{{ pl.x_label }}</text>{% endif %}
+          {% if pl.x_label %}<text class="am-tick am-axis" x="{{ (pl.left + pl.right) / 2 }}" y="{{ pl.bottom + 38 }}" text-anchor="middle" data-am-xlabel>{{ pl.x_label }}</text>{% endif %}
           {% if pl.frontier %}<polyline class="am-frontier" points="{{ pl.frontier }}"><title>Best value: no model scores higher for less</title></polyline>{% endif %}
           <g class="am-dots" data-am-dots>{% for d in pl.dots %}<circle cx="{{ d.x }}" cy="{{ d.y }}" r="3"><title>{{ d.title }}</title></circle>{% endfor %}</g>
           {% for mk in pl.marks %}
@@ -51,17 +133,40 @@
           </g>
           {% endfor %}
         </svg>
-        <ul class="am-keys" aria-label="Highlighted models; select one to show or hide it">
-          {% for r in c.rows %}
-          <li><button type="button" class="am-toggle am-toggle--{{ r.role }}"{% if r.plotted %} aria-pressed="true" data-am-toggle="{{ r.key }}"{% else %} disabled title="No API price listed, so it isn't on the price chart"{% endif %}>
-            <span class="am-swatch" aria-hidden="true"></span>{{ org_mark(r) }}
-            <span class="am-name" title="{{ r.name }} · {{ r.org }} · {{ r.date }}">{{ r.name }}</span>{% if pl.by_price %}<span class="am-price">{{ r.price or "no price" }}</span>{% endif %}<span class="am-val">{{ r.text }}</span>
-          </button></li>
-          {% endfor %}
-          <li><button type="button" class="am-toggle am-toggle--all" aria-pressed="true" data-am-toggle="dots">
-            <span class="am-swatch" aria-hidden="true"></span><span class="am-name">All other results</span><span class="am-val">{{ pl.dots|length }}</span>
-          </button></li>
-        </ul>
+        </div>
+        <div class="am-keys">
+          <div class="am-keys-bar">
+            <span class="am-keys-title">{{ c.rows|length }} models highlighted</span>
+            <div class="am-keys-actions">
+              <button type="button" class="am-chip" data-am-show="all">Show all</button>
+              <button type="button" class="am-chip" data-am-show="self">Only {{ m.name }}</button>
+              <button type="button" class="am-chip am-toggle am-toggle--all" aria-pressed="true" data-am-toggle="dots"><span class="am-swatch" aria-hidden="true"></span>Other results <b>{{ pl.dots|length }}</b></button>
+            </div>
+          </div>
+          <table class="am-table" data-am-table>
+            <caption class="sr-only">Highlighted models; select a name to show or hide it on the chart, or a column heading to sort</caption>
+            <thead><tr>
+              <th scope="col" aria-sort="none"><button type="button" data-am-sort="name">Model</button></th>
+              <th scope="col" class="am-col-date" aria-sort="none"><button type="button" data-am-sort="released">Released</button></th>
+              {% if pl.by_price %}<th scope="col" class="am-num" aria-sort="none"><button type="button" data-am-sort="usd">Price <span class="am-unit">/M</span></button></th>{% endif %}
+              <th scope="col" class="am-num" aria-sort="descending"><button type="button" data-am-sort="score">Score</button></th>
+              {% if pl.by_price %}<th scope="col" class="am-num am-col-cpp" aria-sort="none"><button type="button" data-am-sort="cpp" title="Blended price per million tokens, divided by the score: lower is better value">Cost / point</button></th>{% endif %}
+            </tr></thead>
+            <tbody>
+              {% for r in c.rows %}
+              <tr class="am-row" data-name="{{ r.name }}" data-released="{{ r.released }}" data-usd="{{ r.usd }}" data-score="{{ r.score }}" data-cpp="{{ r.cpp }}">
+                <th scope="row"><button type="button" class="am-toggle am-toggle--{{ r.role }}"{% if r.plotted %} aria-pressed="true" data-am-toggle="{{ r.key }}"{% else %} disabled title="No API price listed, so it isn't on the price chart"{% endif %}>
+                  <span class="am-swatch" aria-hidden="true"></span>{{ org_mark(r) }}<span class="am-name" title="{{ r.name }} · {{ r.org }}">{{ r.name }}</span>
+                </button></th>
+                <td class="am-col-date">{{ r.date }}</td>
+                {% if pl.by_price %}<td class="am-num">{% if r.usd %}{{ money(r.usd) }}{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+                <td class="am-num am-score">{{ r.text }}</td>
+                {% if pl.by_price %}<td class="am-num am-col-cpp">{% if r.cpp %}{{ money(r.cpp) }}{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
       {% endfor %}
       <figcaption class="am-legend">
@@ -70,9 +175,9 @@
         <span class="am-key am-key--rival">Other models</span>
         <span class="am-key am-key--all">Everything else Epoch tested</span>
         {% if m.priced %}<span class="am-key am-key--frontier">Best value for the price</span>{% endif %}
-        <span class="am-hint">Select a model to show or hide it</span>
+        <span class="am-hint">Select a model to show or hide it · a heading to sort</span>
       </figcaption>
     </figure>
   </div>
-  <p class="hero-source">Benchmarks from <a href="{{ m.source_url }}">Epoch AI</a> (CC BY 4.0), data as of {{ m.as_of }}. Each graph plots every result in Epoch's file for that benchmark, and highlights each model's best reasoning setting. Scores can differ from the numbers labs publish.{% if m.priced %} API prices from <a href="{{ m.price_source_url }}">OpenRouter</a>, per million tokens, blended 3 input : 1 output; graphs plot score against price where at least three of their models have one, and by release date otherwise.{% endif %}</p>
+  <p class="hero-source">Benchmarks from <a href="{{ m.source_url }}">Epoch AI</a> (CC BY 4.0), data as of {{ m.as_of }}. Each graph plots every result in Epoch's file for that benchmark, and highlights each model's best reasoning setting. Scores can differ from the numbers labs publish.{% if m.priced or m.pricing %} API prices from <a href="{{ m.price_source_url }}">OpenRouter</a>; graphs plot score against the blended price where at least three of their models have one, and by release date otherwise.{% endif %}</p>
 </section>

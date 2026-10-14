@@ -1202,19 +1202,171 @@ function drawAmFrontier(svg) {
   line.setAttribute("points", kept.map((p) => p.join(",")).join(" "));
   line.style.display = kept.length > 1 ? "" : "none";
 }
+// On a phone the plot scrolls sideways: open it on the searched model, not the cheap or old end.
+function centreAmPlot(panel) {
+  const wrap = $(".am-plot-wrap", panel), self = $(".am-mark--self .am-dot", panel);
+  if (!wrap || !self || wrap.scrollWidth <= wrap.clientWidth) return;
+  const dot = self.getBoundingClientRect(), box = wrap.getBoundingClientRect();
+  wrap.scrollLeft += dot.left + dot.width / 2 - (box.left + box.width / 2);
+}
+function setAmToggle(button, on) {
+  const panel = button.closest("[role=tabpanel]");
+  const key = button.dataset.amToggle;
+  const target = key === "dots" ? $("[data-am-dots]", panel) : $(`[data-mark="${key}"]`, panel);
+  button.setAttribute("aria-pressed", String(on));
+  target?.classList.toggle("is-off", !on);
+}
+function redrawAmPlot(panel) {
+  const svg = $("[data-am-plot]", panel);
+  placeAmLabels(svg);
+  drawAmFrontier(svg);
+}
 for (const button of $$("[data-am-toggle]")) {
   button.addEventListener("click", () => {
-    const panel = button.closest("[role=tabpanel]");
-    const key = button.dataset.amToggle;
-    const target = key === "dots" ? $("[data-am-dots]", panel) : $(`[data-mark="${key}"]`, panel);
-    const on = button.getAttribute("aria-pressed") !== "true";
-    button.setAttribute("aria-pressed", String(on));
-    if (!target) return;
-    target.classList.toggle("is-off", !on);
-    const svg = $("[data-am-plot]", panel);
-    if (key !== "dots") placeAmLabels(svg);
-    drawAmFrontier(svg);
+    setAmToggle(button, button.getAttribute("aria-pressed") !== "true");
+    redrawAmPlot(button.closest("[role=tabpanel]"));
   });
+}
+// "Show all" brings every model back; "Only …" keeps the searched model and hides the rest.
+for (const button of $$("[data-am-show]")) {
+  button.addEventListener("click", () => {
+    const panel = button.closest("[role=tabpanel]");
+    for (const t of $$("[data-am-table] [data-am-toggle]", panel)) {
+      setAmToggle(t, button.dataset.amShow === "all" || t.classList.contains("am-toggle--self"));
+    }
+    redrawAmPlot(panel);
+  });
+}
+
+// ------------------------------------------- AI model chart: sortable model table
+for (const table of $$("[data-am-table]")) {
+  const body = $("tbody", table);
+  for (const head of $$("[data-am-sort]", table)) {
+    head.addEventListener("click", () => {
+      const th = head.closest("th"), key = head.dataset.amSort;
+      // First click: the natural order for the column (best score, cheapest, newest, A–Z); again to flip.
+      const natural = key === "score" || key === "released" ? "descending" : "ascending";
+      const dir = th.getAttribute("aria-sort") === natural ? (natural === "ascending" ? "descending" : "ascending") : natural;
+      for (const other of $$("th[aria-sort]", table)) other.setAttribute("aria-sort", "none");
+      th.setAttribute("aria-sort", dir);
+      const value = (row) => (key === "name" || key === "released" ? row.dataset[key] : row.dataset[key] === "" ? NaN : +row.dataset[key]);
+      const rows = $$("tr", body).sort((a, b) => {
+        const x = value(a), y = value(b);
+        if (typeof x === "number" && (Number.isNaN(x) || Number.isNaN(y))) return Number.isNaN(x) - Number.isNaN(y); // unpriced last
+        const order = typeof x === "string" ? x.localeCompare(y) : x - y;
+        return dir === "ascending" ? order : -order;
+      });
+      body.append(...rows);
+    });
+  }
+}
+
+// ------------------------------------------- AI model card: currency and cost estimator
+// Prices arrive in US dollars (data-money); the card shows them in the home currency or USD,
+// remembered per browser. aimodels.money is the server-side twin of fmtMoney.
+for (const card of $$("[data-am-card]")) {
+  const home = card.dataset.fxCode ? { code: card.dataset.fxCode, symbol: card.dataset.fxSymbol, rate: +card.dataset.fxRate } : null;
+  const USD = { code: "USD", symbol: "$", rate: 1 };
+  const KEY = "archer.aimodel.currency";
+  let current = home || USD;
+  try { if (home && localStorage.getItem(KEY) === "USD") current = USD; } catch { /* storage blocked: keep the default */ }
+  const other = () => (current === USD ? home : USD);
+
+  const fmtMoney = (usd, cur) => {
+    const v = usd * cur.rate;
+    const d = v > 0 && v < 0.1 ? 4 : v < 100 ? 2 : 0;
+    let text = new Intl.NumberFormat(cur.code === "INR" ? "en-IN" : "en-US", { minimumFractionDigits: d, maximumFractionDigits: d }).format(v);
+    if (text.endsWith(".00") && v >= 10) text = text.slice(0, -3);
+    return cur.symbol + text;
+  };
+  const tickLabel = (v, cur) => cur.symbol + (v < 1 ? v.toFixed(2) : new Intl.NumberFormat(cur.code === "INR" ? "en-IN" : "en-US").format(v));
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svgEl = (tag, attrs, text) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (text) node.textContent = text;
+    return node;
+  };
+  // Price axes are log scales in dollars: place round numbers of the shown currency on them.
+  const relabelAxis = (svg) => {
+    const lx0 = +svg.dataset.lx0, lx1 = +svg.dataset.lx1, left = +svg.dataset.left, right = +svg.dataset.right, bottom = +svg.dataset.bottom;
+    const group = $("[data-am-xticks]", svg);
+    group.replaceChildren();
+    for (let e = -2; e <= 7; e++) {
+      for (const m of [1, 3]) {
+        const v = m * 10 ** e, lx = Math.log10(v / current.rate);
+        if (lx <= lx0 || lx >= lx1) continue;
+        const x = (left + (lx - lx0) / (lx1 - lx0) * (right - left)).toFixed(1);
+        group.append(svgEl("line", { class: "am-grid", x1: x, x2: x, y1: bottom, y2: bottom + 5 }),
+          svgEl("text", { class: "am-tick", x, y: bottom + 21, "text-anchor": "middle" }, tickLabel(v, current)));
+      }
+    }
+    const label = $("[data-am-xlabel]", svg);
+    if (label) label.textContent = `API price, ${current.symbol.trim()} per million tokens (3:1 input:output)`;
+  };
+
+  const estimate = $("[data-am-estimate]", card);
+  const pricing = $("[data-am-pricing]", card);
+  const field = (name) => Math.max(0, parseFloat($(`[data-am-field="${name}"]`, estimate).value) || 0);
+  const updateEstimate = () => {
+    if (!estimate) return;
+    const n = Math.max(1, field("n"));
+    const costIn = field("in") * +pricing.dataset.in / 1e6, costOut = field("out") * +pricing.dataset.out / 1e6;
+    const per = costIn + costOut;
+    for (const [side, cost] of [["in", costIn], ["out", costOut]]) {
+      const value = $(`[data-am-split="${side}"]`, estimate);
+      value.dataset.money = cost * n;
+      value.textContent = fmtMoney(cost * n, current);
+      $(`[data-am-split-bar="${side}"]`, estimate).style.flex = String(cost || 0.0001);
+    }
+    const total = $("[data-am-total-val]", estimate);
+    total.dataset.money = per * n;
+    total.textContent = fmtMoney(per * n, current);
+    const alt = other();
+    $("[data-am-total-sub]", estimate).textContent = [n > 1 ? `${fmtMoney(per, current)} per request` : "",
+      alt ? `≈ ${fmtMoney(per * n, alt)}` : ""].filter(Boolean).join(" · ");
+  };
+
+  const apply = () => {
+    for (const node of $$("[data-money]", card)) {
+      if (node.hasAttribute("data-am-total-val") || node.hasAttribute("data-am-split")) continue;
+      const cur = node.hasAttribute("data-money-alt") ? other() : current;
+      node.textContent = cur ? fmtMoney(+node.dataset.money, cur) + (node.dataset.suffix || "") : "";
+    }
+    for (const svg of $$("[data-am-plot][data-lx0]", card)) relabelAxis(svg);
+    for (const b of $$("[data-am-cur]", card)) b.setAttribute("aria-pressed", String(b.dataset.amCur === current.code));
+    updateEstimate();
+  };
+
+  for (const b of $$("[data-am-cur]", card)) {
+    b.addEventListener("click", () => {
+      current = b.dataset.amCur === "USD" ? USD : home;
+      try { localStorage.setItem(KEY, current.code); } catch { /* not remembered; still switches */ }
+      apply();
+    });
+  }
+  if (estimate) {
+    const presets = $$("[data-am-preset]", estimate);
+    for (const b of presets) {
+      b.addEventListener("click", () => {
+        const [i, o, n] = b.dataset.amPreset.split(",");
+        $('[data-am-field="in"]', estimate).value = i;
+        $('[data-am-field="out"]', estimate).value = o;
+        $('[data-am-field="n"]', estimate).value = n;
+        presets.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        updateEstimate();
+      });
+    }
+    for (const input of $$("[data-am-field]", estimate)) {
+      input.addEventListener("input", () => {
+        const now = [field("in"), field("out"), Math.max(1, field("n"))].join(",");
+        presets.forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.amPreset === now)));
+        updateEstimate();
+      });
+    }
+  }
+  apply();
 }
 
 // ------------------------------------------------------- AI model chart tabs
@@ -1227,11 +1379,11 @@ for (const chart of $$("[data-am-tabs]")) {
       t.tabIndex = on ? 0 : -1;
       const panel = document.getElementById(t.getAttribute("aria-controls"));
       panel.hidden = !on;
-      if (on) placeAmLabels($("[data-am-plot]", panel));
+      if (on) { placeAmLabels($("[data-am-plot]", panel)); centreAmPlot(panel); }
     }
   };
   const first = $(".am-panel:not([hidden]) [data-am-plot]", chart);
-  if (first) placeAmLabels(first);
+  if (first) { placeAmLabels(first); centreAmPlot(first.closest("[role=tabpanel]")); }
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => select(tab));
     tab.addEventListener("keydown", (e) => {

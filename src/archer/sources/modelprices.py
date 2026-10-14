@@ -2,7 +2,8 @@
 
 One ~1 MB JSON lists every model OpenRouter serves with its per-token prices. It is cached in
 DATA_DIR like the Epoch zip, so pricing a model card costs no round trip once it is on disk.
-Prices are blended 3:1 input:output per million tokens, the usual single-number summary.
+Charts use one number per model, the 3:1 input:output blend per million tokens; the model's own
+card shows input, output and cached-input prices separately.
 """
 
 import asyncio
@@ -10,6 +11,7 @@ import json
 import logging
 import re
 import time
+from dataclasses import dataclass
 
 import httpx
 
@@ -27,7 +29,20 @@ _TOKEN = re.compile(r"[a-z]+|\d+(?:\.\d+)?")
 # Words a listing adds to a model's name without making it a different model.
 _NOISE = {"preview", "exp", "experimental", "latest", "beta", "free", "thinking", "online", "nitro"}
 
-_table: dict[tuple, float] | None = None
+
+@dataclass(frozen=True)
+class Price:
+    """US dollars per million tokens."""
+    input: float
+    output: float
+    cached: float | None = None  # reading a cached prompt, where the provider lists it
+
+    @property
+    def blended(self) -> float:
+        return round((3 * self.input + self.output) / 4, 4)
+
+
+_table: dict[tuple, Price] | None = None
 _loaded_at = 0.0
 _failed_at = 0.0
 _refresh: asyncio.Task | None = None
@@ -40,22 +55,24 @@ def key(name: str) -> tuple:
     return tuple(sorted(t for t in _TOKEN.findall(base) if t not in _NOISE))
 
 
-def _parse(blob: bytes) -> dict[tuple, float]:
-    table: dict[tuple, float] = {}
+def _parse(blob: bytes) -> dict[tuple, Price]:
+    table: dict[tuple, Price] = {}
     for m in json.loads(blob)["data"]:
         if m.get("id", "").endswith(":free"):
             continue
         try:
-            price = m["pricing"]
-            blended = (3 * float(price["prompt"]) + float(price["completion"])) / 4 * 1e6
-        except (KeyError, TypeError, ValueError):
+            pricing = m["pricing"]
+            cached = float(pricing.get("input_cache_read") or 0) * 1e6
+            price = Price(round(float(pricing["prompt"]) * 1e6, 4), round(float(pricing["completion"]) * 1e6, 4),
+                          round(cached, 4) or None)
+        except (KeyError, TypeError, ValueError, AttributeError):
             continue
-        if blended <= 0:
+        if price.input <= 0 and price.output <= 0:
             continue
         # The listing is newest first, so the current price of a name wins over older snapshots.
         for k in {key(m.get("name") or ""), key(m["id"].split("/")[-1])}:
             if k:
-                table.setdefault(k, round(blended, 4))
+                table.setdefault(k, price)
     return table
 
 
@@ -77,7 +94,7 @@ async def _refresh_now(client: httpx.AsyncClient) -> None:
             _loaded_at = time.time() - MAX_AGE + 3600  # retry in an hour, keep the old prices
 
 
-async def ensure(client: httpx.AsyncClient, wait: float = 3) -> dict[tuple, float]:
+async def ensure(client: httpx.AsyncClient, wait: float = 3) -> dict[tuple, Price]:
     """Price table keyed by `key(name)`. Never raises; empty means no prices (charts fall back to dates)."""
     global _table, _loaded_at, _refresh
     if _table is None and CACHE_FILE.exists():
@@ -96,5 +113,5 @@ async def ensure(client: httpx.AsyncClient, wait: float = 3) -> dict[tuple, floa
     return _table or {}
 
 
-def lookup(table: dict[tuple, float], name: str) -> float | None:
+def lookup(table: dict[tuple, Price], name: str) -> Price | None:
     return table.get(key(name)) if table else None

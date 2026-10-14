@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from archer.app import app
 from archer.config import settings
 from archer.searxng import SearXNG
-from archer.sources import aimodels, crypto, dictionary, modelprices, places, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, fx, modelprices, places, translate, weather, wiki
 
 BASE = f"http://{settings.public_host}:{settings.port}"
 EMPTY_SEARCH = {"results": [], "answers": [], "infoboxes": [], "suggestions": [], "corrections": [], "unresponsive_engines": []}
@@ -115,6 +115,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(modelprices, "CACHE_FILE", tmp_path / "prices.json")
     for name, value in (("_table", None), ("_loaded_at", 0.0), ("_failed_at", 0.0), ("_refresh", None)):
         monkeypatch.setattr(modelprices, name, value)
+    fx._cache.clear()
+    monkeypatch.setattr(settings, "home_currency", "inr")  # other suites apply settings live
     for cache in (weather._geo_cache, weather._wx_cache, dictionary._cache, wiki._entity_cache,
                   crypto._cache, translate._cache, places._area_cache, places._places_cache):
         cache._data.clear()
@@ -372,6 +374,15 @@ def test_favicon_proxy(client, host, upstream_reply, status):
         assert resp.headers["x-content-type-options"] == "nosniff" and "sandbox" in resp.headers["content-security-policy"]
 
 
+def test_favicon_falls_back_to_duckduckgo(client):
+    from archer import app as app_module
+    app_module._favicons._data.clear()
+    icon = httpx.Response(200, content=b"\x89PNG", headers={"content-type": "image/png"})
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda r: httpx.Response(404) if r.url.host == "www.google.com" else icon))
+    assert client.get("/api/favicon/minimax.io").status_code == 200
+
+
 def test_software_detected_by_properties(client):
     def handler(request):
         if request.url.host == "www.wikidata.org" and request.url.params.get("props", "").startswith("claims"):
@@ -516,7 +527,8 @@ def test_ai_model_hero(client):
 
 
 OPENROUTER = {"data": [
-    {"id": "anthropic/claude-opus-4.5", "name": "Anthropic: Claude Opus 4.5", "pricing": {"prompt": "0.000005", "completion": "0.000025"}},
+    {"id": "anthropic/claude-opus-4.5", "name": "Anthropic: Claude Opus 4.5",
+     "pricing": {"prompt": "0.000005", "completion": "0.000025", "input_cache_read": "0.0000005"}},
     {"id": "anthropic/claude-opus-4.1", "name": "Anthropic: Claude Opus 4.1", "pricing": {"prompt": "0.000015", "completion": "0.000075"}},
     {"id": "google/gemini-3-pro-preview", "name": "Google: Gemini 3 Pro Preview", "pricing": {"prompt": "0.000002", "completion": "0.000012"}},
     {"id": "openai/gpt-5.1", "name": "OpenAI: GPT-5.1", "pricing": {"prompt": "0.00000125", "completion": "0.00001"}},
@@ -526,9 +538,10 @@ OPENROUTER = {"data": [
 
 def test_model_prices_match_epoch_names():
     table = modelprices._parse(json.dumps(OPENROUTER).encode())
-    assert modelprices.lookup(table, "Claude Opus 4.5") == 10.0           # (3 x $5 + $25) / 4
-    assert modelprices.lookup(table, "Gemini 3 Pro") == 4.5                # "Preview" and the org prefix don't count
-    assert modelprices.lookup(table, "GPT-5.1") == 3.4375                  # the paid listing, not ":free"
+    opus = modelprices.lookup(table, "Claude Opus 4.5")
+    assert (opus.input, opus.output, opus.cached, opus.blended) == (5, 25, .5, 10)   # (3 x $5 + $25) / 4
+    assert modelprices.lookup(table, "Gemini 3 Pro").blended == 4.5        # "Preview" and the org prefix don't count
+    assert modelprices.lookup(table, "GPT-5.1").blended == 3.4375          # the paid listing, not ":free"
     assert modelprices.lookup(table, "o3") is None and modelprices.lookup({}, "GPT-5.1") is None
 
 
@@ -537,13 +550,27 @@ def test_ai_model_price_chart(client):
     blob = epoch_zip(SCORES_CSV.replace("SWE-Bench verified", "SWE-bench Verified (Bash Only)"))
     app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(
         lambda r: httpx.Response(200, content=blob) if r.url.host == "epoch.ai"
-        else httpx.Response(200, json=OPENROUTER) if r.url.host == "openrouter.ai" else upstream(r)))
+        else httpx.Response(200, json=OPENROUTER) if r.url.host == "openrouter.ai"
+        else httpx.Response(200, json={"date": "2026-10-13", "rates": {"INR": 88.21}}) if r.url.host == "api.frankfurter.app"
+        else upstream(r)))
     html = client.get("/search", params={"q": "claude opus 4.5"}).text
     assert "SWE-bench Verified" in html and "76.7%" in html
-    assert "API price" in html and "$10" in html and "models by price" in html
+    assert "Token pricing" in html and "models by price" in html and "Cost / point" in html
+    assert "₹882" in html and 'data-money="10.0"' in html                # rupees by default, dollars kept for the switch
+    assert "₹441" in html and "Cached input" in html                      # input $5 and the cached-input rate
+    assert "1 USD = ₹88.21" in html and "13 Oct 2026" in html
+    assert 'src="/api/favicon/anthropic.com"' in html and 'src="/api/favicon/deepmind.google"' in html
     assert "am-frontier" in html and "OpenRouter" in html
     assert "No API price listed" in html                                   # unpriced rivals stay listed, off the graph
     assert modelprices.CACHE_FILE.exists()
+
+
+def test_org_logos_and_money():
+    assert aimodels.org_site("Meta AI") == "meta.com" and aimodels.org_site("AI21 Labs") == "ai21.com"
+    assert aimodels.org_site("Allen Institute for AI") == "allenai.org" and aimodels.org_site("Some Lab") == ""
+    rupee = {"code": "INR", "symbol": "₹", "per_usd": 88.21}
+    assert aimodels.money(10) == "$10" and aimodels.money(3.4375) == "$3.44" and aimodels.money(.0021) == "$0.0021"
+    assert aimodels.money(2000, rupee) == "₹1,76,420"                       # lakh grouping
 
 
 def test_swe_bench_tab_is_pinned():

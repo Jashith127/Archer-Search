@@ -20,7 +20,7 @@ from datetime import date
 import httpx
 
 from archer.config import DATA_DIR
-from archer.sources import modelprices
+from archer.sources import crypto, fx, modelprices
 
 log = logging.getLogger("archer")
 
@@ -63,14 +63,42 @@ def _norm(name: str) -> str:
 _ALIASES = {_norm(n): label for names, label, _ in BENCHMARKS for n in names}
 
 
-# Favicons for the developer badge (served through /api/favicon).
+# Developer logos (served through /api/favicon): Epoch's organisation names, matched loosely.
 ORG_SITES = {
     "OpenAI": "openai.com", "Anthropic": "anthropic.com", "Google DeepMind": "deepmind.google",
-    "Google": "google.com", "Meta AI": "meta.com", "xAI": "x.ai", "DeepSeek": "deepseek.com",
-    "Alibaba": "qwen.ai", "Mistral AI": "mistral.ai", "Moonshot": "moonshot.ai", "Z.ai (Zhipu AI)": "z.ai",
+    "DeepMind": "deepmind.google", "Google": "google.com", "Meta": "meta.com", "Facebook": "meta.com",
+    "xAI": "x.ai", "DeepSeek": "deepseek.com", "Alibaba": "alibabacloud.com", "Qwen": "alibabacloud.com",
+    "Mistral": "mistral.ai", "Moonshot": "moonshot.ai", "Kimi": "moonshot.ai", "Z.ai": "z.ai", "Zhipu": "z.ai",
     "Microsoft": "microsoft.com", "MiniMax": "minimax.io", "Amazon": "amazon.com", "Nvidia": "nvidia.com",
-    "Thinking Machines": "thinkingmachines.ai", "01.AI": "01.ai",
+    "Thinking Machines": "thinkingmachines.ai", "01.AI": "01.ai", "Cohere": "cohere.com", "AI21": "ai21.com",
+    "IBM": "ibm.com", "Apple": "apple.com", "Tencent": "tencent.com", "Baidu": "baidu.com",
+    "ByteDance": "bytedance.com", "StepFun": "stepfun.com", "Xiaomi": "mi.com", "Meituan": "meituan.com",
+    "Kuaishou": "kuaishou.com", "iFlytek": "iflytek.com", "Perplexity": "perplexity.ai", "Liquid": "liquid.ai",
+    "Nous Research": "nousresearch.com", "Hugging Face": "huggingface.co", "Stability": "stability.ai",
+    "Databricks": "databricks.com", "Snowflake": "snowflake.com", "Salesforce": "salesforce.com",
+    "Reka": "reka.ai", "Inflection": "inflection.ai", "Upstage": "upstage.ai", "Sakana": "sakana.ai",
+    "Technology Innovation Institute": "tii.ae", "Allen Institute": "allenai.org", "AI2": "allenai.org",
+    "LG AI": "lgresearch.ai", "Samsung": "samsung.com", "Naver": "naver.com", "EleutherAI": "eleuther.ai",
+    "Shanghai AI": "shlab.org.cn", "Ant Group": "antgroup.com", "Huawei": "huawei.com", "JD": "jd.com",
+    "Mistral AI": "mistral.ai", "Meta AI": "meta.com", "Z.ai (Zhipu AI)": "z.ai",
 }
+
+
+def _org_norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+_ORG_KEYS = sorted(((_org_norm(k), v) for k, v in ORG_SITES.items()), key=lambda kv: -len(kv[0]))
+
+
+def org_site(org: str) -> str:
+    """The developer's site for its logo: an exact name first, then the longest known name it starts with."""
+    norm = _org_norm(org)
+    if not norm:
+        return ""
+    return next((site for key, site in _ORG_KEYS if norm == key), "") or \
+        next((site for key, site in _ORG_KEYS if len(key) >= 3 and norm.startswith(key)), "")
+
 
 # Words that frame a model query without naming the model ("gpt 5 release date").
 FILLER = {"what", "whats", "is", "the", "when", "was", "were", "released", "release", "date", "who", "made",
@@ -92,6 +120,7 @@ class Model:
     family: str = ""
     rank: int = 0
     price: float | None = None  # blended $ per million tokens; set per panel from the price table
+    cost: "modelprices.Price | None" = None  # input / output / cached, for the model's own pricing section
     key: int = 0  # position in the chart being built; ties a mark to its show/hide toggle
 
 
@@ -341,14 +370,15 @@ def _money(v: float) -> str:
     return f"${v:.2f}" if v < 10 else f"${v:.0f}"
 
 
-def _row(m: Model, role: str, text: str, key: int, plotted: bool = True) -> dict:
-    return {"name": m.name, "org": m.org, "site": ORG_SITES.get(m.org, ""), "role": role,
-            "text": text, "date": m.released.strftime("%b %Y"), "key": key, "plotted": plotted,
-            "price": f"{_money(m.price)}/M" if m.price else ""}
+def _row(m: Model, role: str, score: float, text: str, key: int, plotted: bool = True) -> dict:
+    """One line of a chart's model table. cpp is the price-to-score ratio: dollars per million tokens per point."""
+    return {"name": m.name, "org": m.org, "site": org_site(m.org), "role": role, "score": round(score, 3),
+            "text": text, "date": m.released.strftime("%b %Y"), "released": m.released.isoformat(), "key": key,
+            "plotted": plotted, "usd": m.price or "", "cpp": round(m.price / score, 6) if m.price and score > 0 else ""}
 
 
 # Plot geometry, in SVG user units (the SVG scales to its column).
-W, H = 760, 300
+W, H = 1000, 320  # wide: the chart spans the card under the facts strip
 _L, _R, _T, _B = 46, 16, 14, 30
 _PRICE_TICKS = [.01, .03, .1, .3, 1, 3, 10, 30, 100, 300]
 
@@ -456,6 +486,7 @@ def _plot(population: list[Point], cast: list[tuple[Model, str]], score, percent
         frontier = " ".join(line) if len(line) > 1 else ""
     base = {"y": sy(baseline * 100), "label": f"Random guessing ({baseline * 100:.0f}%)"} if baseline else None
     return {"w": W, "h": H, "left": _L, "right": W - _R, "top": _T, "bottom": _T + ph, "grid": grid, "xt": xt,
+            "lx0": round(x0, 4) if by_price else "", "lx1": round(x1, 4) if by_price else "",
             "dots": dots, "marks": marks, "base": base, "by_price": by_price, "frontier": frontier,
             "x_label": "API price, $ per million tokens (3:1 input:output)" if by_price else ""}
 
@@ -465,10 +496,12 @@ def _priced(models: list[Model]) -> bool:
     return sum(1 for m in models if m.price) >= 3
 
 
-def panel(cat: Catalog, model: Model, today: date | None = None, prices: dict[tuple, float] | None = None) -> dict:
+def panel(cat: Catalog, model: Model, today: date | None = None, prices: dict | None = None,
+          rate: "fx.Rate | None" = None) -> dict:
     today = today or date.today()
     for m in cat.models:
-        m.price = modelprices.lookup(prices or {}, m.name)
+        m.cost = modelprices.lookup(prices or {}, m.name)
+        m.price = m.cost.blended if m.cost else None
     same_line = [m for m in cat.models if m.line == model.line and m.version is not None and m is not model]
     earlier: dict[float, Model] = {}
     for m in sorted(same_line, key=lambda m: m.released):
@@ -494,8 +527,8 @@ def panel(cat: Catalog, model: Model, today: date | None = None, prices: dict[tu
     eci_pop = [Point(m.released, m.eci, f"{m.name} · {m.org}", m.name, m.price) for m in cat.models
                if m.name not in {c.name for c, _ in cast}]
     charts = [{"id": "eci", "label": "Capability index", "about": "Epoch Capabilities Index: one scale across many benchmarks",
-               "rows": sorted((_row(m, role, f"{m.eci:.0f}", i, not by_price or bool(m.price)) for i, (m, role) in enumerate(cast)),
-                              key=lambda r: -float(r["text"])),
+               "rows": sorted((_row(m, role, m.eci, f"{m.eci:.0f}", i, not by_price or bool(m.price)) for i, (m, role) in enumerate(cast)),
+                              key=lambda r: -r["score"]),
                "plot": _plot(eci_pop, cast, lambda m: m.eci, percent=False, focus=model.released, by_price=by_price),
                "count": sum(1 for p in eci_pop if p.price) + sum(1 for m, _ in cast if m.price) if by_price else len(cat.models)}]
     for _, bench, about in BENCHMARKS:
@@ -527,25 +560,63 @@ def panel(cat: Catalog, model: Model, today: date | None = None, prices: dict[tu
             count = len(raw)
         about_here = about if tested_here else f"{about}. {model.name} has no result here yet"
         charts.append({"id": re.sub(r"[^a-z0-9]+", "-", bench.lower()).strip("-"), "label": bench, "about": about_here,
-                       "rows": sorted((_row(m, role, f"{m.scores[bench] * 100:.1f}%", i, not chart_by_price or bool(m.price))
+                       "rows": sorted((_row(m, role, m.scores[bench] * 100, f"{m.scores[bench] * 100:.1f}%", i,
+                                            not chart_by_price or bool(m.price))
                                        for i, (m, role) in enumerate(rows)),
-                                      key=lambda r: -float(r["text"].rstrip("%"))),
+                                      key=lambda r: -r["score"]),
                        "plot": _plot(tested, rows, lambda m, b=bench: m.scores[b] * 100, percent=True,
                                      focus=model.released, baseline=cat.baselines.get(bench), by_price=chart_by_price),
                        "count": count})
 
     return {
-        "name": model.name, "org": model.org, "site": ORG_SITES.get(model.org, ""),
+        "name": model.name, "org": model.org, "site": org_site(model.org),
         "released": _day(model.released),
         "released_ago": _ago(model.released, today), "family": model.family,
         "weights": model.weights if model.weights in ("Open weights", "Closed weights") else "",
         "eci": f"{model.eci:.0f}", "rank": model.rank, "total": len(cat.models),
-        "price": f"{_money(model.price)}" if model.price else "",
+        "pricing": _pricing(model, cast),
+        "fx": {"code": rate.code.upper(), "symbol": rate.symbol, "per_usd": rate.per_usd, "as_of": rate.as_of,
+               "source": rate.source} if rate else None,
         "previous": [m.name for m in previous], "successor": successor.name if successor else "",
         "has_prev": bool(previous), "has_rivals": bool(rivals),
         "charts": charts, "as_of": _day(date.fromisoformat(cat.as_of)), "source_url": SOURCE_URL,
         "priced": any(c["plot"]["by_price"] for c in charts), "price_source_url": modelprices.SOURCE_URL,
     }
+
+
+def _pricing(model: Model, cast: list[tuple[Model, str]]) -> dict | None:
+    """The token-price section: this model's rates and how its blended price compares with the chart's."""
+    if not model.cost:
+        return None
+    c = model.cost
+    peers = sorted(((m, role) for m, role in cast if m.price), key=lambda mr: mr[0].price)
+    top = max(m.price for m, _ in peers)
+    compare = [{"name": m.name, "org": m.org, "site": org_site(m.org), "role": role, "usd": m.price,
+                "text": f"{_money(m.price)}", "width": round(max(m.price / top, .02) * 100, 1)} for m, role in peers]
+    cheaper = sum(1 for m, _ in peers if m.price < model.price)
+    return {
+        "input": c.input, "output": c.output, "cached": c.cached, "blended": c.blended,
+        "text": {"input": _money(c.input), "output": _money(c.output), "blended": _money(c.blended),
+                 "cached": _money(c.cached) if c.cached else ""},
+        "compare": compare if len(compare) >= 2 else [],
+        "rank_note": (f"Cheapest of the {len(peers)} priced models in this chart" if cheaper == 0 else
+                      f"{cheaper} of the {len(peers)} priced models here cost less") if len(peers) >= 2 else "",
+    }
+
+
+def money(usd: float | str, fx_: dict | None = None) -> str:
+    """A US-dollar amount in dollars, or in fx_'s currency (₹ with lakh grouping). archer.js mirrors this."""
+    if usd in ("", None):
+        return ""
+    v = float(usd) * (fx_["per_usd"] if fx_ else 1)
+    decimals = 4 if 0 < v < .1 else 2 if v < 100 else 0  # per-request costs can be fractions of a cent
+    if fx_ and fx_["code"] == "INR":
+        text = crypto._indian_grouping(v, decimals)
+    else:
+        text = f"{v:,.{decimals}f}"
+    if text.endswith(".00") and v >= 10:
+        text = text[:-3]
+    return (fx_["symbol"] if fx_ else "$") + text
 
 
 def _day(d: date) -> str:

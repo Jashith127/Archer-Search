@@ -89,7 +89,8 @@ def openrouter() -> dict:
         if price:
             slug = name.lower().replace(" ", "-")
             data.append({"id": f"{org.split()[0].lower()}/{slug}", "name": f"{org.split()[0]}: {name}",
-                         "pricing": {"prompt": str(price[0] / 1e6), "completion": str(price[1] / 1e6)}})
+                         "pricing": {"prompt": str(price[0] / 1e6), "completion": str(price[1] / 1e6),
+                                     "input_cache_read": str(price[0] / 1e7) if org == "Anthropic" else "0"}})
     return {"data": data}
 
 
@@ -98,6 +99,8 @@ def reply(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=epoch_zip())
     if request.url.host == "openrouter.ai" and not os.environ.get("NO_PRICES"):  # NO_PRICES=1: date-axis charts
         return httpx.Response(200, json=openrouter())
+    if request.url.host == "api.frankfurter.app":
+        return httpx.Response(200, json={"amount": 1.0, "base": "USD", "date": "2026-10-13", "rates": {"INR": 88.21}})
     if request.url.path == "/search":
         return httpx.Response(200, json={"results": [], "suggestions": []})
     return httpx.Response(404)

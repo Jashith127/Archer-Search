@@ -13,7 +13,7 @@ from archer.config import settings
 from archer.imagerank import rank_images
 from archer.query import PLACE_TYPES, Query, classify
 from archer.searxng import Result, SearchResponse, SearXNG, suggestion_terms
-from archer.sources import aimodels, crypto, dictionary, modelprices, places, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, fx, modelprices, places, translate, weather, wiki
 from archer.utilities import parse_currency_answer
 
 log = logging.getLogger("archer")
@@ -130,7 +130,8 @@ async def _entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
 async def _ai_model_or_entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
     """AI models match a local Epoch AI catalog first; anything else falls through to Wikipedia."""
     if (cat := await aimodels.ensure(ext)) and (model := aimodels.find(cat, query.text)):
-        return Hero("aimodel", aimodels.panel(cat, model, prices=await modelprices.ensure(ext)))
+        prices, rate = await asyncio.gather(modelprices.ensure(ext), fx.usd_rate(ext, settings.home_currency))
+        return Hero("aimodel", aimodels.panel(cat, model, prices=prices, rate=rate))
     return await _entity(ext, query) if query.entity_candidate else None
 
 
