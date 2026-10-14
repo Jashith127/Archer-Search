@@ -1,0 +1,17 @@
+{% from "macros.html" import hero_badge %}
+{% set m = v.hero.data %}
+<section class="hero hero-metronome" data-metronome data-bpm="{{ m.bpm }}">
+  <div>
+    {{ hero_badge("metronome", "Metronome") }}
+    <p class="clock"><span data-bpm-out>{{ m.bpm }}</span> <span class="convert-unit">BPM</span></p>
+    <div class="beats" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  </div>
+  <div class="metronome-controls">
+    <input type="range" min="30" max="280" value="{{ m.bpm }}" data-bpm-in aria-label="Tempo in beats per minute">
+    <div class="timer-controls">
+      <button type="button" class="btn" data-bpm-step="-5">−5</button>
+      <button type="button" class="btn btn--primary" data-metronome-toggle>Play</button>
+      <button type="button" class="btn" data-bpm-step="5">+5</button>
+    </div>
+  </div>
+</section>

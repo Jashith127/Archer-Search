@@ -1,0 +1,18 @@
+{% from "macros.html" import hero_badge %}
+{% set s = v.hero.data %}
+<section class="hero hero-solve">
+  <div>
+    {{ hero_badge("sigma", "Equation solver", s.kind|title) }}
+    <p class="calc-expr">{{ s.equation }}</p>
+    {% if s.kind == "none" %}
+    <p class="calc-value">No solution</p>
+    {% elif s.kind == "all" %}
+    <p class="calc-value">True for every x</p>
+    {% else %}
+    <p class="calc-value">{% for r in s.roots %}x = {{ r }}{% if not loop.last %}<span class="muted">,</span> {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+  {% if s.steps %}
+  <ol class="solve-steps">{% for step in s.steps %}<li>{{ step }}</li>{% endfor %}</ol>
+  {% endif %}
+</section>

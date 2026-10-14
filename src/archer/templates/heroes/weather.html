@@ -1,0 +1,49 @@
+{% from "macros.html" import hero_badge %}
+{% set w = v.hero.data %}
+<section class="hero hero-weather">
+  <div class="wx-now">
+    {{ hero_badge("weather", "Weather", w.place) }}
+    <div class="wx-main">
+      <svg class="wx-icon"><use href="#i-{{ w.icon }}"/></svg>
+      <span class="wx-temp">{{ w.temp }}<sup>°C</sup></span>
+    </div>
+    <p class="wx-label">{{ w.label }}</p>
+    <dl class="wx-stats">
+      <div><dt>Feels like</dt><dd>{{ w.feels }}°</dd></div>
+      <div><dt>Humidity</dt><dd>{{ w.humidity }}%</dd></div>
+      <div><dt>Wind</dt><dd>{{ w.wind }} km/h</dd></div>
+      <div><dt>Sunrise</dt><dd>{{ w.sunrise }}</dd></div>
+      <div><dt>Sunset</dt><dd>{{ w.sunset }}</dd></div>
+    </dl>
+  </div>
+
+  <div class="wx-hours">
+    <p class="hero-kicker">Next 24 hours</p>
+    {% set temps = w.hours|map(attribute="temp")|list %}
+    {% set lo, hi = temps|min, temps|max %}
+    {% set span = [hi - lo, 1]|max %}
+    <div class="wx-bars">
+      {% for h in w.hours %}
+      <div class="wx-bar" title="{{ h.hour }}:00 · {{ h.temp }}° · {{ h.rain }}% rain">
+        <span class="wx-bar-temp">{% if loop.index0 % 3 == 0 %}{{ h.temp }}°{% endif %}</span>
+        <span class="wx-bar-fill" style="--v: {{ ((h.temp - lo) / span * 62 + 14)|round(1) }}%"></span>
+        <span class="wx-bar-pop" style="--p: {{ h.rain }}%"></span>
+        <span class="wx-bar-hour">{% if loop.index0 % 3 == 0 %}{{ h.hour }}{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="wx-legend"><span class="dot dot-temp"></span>Temperature <span class="dot dot-pop"></span>Chance of rain</p>
+  </div>
+
+  <div class="wx-days">
+    {% for d in w.days %}
+    <div class="wx-day">
+      <span class="wx-day-name">{{ d.name }}</span>
+      <svg class="wx-day-icon"><use href="#i-{{ d.icon }}"/></svg>
+      <span class="wx-day-pop">{% if d.rain >= 20 %}{{ d.rain }}%{% endif %}</span>
+      <span class="wx-day-temps"><b>{{ d.max }}°</b> {{ d.min }}°</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="hero-source">Open-Meteo · updated {{ w.updated }} local time</p>
+</section>

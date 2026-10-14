@@ -1,0 +1,104 @@
+{% from "macros.html" import hero_badge, link_chip %}
+{% set e = v.hero.data %}
+{% set poster = e.kind in ("film", "tv", "book") and e.image_tall %}
+{% set show_flag = e.kind == "country" and e.flag %}
+{# Thin panels (three facts or fewer) don't get a mostly-empty facts bento: the facts become
+   stat chips and About takes the right side. #}
+{% set sparse = e.tiles|length <= 3 and not v.lazy.weather_at %}
+{% set has_about = e.extract or e.facts or e.cast %}
+
+{% macro tile_block(t, lead) -%}
+{% set longest = t.value.split()|map("length")|max %}
+<div class="tile{% if lead %} tile--lead{% endif %}">
+  <span class="tile-label"><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</span>
+  <span class="tile-value{% if t.value|length > 22 %} is-long{% endif %}" style="--chars: {{ [longest, 6]|max }}">
+    {%- if t.flag %}<img class="tile-flag" src="{{ t.flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ t.value }}</span>
+  {% if t.sub %}<span class="tile-sub">{{ t.sub }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro about_content() -%}
+{% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+{% if e.facts %}
+<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+{% endif %}
+{% if e.cast %}
+<div class="about-cast">
+  <p class="about-sub">Cast</p>
+  <div class="chips chips--small">{% for name in e.cast %}<a class="chip" href="/search?q={{ name|qs }}">{{ name }}</a>{% endfor %}</div>
+</div>
+{% endif %}
+{%- endmacro %}
+
+<section class="hero hero-entity hero-entity--{{ e.kind }}{% if poster %} is-poster{% endif %}{% if not v.lazy.news or sparse %} no-news{% endif %}{% if sparse %} is-sparse{% endif %}">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, flag=e.flag if show_flag else "") }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+    </div>
+    <div class="hero-links">
+      {% for tag in e.tags %}<a class="tag-chip" href="/search?q={{ tag|qs }}"><svg><use href="#u-tag"/></svg>{{ tag }}</a>{% endfor %}
+      {% if e.tags and e.links %}<span class="chip-sep" aria-hidden="true"></span>{% endif %}
+      {% for l in e.links %}{{ link_chip(l) }}{% endfor %}
+    </div>
+  </div>
+
+  <div class="hero-grid">
+    <div class="collage{% if not (e.image or show_flag) %} collage--empty{% endif %}{% if e.image_logo and not show_flag %} is-logo{% endif %}"{% if v.lazy.images and not poster %} data-collage-q="{{ e.title ~ (' landmarks' if show_flag else '') }}"{% endif %}>
+      {% if show_flag %}
+      {# Countries lead with the flag, shown whole rather than cropped. #}
+      <a class="collage-main collage-flag" href="{{ e.wiki_url }}"><img src="{{ e.flag }}" alt="Flag of {{ e.title }}" referrerpolicy="no-referrer"></a>
+      {% elif e.image %}
+      <a class="collage-main" href="{{ e.wiki_url }}"><img src="{{ e.image }}" alt="{{ e.title }}" referrerpolicy="no-referrer"></a>
+      {% else %}
+      <div class="collage-main collage-placeholder"><svg><use href="#u-{{ e.badge.icon }}"/></svg></div>
+      {% endif %}
+      {% if not poster %}<div class="collage-side"><div class="collage-slot skeleton"></div><div class="collage-slot skeleton"></div></div>{% endif %}
+    </div>
+
+    {% if sparse %}
+    {# Right column: the facts that exist as compact rows, then the full About text, scrollable. #}
+    <section class="about-side" aria-label="About {{ e.title }}">
+      <p class="about-label"><svg><use href="#u-info"/></svg>About</p>
+      {% if e.tiles %}
+      <dl class="about-stats">
+        {% for t in e.tiles %}
+        <div><dt><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</dt><dd>{{ t.value }}{% if t.sub %}<span class="muted"> · {{ t.sub }}</span>{% endif %}</dd></div>
+        {% endfor %}
+      </dl>
+      {% endif %}
+      <div class="about-side-body">{{ about_content() }}</div>
+    </section>
+    {% else %}
+    {% if v.lazy.news %}
+    <a class="news-card skeleton" data-hero-news="{{ e.title }}" href="#" aria-label="Top story"></a>
+    {% endif %}
+
+    <div class="tiles">
+      {% for t in (e.tiles[:4] if v.lazy.weather_at else e.tiles) %}{{ tile_block(t, loop.first) }}{% endfor %}
+      {% if v.lazy.weather_at %}
+      <div class="tile tile-weather" data-weather-lat="{{ v.lazy.weather_at.lat }}" data-weather-lon="{{ v.lazy.weather_at.lon }}">
+        <span class="tile-label"><svg class="tile-icon"><use href="#u-weather"/></svg>Right now</span>
+        <span class="tile-value skeleton-text"></span><span class="tile-sub"></span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if has_about and not sparse %}
+  <details class="about" open>
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">{{ about_content() }}</div>
+  </details>
+  {% endif %}
+
+  {% if e.kind == "disease" %}
+  <p class="hero-source hero-source--warn">General information from Wikipedia and Wikidata, not medical advice. See a doctor for diagnosis or treatment.</p>
+  {% endif %}
+</section>

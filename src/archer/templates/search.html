@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "macros.html" import result, lazy_strip %}
+{% block title %}{{ v.q }} · Archer{% endblock %}
+{% block body_class %}serp tab-{{ v.tab }}{% endblock %}
+{% block body %}
+<header class="top">
+  <div class="wrap top-inner">
+    <form class="searchbar" action="/search" method="get" role="search">
+      <svg class="searchbar-lead" aria-hidden="true"><use href="#i-search"/></svg>
+      <input name="q" value="{{ v.q }}" autocomplete="off" spellcheck="false" aria-label="Search">
+      <kbd class="kbd" title="Press / to focus search">/</kbd>
+      {% if v.tab != "all" %}<input type="hidden" name="tab" value="{{ v.tab }}">{% endif %}
+      <button type="button" class="searchbar-clear" aria-label="Clear"><svg><use href="#i-x"/></svg></button>
+      <span class="searchbar-sep"></span>
+      <button type="submit" class="searchbar-go" aria-label="Search"><svg><use href="#i-search"/></svg></button>
+    </form>
+  </div>
+  <nav class="wrap tabs" aria-label="Result types">
+    <div class="tabs-list">
+      {% for key, label in [("all", "All"), ("images", "Images"), ("news", "News"), ("videos", "Videos")] %}
+      <a class="tab{% if v.tab == key %} is-active{% endif %}" href="/search?q={{ v.q|qs }}{% if key != 'all' %}&tab={{ key }}{% endif %}">{{ label }}</a>
+      {% endfor %}
+      <a class="tab" href="https://www.openstreetmap.org/search?query={{ v.q|qs }}">Maps <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+    </div>
+    <div class="modes" role="group" aria-label="AI level">
+      <span class="mode is-active" title="Links and cards. No AI.">Classic</span>
+      <span class="mode is-soon" title="Compact AI summary: arrives in build step 4">Balanced</span>
+      <span class="mode is-soon" title="Agentic AI mode: arrives in build step 5">AI</span>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap page">
+  {% if v.response and v.response.error %}
+  <div class="notice">{{ v.response.error }}. <a href="{{ searxng_page }}">Open SearXNG directly</a>.</div>
+  {% endif %}
+
+  {% if v.response and v.response.corrections %}
+  <p class="correction">Did you mean <a href="/search?q={{ v.response.corrections[0]|qs }}">{{ v.response.corrections[0] }}</a>?</p>
+  {% endif %}
+
+  {% if v.hero and v.hero.kind == "entity" and v.hero.data.corrected and not (v.response and v.response.corrections) %}
+  <p class="correction">Did you mean <a href="/search?q={{ v.hero.data.title|qs }}">{{ v.hero.data.title }}</a>? Showing its info panel for “{{ v.q }}”.</p>
+  {% endif %}
+
+  {% if v.hero_failed %}
+  <div class="notice">The {{ v.query.kind }} card couldn't load because {{ v.hero_failed }} didn't respond. Try again in a minute; the web results below are unaffected.</div>
+  {% endif %}
+
+  {% if v.hero %}{% include "heroes/" ~ v.hero.kind ~ ".html" %}{% endif %}
+
+  {% if v.tab == "all" %}
+  <div class="layout layout--single">
+    <div class="results">
+      {% if v.lazy.works %}
+      <section class="works" data-works-qid="{{ v.lazy.works.qid }}" data-works-role="{{ v.lazy.works.role }}">
+        <h2 class="section-title">{{ {"cast": "Movies and shows", "author": "Books", "performer": "Albums"}[v.lazy.works.role] }}</h2>
+        <div class="works-row"><div class="work skeleton"></div><div class="work skeleton"></div><div class="work skeleton"></div></div>
+      </section>
+      {% endif %}
+
+      {% for r in v.results %}
+        {{ result(r) }}
+        {% if loop.index == 1 and v.lazy.images %}{{ lazy_strip("images", v.q, "Images", "image") }}{% endif %}
+        {% if loop.index == 2 and v.lazy.news %}{{ lazy_strip("news", v.q, "In the news", "news") }}{% endif %}
+        {% if loop.index == 3 and v.lazy.videos %}{{ lazy_strip("videos", v.q, "Videos", "video") }}{% endif %}
+        {% if loop.index == 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
+      {% else %}
+        {% if not (v.response and v.response.error) %}
+        <div class="empty">
+          <p>No web results came back for <b>{{ v.q }}</b>.</p>
+          <p class="muted">Upstream engines may be rate-limiting your SearXNG. Try <a href="{{ searxng_page }}">SearXNG directly</a> or prefix <code>!g</code>.</p>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if v.results|length < 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
+
+      <section class="related" data-related-q="{{ v.q }}" hidden>
+        <h2 class="section-title">Related searches</h2>
+        <div class="chips"></div>
+      </section>
+      {% include "pager.html" %}
+    </div>
+  </div>
+  {% else %}
+    {% include "tab_" ~ v.tab ~ ".html" %}
+  {% endif %}
+
+  <footer class="status">
+    {% if v.response and v.response.unresponsive %}
+    <p>Engines unavailable: {% for name, why in v.response.unresponsive %}<span title="{{ why }}">{{ name }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+    <p><a href="{{ searxng_page }}">View on SearXNG</a> · Classic mode · no AI used</p>
+  </footer>
+</main>
+{% endblock %}

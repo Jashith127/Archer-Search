@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block body_class %}home{% endblock %}
+{% block body %}
+<main class="home-main">
+  <div class="home-brand">
+    <img src="/static/favicon.svg" alt="" width="44" height="44">
+    <span>Archer</span>
+  </div>
+  <form class="searchbar searchbar--home" action="/search" method="get" role="search">
+    <svg class="searchbar-icon"><use href="#i-search"/></svg>
+    <input name="q" autofocus autocomplete="off" spellcheck="false" placeholder="Search the web privately" aria-label="Search">
+  </form>
+  <p class="home-hint">Classic mode · results from your SearXNG · <a href="/setup">Helium setup</a></p>
+</main>
+{% endblock %}

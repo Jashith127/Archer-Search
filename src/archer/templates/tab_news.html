@@ -1,0 +1,16 @@
+{% from "macros.html" import site_badge %}
+<div class="news-list">
+  {% for r in v.results %}
+  <article class="news-item">
+    <div class="news-item-body">
+      <a class="result-site" href="{{ r.url }}">{{ site_badge(r.host) }}<span class="result-host">{{ r.host }}</span>{% if r.date|ago %}<span class="muted"> · {{ r.date|ago }}</span>{% endif %}</a>
+      <h3 class="result-title"><a href="{{ r.url }}">{{ r.title }}</a></h3>
+      {% if r.content %}<p class="result-snippet">{{ r.content|truncate(260, True, "…") }}</p>{% endif %}
+    </div>
+    {% if r.thumbnail %}<a class="news-item-thumb" href="{{ r.url }}" tabindex="-1"><img src="{{ r.thumbnail }}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>{% endif %}
+  </article>
+  {% else %}
+  <div class="empty"><p>No news came back for <b>{{ v.q }}</b>.</p></div>
+  {% endfor %}
+</div>
+{% include "pager.html" %}

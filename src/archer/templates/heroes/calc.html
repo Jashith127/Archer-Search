@@ -1,0 +1,8 @@
+{% from "macros.html" import hero_badge %}
+{% set c = v.hero.data %}
+<section class="hero hero-calc">
+  {{ hero_badge("calculator", "Calculator") }}
+  <p class="calc-expr">{{ c.expression }} =</p>
+  <p class="calc-value">{{ c.value }}</p>
+  <button type="button" class="icon-btn" data-copy="{{ c.value|replace(',', '') }}" aria-label="Copy result"><svg><use href="#i-copy"/></svg></button>
+</section>

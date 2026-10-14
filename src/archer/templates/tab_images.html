@@ -1,0 +1,33 @@
+<div class="image-layout" data-image-viewer data-q="{{ v.q }}">
+  <div class="image-grid">
+    {% for r in v.results if r.thumbnail or r.img_src %}
+    <a class="image-tile" href="{{ r.url }}" aria-label="{{ r.title }}"
+       data-full="{{ r.img_src }}" data-thumb="{{ r.thumbnail or r.img_src }}" data-title="{{ r.title }}"
+       data-host="{{ r.host }}" data-source="{{ r.source or r.host }}" data-res="{{ r.resolution }}">
+      <img src="{{ r.thumbnail or r.img_src }}" alt="{{ r.title }}" loading="lazy" referrerpolicy="no-referrer">
+      <span class="image-meta">{{ r.host or r.source }}</span>
+    </a>
+    {% else %}
+    <div class="empty"><p>No images came back for <b>{{ v.q }}</b>.</p></div>
+    {% endfor %}
+  </div>
+  <aside class="image-panel" hidden aria-label="Image details">
+    <div class="ip-bar">
+      <button type="button" class="icon-btn icon-btn--sm" data-ip="prev" aria-label="Previous image">‹</button>
+      <button type="button" class="icon-btn icon-btn--sm" data-ip="next" aria-label="Next image">›</button>
+      <button type="button" class="icon-btn icon-btn--sm ip-close" data-ip="close" aria-label="Close">✕</button>
+    </div>
+    <a class="ip-stage" data-ip="stage" target="_blank" rel="noopener noreferrer"><img data-ip="img" alt="" referrerpolicy="no-referrer"></a>
+    <div class="ip-info">
+      <h2 class="ip-title" data-ip="title"></h2>
+      <p class="ip-sub"><span data-ip="source"></span><span data-ip="res"></span></p>
+      <div class="ip-actions">
+        <a class="ip-btn ip-btn--primary" data-ip="visit" target="_blank" rel="noopener noreferrer">Visit page <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+        <a class="ip-btn" data-ip="open" target="_blank" rel="noopener noreferrer">View image</a>
+      </div>
+    </div>
+    <h3 class="ip-more-title">Similar images</h3>
+    <div class="ip-similar" data-ip="similar"></div>
+  </aside>
+</div>
+{% include "pager.html" %}

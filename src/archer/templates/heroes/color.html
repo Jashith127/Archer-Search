@@ -1,0 +1,11 @@
+{% from "macros.html" import hero_badge %}
+{% set c = v.hero.data %}
+<section class="hero hero-color">
+  {{ hero_badge("palette", "Colour", c.hex) }}
+  <div class="swatch" style="background: {{ c.hex }}; color: {{ '#111' if c.light else '#fff' }}">{{ c.hex }}</div>
+  <dl class="kv-grid">
+    {% for label, value in [("HEX", c.hex), ("RGB", c.rgb), ("HSL", c.hsl)] %}
+    <div><dt>{{ label }}</dt><dd>{{ value }} <button type="button" class="icon-btn icon-btn--sm" data-copy="{{ value }}" aria-label="Copy {{ label }}"><svg><use href="#i-copy"/></svg></button></dd></div>
+    {% endfor %}
+  </dl>
+</section>

@@ -1,0 +1,10 @@
+{% if v.results or v.page > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% set base = "/search?q=" ~ (v.q|qs) ~ ("" if v.tab == "all" else "&tab=" ~ v.tab) %}
+  {% if v.page > 1 %}<a class="pager-btn" href="{{ base }}{% if v.page > 2 %}&p={{ v.page - 1 }}{% endif %}">Previous</a>{% endif %}
+  {% for n in range([1, v.page - 2]|max, v.page + 3) %}
+    {% if n == v.page %}<span class="pager-num is-current">{{ n }}</span>{% else %}<a class="pager-num" href="{{ base }}{% if n > 1 %}&p={{ n }}{% endif %}">{{ n }}</a>{% endif %}
+  {% endfor %}
+  {% if v.results %}<a class="pager-btn" href="{{ base }}&p={{ v.page + 1 }}">Next</a>{% endif %}
+</nav>
+{% endif %}

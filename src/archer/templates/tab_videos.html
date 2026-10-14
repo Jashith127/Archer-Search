@@ -1,0 +1,15 @@
+<div class="video-grid">
+  {% for r in v.results %}
+  <a class="video-card" href="{{ r.url }}">
+    <span class="video-thumb">
+      {% if r.thumbnail %}<img src="{{ r.thumbnail }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<svg class="video-thumb-icon"><use href="#i-play"/></svg>{% endif %}
+      {% if r.length %}<span class="video-length">{{ r.length }}</span>{% endif %}
+    </span>
+    <span class="video-title">{{ r.title }}</span>
+    <span class="video-meta">{{ r.host }}{% if r.date|ago %} · {{ r.date|ago }}{% endif %}</span>
+  </a>
+  {% else %}
+  <div class="empty"><p>No videos came back for <b>{{ v.q }}</b>.</p></div>
+  {% endfor %}
+</div>
+{% include "pager.html" %}

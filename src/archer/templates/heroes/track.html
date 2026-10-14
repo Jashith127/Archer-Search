@@ -1,0 +1,13 @@
+{% from "macros.html" import hero_badge %}
+{% set t = v.hero.data %}
+<section class="hero hero-track">
+  <div>
+    {{ hero_badge("package", "Package tracking", ("looks like " ~ t.carrier) if t.carrier else "") }}
+    <p class="calc-value calc-value--mono">{{ t.number }}</p>
+  </div>
+  <div class="timer-controls">
+    {% if t.url and t.url != t.universal %}<a class="btn btn--primary" href="{{ t.url }}">Track on {{ t.carrier }}</a>{% endif %}
+    <a class="btn{% if not (t.url and t.url != t.universal) %} btn--primary{% endif %}" href="{{ t.universal }}">Track on 17TRACK (all carriers)</a>
+  </div>
+  <p class="hero-source">Carrier guessed from the number format. Archer doesn't fetch tracking data itself.</p>
+</section>

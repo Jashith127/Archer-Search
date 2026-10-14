@@ -1,0 +1,16 @@
+{% from "macros.html" import hero_badge %}
+{% set c = v.hero.data %}
+<section class="hero hero-convert" data-converter="rate" data-rate="{{ c.rate }}">
+  <div class="convert-result">
+    {{ hero_badge("swap", "Currency", c.from ~ " → " ~ c.to) }}
+    <p class="hero-kicker">{{ c.amount }} {{ c.from_name }} equals</p>
+    <p class="convert-big">{% if c.to|currency_flag %}<img class="convert-flag" src="{{ c.to|currency_flag }}" alt="" referrerpolicy="no-referrer">{% endif %}<span data-out-text>{{ c.value }}</span> <span class="convert-unit">{{ c.to_name }}</span></p>
+    <p class="muted">1 {{ c.from }} = {{ "%.4f"|format(c.rate) }} {{ c.to }}</p>
+  </div>
+  <div class="convert-fields">
+    <label class="field"><input type="number" step="any" value="{{ c.amount|replace(',', '') }}" data-in><span class="field-cur">{% if c.from|currency_flag %}<img src="{{ c.from|currency_flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ c.from }}</span></label>
+    <span class="convert-eq"><svg><use href="#u-swap"/></svg></span>
+    <label class="field"><input type="number" step="any" value="{{ (c.amount_raw * c.rate)|round(2) }}" data-out><span class="field-cur">{% if c.to|currency_flag %}<img src="{{ c.to|currency_flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ c.to }}</span></label>
+  </div>
+  <p class="hero-source">Rate via SearXNG currency engine · not for trading</p>
+</section>

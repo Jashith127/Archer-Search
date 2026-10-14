@@ -1,0 +1,16 @@
+{% from "macros.html" import hero_badge %}
+{% set u = v.hero.data %}
+<section class="hero hero-convert" data-converter="{{ 'temp' if u.category == 'Temperature' else 'rate' }}"
+         data-rate="{{ u.factor or '' }}" data-from="{{ u.from }}" data-to="{{ u.to }}">
+  <div class="convert-result">
+    {{ hero_badge("ruler", "Unit converter", u.category) }}
+    <p class="hero-kicker">{{ u.amount }} {{ u.from }} ({{ u.from_name }}) equals</p>
+    <p class="convert-big"><span data-out-text>{{ u.value }}</span> <span class="convert-unit">{{ u.to }}</span></p>
+    {% if u.factor %}<p class="muted">Formula: multiply by {{ u.factor }}</p>{% endif %}
+  </div>
+  <div class="convert-fields">
+    <label class="field"><input type="number" step="any" value="{{ u.amount|replace(',', '') }}" data-in><span>{{ u.from }}</span></label>
+    <span class="convert-eq">=</span>
+    <label class="field"><input type="number" step="any" value="{{ u.value|replace(',', '') }}" data-out><span>{{ u.to }}</span></label>
+  </div>
+</section>

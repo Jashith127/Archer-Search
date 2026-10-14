@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archer setup</title>
+<link rel="search" type="application/opensearchdescription+xml" title="Archer" href="/opensearch.xml">
+<style>
+  :root { --bg: #fafafa; --card: #ffffff; --fg: #18181b; --muted: #71717a; --line: #e4e4e7; --accent: #2563eb; --ok: #16a34a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18181b; --card: #232326; --fg: #f4f4f5; --muted: #a1a1aa; --line: #3f3f46; --accent: #60a5fa; --ok: #4ade80; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 40px 16px; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .status { color: var(--ok); margin: 0 0 28px; }
+  ol { padding-left: 20px; } li { margin: 6px 0; }
+  code, .val { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13.5px; }
+  .fields { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 16px 0 24px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .label { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+  .val { overflow-wrap: anywhere; }
+  button { font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: transparent; color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .note { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Set Archer as Helium's default</h1>
+  <p class="status">● Archer is running</p>
+  <ol>
+    <li>In Helium, open <b>Settings → Search engine → Manage search engines and site search</b>.</li>
+    <li>Next to <b>Site search</b>, click <b>Add</b>.</li>
+    <li>Fill in the four fields below, then click <b>Add as default</b>.</li>
+  </ol>
+  <div class="fields">
+    <div class="row"><span class="label">Name</span><span class="val">Archer</span><button data-copy="Archer">Copy</button></div>
+    <div class="row"><span class="label">Shortcut</span><span class="val">ar</span><button data-copy="ar">Copy</button></div>
+    <div class="row"><span class="label">URL with %s in place of query</span><span class="val">{{search_url}}</span><button data-copy="{{search_url}}">Copy</button></div>
+    <div class="row"><span class="label">Suggestions URL with %s in place of query</span><span class="val">{{suggest_url}}</span><button data-copy="{{suggest_url}}">Copy</button></div>
+  </div>
+  <p class="note">If searches don't reach Archer, swap <code>archer.localhost</code> for <code>127.0.0.1</code>, for example <code>{{fallback_search_url}}</code>.</p>
+  <p class="note">Archer must be running for searches to work. To start it when you log in, right-click the Archer tray icon and tick <b>Start with Windows</b>.</p>
+</main>
+<script>
+  document.querySelectorAll("button[data-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = "Copied"; }
+      catch { btn.textContent = "Select & copy"; }
+      setTimeout(() => (btn.textContent = "Copy"), 1500);
+    });
+  });
+</script>
+</body>
+</html>

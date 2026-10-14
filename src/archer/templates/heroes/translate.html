@@ -1,0 +1,19 @@
+{% from "macros.html" import hero_badge %}
+{% set t = v.hero.data %}
+<section class="hero hero-translate">
+  {{ hero_badge("languages", "Translate", t.source_name ~ " → " ~ t.target_name) }}
+  <div class="tr-pane">
+    <p class="hero-kicker">{{ t.source_name }} <span class="muted">(detected)</span></p>
+    <p class="tr-text">{{ t.text }}</p>
+  </div>
+  <div class="tr-arrow" aria-hidden="true">→</div>
+  <div class="tr-pane tr-pane--out">
+    <p class="hero-kicker">{{ t.target_name }}</p>
+    <p class="tr-text tr-text--out" lang="{{ t.target }}">{{ t.translated }}</p>
+    <button type="button" class="icon-btn icon-btn--sm" data-copy="{{ t.translated }}" aria-label="Copy translation"><svg><use href="#i-copy"/></svg></button>
+    {% if t.alternatives %}
+    <p class="tr-alt">Also: {% for a in t.alternatives %}<span lang="{{ t.target }}">{{ a }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+  <p class="hero-source">MyMemory translation memory · machine and community translations, check before relying on them</p>
+</section>

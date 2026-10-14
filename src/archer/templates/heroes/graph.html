@@ -1,0 +1,21 @@
+{% from "macros.html" import hero_badge %}
+{% set g = v.hero.data %}
+<section class="hero hero-graph">
+  {{ hero_badge("chart", "Graph", "−10 ≤ x ≤ 10") }}
+  <p class="calc-expr">y = {{ g.expr }}</p>
+  <figure class="graph">
+    <svg viewBox="-44 -8 {{ g.w + 56 }} {{ g.h + 34 }}" role="img" aria-label="Graph of y = {{ g.expr }}">
+      {% for t in g.y_ticks %}
+      <line class="graph-grid" x1="0" x2="{{ g.w }}" y1="{{ t.pos }}" y2="{{ t.pos }}"/>
+      <text class="graph-label" x="-8" y="{{ t.pos + 4 }}" text-anchor="end">{{ t.label }}</text>
+      {% endfor %}
+      {% for t in g.x_ticks %}
+      <line class="graph-grid" y1="0" y2="{{ g.h }}" x1="{{ t.pos }}" x2="{{ t.pos }}"/>
+      <text class="graph-label" y="{{ g.h + 20 }}" x="{{ t.pos }}" text-anchor="middle">{{ t.label }}</text>
+      {% endfor %}
+      {% if g.axis_x is not none %}<line class="graph-axis" x1="0" x2="{{ g.w }}" y1="{{ g.axis_x }}" y2="{{ g.axis_x }}"/>{% endif %}
+      <line class="graph-axis" y1="0" y2="{{ g.h }}" x1="{{ g.axis_y }}" x2="{{ g.axis_y }}"/>
+      <path class="graph-line" d="{{ g.path }}"/>
+    </svg>
+  </figure>
+</section>

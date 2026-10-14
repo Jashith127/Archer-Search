@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>{% block title %}Archer{% endblock %}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="search" type="application/opensearchdescription+xml" title="Archer" href="/opensearch.xml">
+<link rel="stylesheet" href="{{ asset('archer.css') }}">
+<script src="{{ asset('archer.js') }}" defer></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% include "icons.html" %}
+{% include "ui_icons.html" %}
+{% include "brand_icons.html" %}
+{% block body %}{% endblock %}
+</body>
+</html>

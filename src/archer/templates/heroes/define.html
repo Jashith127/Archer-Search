@@ -1,0 +1,26 @@
+{% from "macros.html" import hero_badge %}
+{% set d = v.hero.data %}
+<section class="hero hero-define">
+  <div class="define-head">
+    {{ hero_badge("book", "Dictionary") }}
+    <h1 class="hero-title">{{ d.word }}</h1>
+    <p class="define-phonetic">
+      {% if d.phonetic %}<span>{{ d.phonetic }}</span>{% endif %}
+      {% if d.audio %}<button type="button" class="icon-btn" data-audio="{{ d.audio }}" aria-label="Play pronunciation"><svg><use href="#i-sound"/></svg></button>{% endif %}
+    </p>
+  </div>
+  <div class="define-meanings">
+    {% for m in d.meanings %}
+    <div class="meaning">
+      <p class="meaning-pos">{{ m.pos }}</p>
+      <ol>
+        {% for def in m.defs %}
+        <li>{{ def.text }}{% if def.example %}<span class="meaning-example">“{{ def.example }}”</span>{% endif %}</li>
+        {% endfor %}
+      </ol>
+      {% if m.synonyms %}<div class="chips chips--small">{% for s in m.synonyms %}<a class="chip" href="/search?q=define+{{ s|qs }}">{{ s }}</a>{% endfor %}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="hero-source">Wiktionary{% if d.source %} · <a href="{{ d.source }}">full entry</a>{% endif %}</p>
+</section>

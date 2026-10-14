@@ -1,0 +1,57 @@
+{# Site badge: the real favicon (proxied through /api/favicon) over a lettered fallback. #}
+{% macro site_badge(host) -%}
+{% set name = host|site_name %}
+<span class="badge" style="--h: {{ name|hue }}">{{ (name[:1] or "?")|upper }}<img class="badge-icon" src="/api/favicon/{{ host }}" alt="" loading="lazy"></span>
+{%- endmacro %}
+
+{# Type badge that opens every hero card: icon + kind, with optional context. #}
+{% macro hero_badge(icon, label, extra="", flag="") -%}
+<p class="hero-badge">
+  <span class="hero-badge-icon">{% if flag %}<img src="{{ flag }}" alt="" referrerpolicy="no-referrer">{% else %}<svg><use href="#u-{{ icon }}"/></svg>{% endif %}</span>
+  <span>{{ label }}</span>{% if extra %}<span class="hero-badge-extra">{{ extra }}</span>{% endif %}
+</p>
+{%- endmacro %}
+
+{% macro link_chip(l) -%}
+{% if l.kind == "x" %}
+{# X's mark is the label; no text needed. #}
+<a class="link-chip link-chip--x link-chip--icon" href="{{ l.url }}" aria-label="X" title="X"><svg><use href="#b-x"/></svg></a>
+{%- else -%}
+{% set BRANDS = {"instagram": "instagram", "x": "x", "youtube": "youtube", "facebook": "facebook", "imdb": "imdb",
+                 "spotify": "spotify", "apple music": "applemusic", "wikipedia": "wikipedia", "github": "github",
+                 "tiktok": "tiktok", "rotten tomatoes": "rottentomatoes"} %}
+<a class="link-chip link-chip--{{ l.kind|replace(' ', '-') }}" href="{{ l.url }}">
+  {%- if l.kind in BRANDS %}<svg><use href="#b-{{ BRANDS[l.kind] }}"/></svg>
+  {%- elif l.kind == "source" %}<svg><use href="#u-code"/></svg>
+  {%- else %}<svg><use href="#u-globe"/></svg>{% endif %}{{ l.label }}</a>
+{%- endif %}
+{%- endmacro %}
+
+{% macro result(r, show_engines=True) -%}
+<article class="result">
+  <div class="result-main">
+    <a class="result-site" href="{{ r.url }}">
+      {{ site_badge(r.host) }}
+      <span class="result-site-text">
+        <span class="result-host">{{ r.host|site_name }}</span>
+        <span class="result-crumbs">{{ r.host }}{% for c in r.crumbs %} › {{ c|truncate(28, True, "…") }}{% endfor %}</span>
+      </span>
+    </a>
+    <h3 class="result-title"><a href="{{ r.url }}">{{ r.title }}</a></h3>
+    {% if r.content or r.date %}
+    <p class="result-snippet">{% if r.date and r.date|ago %}<span class="result-date">{{ r.date|ago }} — </span>{% endif %}{{ r.content|truncate(300, True, "…") }}</p>
+    {% endif %}
+    {% if show_engines %}<div class="result-engines" title="Engines that returned this result. More engines = higher rank.">{{ r.engines|join(" · ") }}</div>{% endif %}
+  </div>
+  {% if r.thumbnail %}<a class="result-thumb" href="{{ r.url }}" tabindex="-1"><img src="{{ r.thumbnail }}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>{% endif %}
+</article>
+{%- endmacro %}
+
+{% macro lazy_strip(kind, q, title, icon) -%}
+<section class="strip strip--{{ kind }}" data-lazy="{{ kind }}" data-q="{{ q }}">
+  <h2 class="section-title"><svg><use href="#i-{{ icon }}"/></svg>{{ title }}</h2>
+  <div class="strip-row">
+    {% for _ in range(4) %}<div class="card skeleton"></div>{% endfor %}
+  </div>
+</section>
+{%- endmacro %}

@@ -1,0 +1,35 @@
+[project]
+name = "archer"
+version = "0.1.0"
+description = "Personal AI search engine, served on localhost as Helium's default search engine."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pydantic-settings>=2.6",
+    "pystray>=0.19",
+    "pillow>=11.0",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "tzdata>=2024.1",
+]
+
+[project.scripts]
+archer = "archer.__main__:main"
+
+[project.gui-scripts]
+archerw = "archer.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

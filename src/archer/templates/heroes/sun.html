@@ -1,0 +1,23 @@
+{% from "macros.html" import hero_badge %}
+{% set s = v.hero.data %}
+{% set today = s.days[0] %}
+<section class="hero hero-sun">
+  <div>
+    {{ hero_badge("sunrise", s.event|title, s.place) }}
+    <p class="clock">{{ today[s.event] }}</p>
+    <p class="clock-date">{{ today.date }} · local time</p>
+  </div>
+  <div class="sun-days">
+    {% for d in s.days %}
+    <div class="sun-day">
+      <p class="sun-day-name">{{ d.name }}</p>
+      <dl class="sun-row">
+        <div><dt>Sunrise</dt><dd>{{ d.sunrise }}</dd></div>
+        <div><dt>Sunset</dt><dd>{{ d.sunset }}</dd></div>
+        <div><dt>Daylight</dt><dd>{{ d.daylight }}</dd></div>
+      </dl>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="hero-source">Open-Meteo · {{ s.timezone }}</p>
+</section>

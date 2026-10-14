@@ -1,0 +1,40 @@
+{% from "macros.html" import hero_badge %}
+{% set f = v.hero.data %}
+<section class="hero hero-finance" data-finance="{{ f.tool }}">
+  {% if f.tool == "emi" %}
+  <div class="fin-inputs">
+    {{ hero_badge("coins", "Loan EMI calculator") }}
+    <label class="field field--labelled"><span>Loan amount</span><input type="number" min="0" step="1000" value="1000000" data-fin="principal"></label>
+    <label class="field field--labelled"><span>Interest % / year</span><input type="number" min="0" step="0.05" value="8.5" data-fin="rate"></label>
+    <label class="field field--labelled"><span>Tenure (years)</span><input type="number" min="0.5" step="0.5" value="20" data-fin="years"></label>
+  </div>
+  <dl class="fin-out">
+    <div class="fin-main"><dt>Monthly EMI</dt><dd data-fin-out="emi">—</dd></div>
+    <div><dt>Total interest</dt><dd data-fin-out="interest">—</dd></div>
+    <div><dt>Total payment</dt><dd data-fin-out="total">—</dd></div>
+  </dl>
+  {% elif f.tool == "bmi" %}
+  <div class="fin-inputs">
+    {{ hero_badge("heartbeat", "BMI calculator") }}
+    <label class="field field--labelled"><span>Height (cm)</span><input type="number" min="50" max="260" value="170" data-fin="height"></label>
+    <label class="field field--labelled"><span>Weight (kg)</span><input type="number" min="10" max="400" value="65" data-fin="weight"></label>
+  </div>
+  <dl class="fin-out">
+    <div class="fin-main"><dt>BMI</dt><dd data-fin-out="bmi">—</dd></div>
+    <div><dt>Category (WHO)</dt><dd data-fin-out="category">—</dd></div>
+    <div><dt>Healthy weight for this height</dt><dd data-fin-out="range">—</dd></div>
+  </dl>
+  {% else %}
+  <div class="fin-inputs">
+    {{ hero_badge("calculator", "Tip calculator") }}
+    <label class="field field--labelled"><span>Bill amount</span><input type="number" min="0" step="1" value="1200" data-fin="bill"></label>
+    <label class="field field--labelled"><span>Tip %</span><input type="number" min="0" max="100" step="1" value="10" data-fin="tip"></label>
+    <label class="field field--labelled"><span>Split between</span><input type="number" min="1" max="50" step="1" value="2" data-fin="people"></label>
+  </div>
+  <dl class="fin-out">
+    <div class="fin-main"><dt>Per person</dt><dd data-fin-out="each">—</dd></div>
+    <div><dt>Tip</dt><dd data-fin-out="tipAmount">—</dd></div>
+    <div><dt>Total</dt><dd data-fin-out="total">—</dd></div>
+  </dl>
+  {% endif %}
+</section>

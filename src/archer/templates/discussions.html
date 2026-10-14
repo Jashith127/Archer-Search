@@ -1,0 +1,13 @@
+<section class="discussions">
+  <h2 class="section-title"><svg><use href="#i-chat"/></svg>Discussions</h2>
+  <div class="discussion-list">
+    {% for d in v.discussions %}
+    <a class="discussion" href="{{ d.url }}">
+      <span class="discussion-forum">{{ d.host }}{% if d.crumbs|length > 1 and d.crumbs[0] == "r" %} · r/{{ d.crumbs[1] }}{% endif %}</span>
+      <span class="discussion-title">{{ d.title }}</span>
+      {% if d.content %}<span class="discussion-snippet">{{ d.content|truncate(180, True, "…") }}</span>{% endif %}
+      {% if d.date|ago %}<span class="discussion-date">{{ d.date|ago }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>

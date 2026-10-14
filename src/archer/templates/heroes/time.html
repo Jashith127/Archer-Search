@@ -1,0 +1,14 @@
+{% from "macros.html" import hero_badge %}
+{% set t = v.hero.data %}
+<section class="hero hero-time">
+  <div>
+    {{ hero_badge("clock", "Local time", t.place) }}
+    <p class="clock" data-clock-tz="{{ t.tz }}">{{ t.time }}</p>
+    <p class="clock-date" data-clock-date-tz="{{ t.tz }}">{{ t.date }}</p>
+  </div>
+  <dl class="kv-grid">
+    <div><dt>Time zone</dt><dd>{{ t.zone }} ({{ t.offset }})</dd></div>
+    <div><dt>Difference</dt><dd>{{ t.diff }}</dd></div>
+    <div><dt>IANA zone</dt><dd>{{ t.tz }}</dd></div>
+  </dl>
+</section>

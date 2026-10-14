@@ -1,0 +1,8 @@
+{% set a = v.hero.data %}
+{% from "macros.html" import site_badge, hero_badge %}
+<section class="hero hero-answer">
+  {{ hero_badge("sparkle", "Quick answer") }}
+  <p class="answer-text">{{ a.text|truncate(520, True, "…") }}</p>
+  <a class="result-site" href="{{ a.url }}">{{ site_badge(a.host) }}<span class="result-site-text"><span class="result-host">{{ a.host|site_name }}</span><span class="result-crumbs">{{ a.host }}</span></span></a>
+  <p class="hero-source">Instant answer via DuckDuckGo (through SearXNG) · not AI-generated</p>
+</section>

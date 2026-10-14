@@ -1,0 +1,19 @@
+{% from "macros.html" import hero_badge %}
+{% set t = v.hero.data %}
+<section class="hero hero-timer" data-timer="{{ t.mode }}" data-seconds="{{ t.seconds }}">
+  {{ hero_badge("timer", "Timer & stopwatch") }}
+  <div class="timer-tabs" role="tablist">
+    <button type="button" class="mode{% if t.mode == 'timer' %} is-active{% endif %}" data-timer-mode="timer">Timer</button>
+    <button type="button" class="mode{% if t.mode == 'stopwatch' %} is-active{% endif %}" data-timer-mode="stopwatch">Stopwatch</button>
+  </div>
+  <p class="clock timer-display" data-timer-display>{{ "%02d:%02d"|format(t.seconds // 60, t.seconds % 60) }}</p>
+  <div class="timer-presets" data-timer-presets>
+    {% for s, label in [(60, "1 min"), (300, "5 min"), (600, "10 min"), (900, "15 min"), (1800, "30 min"), (3600, "1 h")] %}
+    <button type="button" class="chip" data-timer-set="{{ s }}">{{ label }}</button>
+    {% endfor %}
+  </div>
+  <div class="timer-controls">
+    <button type="button" class="btn btn--primary" data-timer-start>Start</button>
+    <button type="button" class="btn" data-timer-reset>Reset</button>
+  </div>
+</section>

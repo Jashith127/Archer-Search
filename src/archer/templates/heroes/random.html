@@ -1,0 +1,7 @@
+{% from "macros.html" import hero_badge %}
+{% set r = v.hero.data %}
+<section class="hero hero-random" data-random="{{ r.tool }}" data-min="{{ r.min or '' }}" data-max="{{ r.max or '' }}">
+  {{ hero_badge("dice", {"coin": "Coin flip", "dice": "Dice roll", "number": "Random number"}[r.tool], (r.min ~ "–" ~ r.max) if r.tool == "number" else "") }}
+  <p class="random-value" data-random-out>…</p>
+  <button type="button" class="btn" data-random-again>{{ "Flip again" if r.tool == "coin" else "Roll again" if r.tool == "dice" else "Again" }}</button>
+</section>

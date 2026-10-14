@@ -1,0 +1,31 @@
+{% from "macros.html" import hero_badge %}
+{% set c = v.hero.data %}
+<section class="hero hero-crypto" data-converter="rate" data-rate="{{ c.price }}">
+  <div class="cx-head">
+    {% if c.image %}<img class="cx-logo" src="{{ c.image }}" alt="" width="40" height="40" referrerpolicy="no-referrer">{% endif %}
+    <div>
+      {{ hero_badge("coins", "Crypto", c.name ~ " · " ~ c.symbol ~ (" · Rank #" ~ c.rank if c.rank else "")) }}
+      <p class="cx-price">{{ c.price_text }} <span class="cx-fiat">{{ c.fiat }}</span></p>
+      <p class="cx-change {{ 'is-up' if c.change >= 0 else 'is-down' }}">{{ "▲" if c.change >= 0 else "▼" }} {{ c.change|abs }}% today{% if c.week is not none %}<span class="muted"> · {{ "+" if c.week >= 0 else "" }}{{ c.week }}% this week</span>{% endif %}</p>
+    </div>
+  </div>
+  {% if c.spark.path %}
+  <figure class="cx-chart {{ 'is-up' if (c.week or 0) >= 0 else 'is-down' }}">
+    <svg viewBox="0 0 {{ c.spark.w }} {{ c.spark.h }}" preserveAspectRatio="none" role="img" aria-label="Price over the last 7 days">
+      <path class="cx-area" d="{{ c.spark.area }}"/>
+      <path class="cx-line" d="{{ c.spark.path }}" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <figcaption class="muted">Last 7 days</figcaption>
+  </figure>
+  {% endif %}
+  <dl class="cx-stats">
+    {% for label, value in c.stats %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+  </dl>
+  <div class="convert-fields cx-convert">
+    <label class="field"><input type="number" step="any" value="1" data-in><span>{{ c.symbol }}</span></label>
+    <span class="convert-eq">=</span>
+    <label class="field"><input type="number" step="any" value="{{ c.price }}" data-out><span>{{ c.fiat }}</span></label>
+    <span hidden data-out-text></span>
+  </div>
+  <p class="hero-source">CoinGecko{% if c.updated %} · updated {{ c.updated }} UTC{% endif %} · not investment advice</p>
+</section>

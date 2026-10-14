@@ -1,0 +1,19 @@
+{% from "macros.html" import hero_badge %}
+{% set p = v.hero.data %}
+<section class="hero hero-places" data-places-cat="{{ p.cat }}" data-places-area="{{ p.area }}" data-places-near="{{ 1 if p.near_me else 0 }}">
+  <div class="places-head">
+    <div>
+      {{ hero_badge("pin", "Places") }}
+      <p class="hero-kicker" data-places-kicker>OpenStreetMap</p>
+      <h1 class="hero-title">{{ p.label }} {{ "near you" if p.near_me else "in " ~ (p.area|title) }}</h1>
+      {% if p.typed_area %}<p class="hero-sub">Showing {{ p.area|title }}, the spelling your search results use (you typed “{{ p.typed_area }}”).</p>{% endif %}
+      {% if p.near_me %}<p class="hero-sub">Using your home location. Set <code>ARCHER_HOME_LOCATION</code> to change it.</p>{% endif %}
+    </div>
+    <a class="link-chip link-chip--site" data-places-map href="https://www.openstreetmap.org/search?query={{ (p.label ~ ' ' ~ (p.area or ''))|qs }}"><svg><use href="#i-globe"/></svg>Open map</a>
+  </div>
+  <div class="places-grid" data-places-grid>
+    {% for _ in range(8) %}<div class="place skeleton place--skeleton"></div>{% endfor %}
+  </div>
+  <p class="muted places-status" data-places-status>Asking OpenStreetMap… this can take a few seconds.</p>
+  <p class="hero-source">OpenStreetMap contributors (Photon + Overpass) · no ratings or reviews: OSM doesn't collect them</p>
+</section>
