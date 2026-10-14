@@ -18,6 +18,7 @@
       <div><dt><svg><use href="#u-calendar"/></svg>Released</dt><dd>{{ m.released }}</dd></div>
       {% if m.family %}<div><dt><svg><use href="#u-layers"/></svg>Family</dt><dd>{{ m.family }}</dd></div>{% endif %}
       {% if m.weights %}<div><dt><svg><use href="#u-package"/></svg>Weights</dt><dd>{{ m.weights }}</dd></div>{% endif %}
+      {% if m.price %}<div><dt><svg><use href="#u-coins"/></svg>API price</dt><dd>{{ m.price }} <span class="muted">/ M tokens</span></dd><dd class="am-sub">blended 3:1 input:output</dd></div>{% endif %}
       <div><dt><svg><use href="#u-award"/></svg>Capability rank</dt><dd>#{{ m.rank }} <span class="muted">of {{ m.total }}</span></dd><dd class="am-sub">ECI score {{ m.eci }}</dd></div>
       {% if m.previous %}<div><dt><svg><use href="#u-clock"/></svg>Previous</dt><dd><a href="/search?q={{ m.previous[0]|qs }}">{{ m.previous[0] }}</a></dd></div>{% endif %}
       {% if m.successor %}<div><dt><svg><use href="#u-sparkle"/></svg>Succeeded by</dt><dd><a href="/search?q={{ m.successor|qs }}">{{ m.successor }}</a></dd></div>{% endif %}
@@ -32,16 +33,18 @@
       {% for c in m.charts %}
       {% set pl = c.plot %}
       <div class="am-panel" role="tabpanel" id="am-panel-{{ c.id }}" aria-labelledby="am-tab-{{ c.id }}"{% if not loop.first %} hidden{% endif %}>
-        <p class="am-about">{{ c.about }} <span class="am-count">· {{ c.count }} results by release date</span></p>
-        <svg class="am-plot" viewBox="0 0 {{ pl.w }} {{ pl.h }}" role="img" aria-label="{{ c.label }} score against release date, with the models listed below highlighted">
+        <p class="am-about">{{ c.about }} <span class="am-count">· {{ c.count }} {{ "models by price" if pl.by_price else "results by release date" }}</span></p>
+        <svg class="am-plot" viewBox="0 0 {{ pl.w }} {{ pl.h + (14 if pl.by_price else 0) }}" role="img" aria-label="{{ c.label }} score against {{ 'API price' if pl.by_price else 'release date' }}, with the models listed below highlighted" data-am-plot data-right="{{ pl.right }}" data-top="{{ pl.top }}" data-bottom="{{ pl.bottom }}">
           {% for g in pl.grid %}<line class="am-grid" x1="{{ pl.left }}" x2="{{ pl.right }}" y1="{{ g.y }}" y2="{{ g.y }}"/><text class="am-tick" x="{{ pl.left - 8 }}" y="{{ g.y + 4 }}" text-anchor="end">{{ g.label }}</text>{% endfor %}
           {% for t in pl.xt %}<line class="am-grid" x1="{{ t.x }}" x2="{{ t.x }}" y1="{{ pl.bottom }}" y2="{{ pl.bottom + 5 }}"/><text class="am-tick" x="{{ t.x }}" y="{{ pl.bottom + 21 }}" text-anchor="middle">{{ t.label }}</text>{% endfor %}
           {% if pl.base %}<line class="am-base" x1="{{ pl.left }}" x2="{{ pl.right }}" y1="{{ pl.base.y }}" y2="{{ pl.base.y }}"/><text class="am-tick" x="{{ pl.left + 6 }}" y="{{ pl.base.y - 6 }}">{{ pl.base.label }}</text>{% endif %}
+          {% if pl.x_label %}<text class="am-tick am-axis" x="{{ (pl.left + pl.right) / 2 }}" y="{{ pl.bottom + 38 }}" text-anchor="middle">{{ pl.x_label }}</text>{% endif %}
+          {% if pl.frontier %}<polyline class="am-frontier" points="{{ pl.frontier }}"><title>Best value: no model scores higher for less</title></polyline>{% endif %}
           <g class="am-dots" data-am-dots>{% for d in pl.dots %}<circle cx="{{ d.x }}" cy="{{ d.y }}" r="3"><title>{{ d.title }}</title></circle>{% endfor %}</g>
           {% for mk in pl.marks %}
           <g class="am-mark am-mark--{{ mk.role }}" data-mark="{{ mk.key }}">
             <title>{{ mk.title }}</title>
-            {% if mk.leader %}<line class="am-leader" x1="{{ mk.x }}" y1="{{ mk.y }}" x2="{{ mk.lx + (3 if mk.anchor == 'end' else -3) }}" y2="{{ mk.ly - 4 }}"/>{% endif %}
+            <line class="am-leader" x1="{{ mk.x }}" y1="{{ mk.y }}" x2="{{ mk.lx + (3 if mk.anchor == 'end' else -3) }}" y2="{{ mk.ly - 4 }}"{% if not mk.leader %} hidden{% endif %}/>
             {% if mk.role == "self" %}<circle class="am-ring" cx="{{ mk.x }}" cy="{{ mk.y }}" r="10"/>{% endif %}
             <circle class="am-dot" cx="{{ mk.x }}" cy="{{ mk.y }}" r="{{ 6 if mk.role == 'self' else 5 }}"/>
             <text class="am-lbl" x="{{ mk.lx }}" y="{{ mk.ly }}" text-anchor="{{ mk.anchor }}">{{ mk.label }}</text>
@@ -50,9 +53,9 @@
         </svg>
         <ul class="am-keys" aria-label="Highlighted models; select one to show or hide it">
           {% for r in c.rows %}
-          <li><button type="button" class="am-toggle am-toggle--{{ r.role }}" aria-pressed="true" data-am-toggle="{{ r.key }}">
+          <li><button type="button" class="am-toggle am-toggle--{{ r.role }}"{% if r.plotted %} aria-pressed="true" data-am-toggle="{{ r.key }}"{% else %} disabled title="No API price listed, so it isn't on the price chart"{% endif %}>
             <span class="am-swatch" aria-hidden="true"></span>{{ org_mark(r) }}
-            <span class="am-name" title="{{ r.name }} · {{ r.org }} · {{ r.date }}">{{ r.name }}</span><span class="am-val">{{ r.text }}</span>
+            <span class="am-name" title="{{ r.name }} · {{ r.org }} · {{ r.date }}">{{ r.name }}</span>{% if pl.by_price %}<span class="am-price">{{ r.price or "no price" }}</span>{% endif %}<span class="am-val">{{ r.text }}</span>
           </button></li>
           {% endfor %}
           <li><button type="button" class="am-toggle am-toggle--all" aria-pressed="true" data-am-toggle="dots">
@@ -66,9 +69,10 @@
         {% if m.has_prev %}<span class="am-key am-key--prev">Earlier versions</span>{% endif %}
         <span class="am-key am-key--rival">Other models</span>
         <span class="am-key am-key--all">Everything else Epoch tested</span>
+        {% if m.priced %}<span class="am-key am-key--frontier">Best value for the price</span>{% endif %}
         <span class="am-hint">Select a model to show or hide it</span>
       </figcaption>
     </figure>
   </div>
-  <p class="hero-source">Benchmarks from <a href="{{ m.source_url }}">Epoch AI</a> (CC BY 4.0), data as of {{ m.as_of }}. Each graph plots every result in Epoch's file for that benchmark, and highlights each model's best reasoning setting. Scores can differ from the numbers labs publish.</p>
+  <p class="hero-source">Benchmarks from <a href="{{ m.source_url }}">Epoch AI</a> (CC BY 4.0), data as of {{ m.as_of }}. Each graph plots every result in Epoch's file for that benchmark, and highlights each model's best reasoning setting. Scores can differ from the numbers labs publish.{% if m.priced %} API prices from <a href="{{ m.price_source_url }}">OpenRouter</a>, per million tokens, blended 3 input : 1 output; graphs plot score against price where at least three of their models have one, and by release date otherwise.{% endif %}</p>
 </section>

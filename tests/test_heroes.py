@@ -1,6 +1,7 @@
 """Render every hero template against canned upstream data, so template bugs fail here, not in the browser."""
 
 import asyncio
+import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from fastapi.testclient import TestClient
 from archer.app import app
 from archer.config import settings
 from archer.searxng import SearXNG
-from archer.sources import aimodels, crypto, dictionary, places, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, modelprices, places, translate, weather, wiki
 
 BASE = f"http://{settings.public_host}:{settings.port}"
 EMPTY_SEARCH = {"results": [], "answers": [], "infoboxes": [], "suggestions": [], "corrections": [], "unresponsive_engines": []}
@@ -111,6 +112,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(aimodels, "CACHE_FILE", tmp_path / "epoch.zip")
     monkeypatch.setattr(aimodels, "_catalog", None)
     monkeypatch.setattr(aimodels, "_failed_at", 0.0)
+    monkeypatch.setattr(modelprices, "CACHE_FILE", tmp_path / "prices.json")
+    for name, value in (("_table", None), ("_loaded_at", 0.0), ("_failed_at", 0.0), ("_refresh", None)):
+        monkeypatch.setattr(modelprices, name, value)
     for cache in (weather._geo_cache, weather._wx_cache, dictionary._cache, wiki._entity_cache,
                   crypto._cache, translate._cache, places._area_cache, places._places_cache):
         cache._data.clear()
@@ -471,13 +475,13 @@ mystery-model-9_high,0.55,0.55,2025-09-01,Somewhere,,,,,,,,c
 """
 
 
-def epoch_zip() -> bytes:
+def epoch_zip(scores: str = SCORES_CSV) -> bytes:
     import io
     import zipfile
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr(aimodels._ECI, ECI_CSV)
-        z.writestr(aimodels._SCORES, SCORES_CSV)
+        z.writestr(aimodels._SCORES, scores)
         z.writestr(aimodels._BENCH_META, BENCH_META_CSV)
         z.writestr(aimodels._VERSIONS, VERSIONS_CSV)
         z.writestr("gpqa_diamond.csv", GPQA_CSV)
@@ -509,6 +513,47 @@ def test_ai_model_hero(client):
     assert "DTBench" not in html                                          # only well-known benchmarks get tabs
     assert "hero-entity" not in html                                      # beats the Wikipedia panel
     assert aimodels.CACHE_FILE.exists()                                   # cached for the next query
+
+
+OPENROUTER = {"data": [
+    {"id": "anthropic/claude-opus-4.5", "name": "Anthropic: Claude Opus 4.5", "pricing": {"prompt": "0.000005", "completion": "0.000025"}},
+    {"id": "anthropic/claude-opus-4.1", "name": "Anthropic: Claude Opus 4.1", "pricing": {"prompt": "0.000015", "completion": "0.000075"}},
+    {"id": "google/gemini-3-pro-preview", "name": "Google: Gemini 3 Pro Preview", "pricing": {"prompt": "0.000002", "completion": "0.000012"}},
+    {"id": "openai/gpt-5.1", "name": "OpenAI: GPT-5.1", "pricing": {"prompt": "0.00000125", "completion": "0.00001"}},
+    {"id": "openai/gpt-5.1:free", "name": "OpenAI: GPT-5.1 (free)", "pricing": {"prompt": "0", "completion": "0"}},
+]}
+
+
+def test_model_prices_match_epoch_names():
+    table = modelprices._parse(json.dumps(OPENROUTER).encode())
+    assert modelprices.lookup(table, "Claude Opus 4.5") == 10.0           # (3 x $5 + $25) / 4
+    assert modelprices.lookup(table, "Gemini 3 Pro") == 4.5                # "Preview" and the org prefix don't count
+    assert modelprices.lookup(table, "GPT-5.1") == 3.4375                  # the paid listing, not ":free"
+    assert modelprices.lookup(table, "o3") is None and modelprices.lookup({}, "GPT-5.1") is None
+
+
+def test_ai_model_price_chart(client):
+    # SWE-bench under its other Epoch spelling still gets a tab, and charts plot score against price.
+    blob = epoch_zip(SCORES_CSV.replace("SWE-Bench verified", "SWE-bench Verified (Bash Only)"))
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, content=blob) if r.url.host == "epoch.ai"
+        else httpx.Response(200, json=OPENROUTER) if r.url.host == "openrouter.ai" else upstream(r)))
+    html = client.get("/search", params={"q": "claude opus 4.5"}).text
+    assert "SWE-bench Verified" in html and "76.7%" in html
+    assert "API price" in html and "$10" in html and "models by price" in html
+    assert "am-frontier" in html and "OpenRouter" in html
+    assert "No API price listed" in html                                   # unpriced rivals stay listed, off the graph
+    assert modelprices.CACHE_FILE.exists()
+
+
+def test_swe_bench_tab_is_pinned():
+    cat = aimodels._parse(epoch_zip())
+    gpt = aimodels.find(cat, "gpt 5.1")
+    assert "SWE-bench Verified" not in gpt.scores
+    cat.points["SWE-bench Verified"] = [aimodels.Point(m.released, m.scores["SWE-bench Verified"], m.name, m.name)
+                                        for m in cat.models if "SWE-bench Verified" in m.scores]
+    labels = [c["label"] for c in aimodels.panel(cat, gpt)["charts"]]
+    assert "SWE-bench Verified" in labels                                  # shown even though GPT-5.1 has no result
 
 
 def test_ai_model_unavailable_falls_back_to_entity(client):

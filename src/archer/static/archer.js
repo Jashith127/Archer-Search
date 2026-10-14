@@ -1156,6 +1156,52 @@ for (const hero of $$("[data-converter]")) {
 
 // ------------------------------------------- AI model chart: show / hide marks
 // Each key row toggles its model's mark; "All other results" toggles the background dots.
+// A hidden model leaves the graph entirely, and the remaining labels close up around it:
+// the same placement pass as aimodels.place_labels, with measured text widths.
+function placeAmLabels(svg) {
+  const right = +svg.dataset.right, top = +svg.dataset.top, bottom = +svg.dataset.bottom;
+  const marks = $$("[data-mark]", svg).filter((g) => !g.classList.contains("is-off")).map((g) => {
+    const dot = $(".am-dot", g);
+    return { g, x: +dot.getAttribute("cx"), y: +dot.getAttribute("cy"), self: g.classList.contains("am-mark--self") };
+  });
+  const dots = marks.map((m) => [m.x - 7, m.x + 7, m.y - 7, m.y + 7]);
+  const overlaps = (a, b) => a[0] < b[1] && b[0] < a[1] && a[2] < b[3] && b[2] < a[3];
+  const placed = [];
+  marks.sort((a, b) => (a.self === b.self ? a.y - b.y : a.self ? -1 : 1));
+  for (const m of marks) {
+    const label = $(".am-lbl", m.g), leader = $(".am-leader", m.g);
+    const width = label.getComputedTextLength() + 2;
+    const start = m.x + 9 + width <= right;
+    const lx = start ? m.x + 9 : m.x - 9;
+    const [x0, x1] = start ? [lx, lx + width] : [lx - width, lx];
+    const others = [...placed, ...dots.filter((d) => d[0] !== m.x - 7 || d[2] !== m.y - 7)];
+    let ly = null;
+    for (let step = 0; step <= 16 && ly === null; step++) {
+      const y = m.y + 4 + (step ? 13 * Math.ceil(step / 2) * (step % 2 ? 1 : -1) : 0);
+      if (y < top + 10 || y > bottom - 2) continue;
+      if (!others.some((o) => overlaps([x0, x1, y - 10, y + 3], o))) ly = y;
+    }
+    if (ly === null) ly = Math.min(Math.max(m.y + 4, top + 10), bottom - 2);
+    placed.push([x0, x1, ly - 10, ly + 3]);
+    label.setAttribute("x", lx); label.setAttribute("y", ly);
+    label.setAttribute("text-anchor", start ? "start" : "end");
+    leader.setAttribute("x2", start ? lx - 3 : lx + 3); leader.setAttribute("y2", ly - 4);
+    leader.hidden = Math.abs(ly - 4 - m.y) <= 6;
+  }
+}
+// The best-value line joins only what is visible, so a hidden model leaves no bend behind.
+function drawAmFrontier(svg) {
+  const line = $(".am-frontier", svg);
+  if (!line) return;
+  const dots = $("[data-am-dots]", svg);
+  const circles = [...$$("[data-mark]:not(.is-off) .am-dot", svg), ...(dots.classList.contains("is-off") ? [] : $$("circle", dots))];
+  // SVG y grows downward: walking right (pricier), keep each point that scores higher (smaller y).
+  const pts = circles.map((c) => [+c.getAttribute("cx"), +c.getAttribute("cy")]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let best = Infinity;
+  const kept = pts.filter(([, y]) => (y < best ? ((best = y), true) : false));
+  line.setAttribute("points", kept.map((p) => p.join(",")).join(" "));
+  line.style.display = kept.length > 1 ? "" : "none";
+}
 for (const button of $$("[data-am-toggle]")) {
   button.addEventListener("click", () => {
     const panel = button.closest("[role=tabpanel]");
@@ -1163,7 +1209,11 @@ for (const button of $$("[data-am-toggle]")) {
     const target = key === "dots" ? $("[data-am-dots]", panel) : $(`[data-mark="${key}"]`, panel);
     const on = button.getAttribute("aria-pressed") !== "true";
     button.setAttribute("aria-pressed", String(on));
-    if (target) target.classList.toggle("is-off", !on);
+    if (!target) return;
+    target.classList.toggle("is-off", !on);
+    const svg = $("[data-am-plot]", panel);
+    if (key !== "dots") placeAmLabels(svg);
+    drawAmFrontier(svg);
   });
 }
 
@@ -1175,9 +1225,13 @@ for (const chart of $$("[data-am-tabs]")) {
       const on = t === tab;
       t.setAttribute("aria-selected", String(on));
       t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      const panel = document.getElementById(t.getAttribute("aria-controls"));
+      panel.hidden = !on;
+      if (on) placeAmLabels($("[data-am-plot]", panel));
     }
   };
+  const first = $(".am-panel:not([hidden]) [data-am-plot]", chart);
+  if (first) placeAmLabels(first);
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => select(tab));
     tab.addEventListener("keydown", (e) => {
