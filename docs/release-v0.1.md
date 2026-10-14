@@ -6,7 +6,7 @@ Download **ArcherSetup.exe** below and run it on Windows 10 or 11. Setup downloa
 
 ### Included
 
-- Custom installer with animation across the whole background, a single setup surface, and a compact step indicator.
+- Custom installer with a redesigned welcome screen, a full-background pixel field, morphing artwork in the clear margin, and a compact step indicator.
 - Install location and startup choices, desktop and Start menu shortcuts, and Windows Installed apps integration.
 - Guided search, AI, personal preferences and browser setup.
 - DuckDuckGo, SearXNG, Google and Brave search; optional cloud AI or local Ollama.
@@ -21,5 +21,7 @@ The attached screenshots were captured using the installer's dry-run preview and
 ### Verification
 
 254 Python tests pass. The installer compiles with the Windows .NET Framework compiler, and its dry-run browser flow reaches configuration without JavaScript errors. The compact layout was checked for horizontal overflow. A clean-machine installation has not been verified. This v0.1 executable is unsigned.
+
+The separate AI browser regression reached its cancellation check but timed out waiting for the Stop control; that browser suite is not fully passing in this release.
 
 `SHA256SUMS.txt` contains the SHA-256 checksum for the installer.

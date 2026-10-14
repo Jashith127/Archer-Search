@@ -52,24 +52,31 @@
   <main class="panel">
     <!-- ------------------------------------------------------------- welcome -->
     <section class="view" data-view="welcome" hidden>
-      <p class="kicker" data-rise>Archer {{version}} for Windows</p>
-      <h1 data-rise>Your search.<br>Your computer.</h1>
-      <p class="lede" data-rise>A quieter place to search. Clean results, useful answers, and AI when you choose.</p>
-      <ul class="points">
-        <li data-rise><span class="tile"><svg><use href="#i-shield"/></svg></span><div><b>Private by default</b><span>No account, no history. Settings stay in a file on this PC.</span></div></li>
-        <li data-rise><span class="tile"><svg><use href="#i-target"/></svg></span><div><b>Your own results</b><span>Your own SearXNG through Docker, or DuckDuckGo with no setup.</span></div></li>
-        <li data-rise><span class="tile"><svg><use href="#i-sparkle"/></svg></span><div><b>Any AI, or none</b><span>DeepSeek, OpenAI, Claude, OpenRouter or local Ollama.</span></div></li>
-      </ul>
-      <div class="where" data-rise>
-        <span class="tile tile--sm"><svg><use href="#i-folder"/></svg></span>
-        <div><span class="where-label">Install location <em class="badge" data-existing hidden>Update · settings kept</em></span><code data-dir></code></div>
-        <button type="button" class="btn" data-pick-dir>Change</button>
+      <div class="welcome-heading" data-rise>
+        <p class="kicker">Welcome to Archer</p>
+        <h1>A better way<br>to find things.</h1>
+        <p class="welcome-caption">Your personal search engine, right on this PC.</p>
       </div>
-      <label class="toggle" data-rise>
-        <input type="checkbox" data-autostart checked>
-        <span class="switch" aria-hidden="true"></span>
-        <span><b>Start with Windows</b><span>Archer, Docker and SearXNG come up at sign-in. The shortcut does the same.</span></span>
-      </label>
+      <div class="welcome-intro" data-rise>
+        <p>Find what you need.<br>Leave the noise behind.</p>
+        <ul class="welcome-features">
+          <li><b>Results from sources you choose</b><span>DuckDuckGo, your own SearXNG, and more.</span></li>
+          <li><b>A little AI. Or none at all.</b><span>Bring your preferred model when you want an answer.</span></li>
+          <li><b>At home in your address bar</b><span>Search from the browser you already use.</span></li>
+        </ul>
+      </div>
+      <div class="welcome-options" data-rise>
+        <div class="where">
+          <div><span class="where-label">Install location <em class="badge" data-existing hidden>Update · settings kept</em></span><code data-dir></code></div>
+          <button type="button" class="btn btn--quiet" data-pick-dir>Change location<svg><use href="#i-folder"/></svg></button>
+        </div>
+        <label class="toggle">
+          <span><b>Ready when you sign in</b><span>Start Archer with Windows.</span></span>
+          <input type="checkbox" data-autostart checked>
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+        <p class="welcome-note">No account needed. Python is installed automatically.</p>
+      </div>
     </section>
 
     <!-- --------------------------------------------------------------- check -->
