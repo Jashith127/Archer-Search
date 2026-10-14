@@ -83,7 +83,7 @@ class Field {
   }
 
   layout() {
-    const w = this.c.clientWidth, h = this.c.clientHeight, dpr = devicePixelRatio || 1;
+    const w = this.c.clientWidth, h = this.c.clientHeight, dpr = Math.min(devicePixelRatio || 1, 1.5);
     if (!w || !h) return;
     this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
     this.g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -101,6 +101,11 @@ class Field {
     const sg = sp.getContext("2d"); sg.scale(dpr, dpr); sg.fillStyle = "#ededed";
     sg.beginPath(); sg.roundRect(1 / dpr, 1 / dpr, sq, sq, sq * 0.22); sg.fill();
     this.sprite = sp; this.sq = sq;
+    this.background = document.createElement("canvas");
+    this.background.width = this.c.width; this.background.height = this.c.height;
+    const bg = this.background.getContext("2d"); bg.scale(dpr, dpr); bg.globalAlpha = .05;
+    for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++)
+      bg.drawImage(sp, this.ox + c * p - sq / 2, this.oy + r * p - sq / 2, sp.width / dpr, sp.height / dpr);
     this.shape(this.kind, true);
   }
 
@@ -142,11 +147,14 @@ class Field {
   }
 
   shape(kind, instant) {
-    this.kind = kind;
+    this.kind = kind; this.dirty = true;
     if (!this.cols) return;
     const map = this.sample(kind), now = performance.now(), cx = this.cols / 2, cy = this.rows * 0.4;
     const maxD = Math.hypot(cx, this.rows);
+    this.settlesAt = now + 2400; this.settled = false;
+    this.active = [];
     for (let k = 0; k < map.length; k++) {
+      if (map[k] > .001 || this.cur[k] > .001) this.active.push(k);
       const c = k % this.cols, r = (k / this.cols) | 0;
       this.from[k] = instant ? map[k] : this.cur[k];
       this.to[k] = map[k];
@@ -167,38 +175,44 @@ class Field {
 
   ripple(x, y, strength = 1) {
     if (REDUCED) return;
+    this.ripples = this.ripples.slice(-3);
     this.ripples.push({ x: x ?? this.w / 2, y: y ?? this.h * 0.4, t: performance.now(), s: strength });
   }
 
   frame(now) {
     requestAnimationFrame((t) => this.frame(t));
-    if (!this.cols || document.hidden) return;
+    if (!this.cols || document.hidden || now - (this.lastFrame || 0) < 1000 / 30) return;
+    if (REDUCED && !this.dirty && this.lastProgress === this.progress) return;
+    this.lastFrame = now; this.lastProgress = this.progress; this.dirty = false;
+    if (!this.settled && now > this.settlesAt) { this.active = this.active.filter(k => this.to[k] > .001); this.settled = true; }
     const g = this.g, p = this.pitch, cols = this.cols, rows = this.rows, sp = this.sprite;
     const DUR = 700, half = this.sq / 2, base = 0.05;
     g.clearRect(0, 0, this.w, this.h);
+    g.drawImage(this.background, 0, 0, this.w, this.h);
     this.ripples = this.ripples.filter((r) => now - r.t < 2400);
     const box = this.box, prog = this.progress;
     const progRow = box && prog != null ? box.bottom - (box.bottom - box.top) * prog : null;
     const scanY = this.scan ? ((now / 2300) % 1) * (rows + 16) - 8 : null;
     const blink = this.caret && Math.floor(now / 560) % 2 === 0;
-    for (let r = 0; r < rows; r++) {
-      const y = this.oy + r * p;
-      const drift = REDUCED ? 0 : Math.sin(now / 6500) * 20;
-      for (let c = 0; c < cols; c++) {
-        const k = r * cols + c, x = this.ox + c * p;
+    const drift = REDUCED ? 0 : Math.sin(now / 6500) * 20;
+    const effects = !REDUCED && (this.scan || this.ripples.length || this.mx > -1e3);
+    const count = effects ? cols * rows : this.active.length;
+    for (let n = 0; n < count; n++) {
+        const k = effects ? n : this.active[n], r = (k / cols) | 0, c = k % cols;
+        const y = this.oy + r * p, x = this.ox + c * p;
         let t = (now - this.t0[k]) / DUR;
         t = t < 0 ? 0 : t > 1 ? 1 : t;
         const e = 1 - Math.pow(1 - t, 3);
         const v = (this.cur[k] = this.from[k] + (this.to[k] - this.from[k]) * e);
-        let a = base + v * 0.82;
+        let a = v * 0.82;
         if (v > 0.02) {
           if (progRow != null) {
             // Install progress: the shape fills from the bottom; a bright seam rides the edge.
             const lit = r >= progRow ? 1 : 0.22, seam = Math.exp(-Math.pow((r - progRow) / 1.3, 2));
-            a = base + v * 0.82 * lit + seam * v * 0.6;
+            a = v * 0.82 * lit + seam * v * 0.6;
           }
-          if (this.caret && !blink && c >= this.caret[0] - 0.5 && c <= this.caret[1] + 0.5) a = base + v * 0.15;
-          a += Math.sin(now * 0.0021 + this.seed[k] * 40) * 0.05 * v;  // twinkle
+          if (this.caret && !blink && c >= this.caret[0] - 0.5 && c <= this.caret[1] + 0.5) a = v * 0.15;
+          if (!REDUCED) a += Math.sin(now * 0.0021 + this.seed[k] * 40) * 0.05 * v;  // twinkle
           a += this.glow * v * 0.25;
         }
         if (scanY != null) a += Math.exp(-Math.pow((r - scanY) / 2.2, 2)) * (0.1 + v * 0.5);
@@ -213,7 +227,6 @@ class Field {
         if (a < 0.012) continue;
         g.globalAlpha = a > 1 ? 1 : a;
         g.drawImage(sp, x - half, y - half + drift, sp.width / this.dpr, sp.height / this.dpr);
-      }
     }
     g.globalAlpha = 1;
   }
@@ -232,9 +245,6 @@ let onPrimary = null, onSecondary = null, onBack = null;
 nav.primary.addEventListener("click", () => onPrimary && !nav.primary.disabled && onPrimary());
 nav.secondary.addEventListener("click", () => onSecondary && onSecondary());
 nav.back.addEventListener("click", () => onBack && onBack());
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.target.closest("input, button, summary, a") && onPrimary && !nav.primary.disabled) onPrimary();
-});
 
 function setNav({ label, primary, disabled = false, secondary = null, back = null, status = "", tone = "" }) {
   nav.label.textContent = label;
@@ -394,19 +404,18 @@ const VIEWS = {
       const note = $("[data-check-note]");
       note.textContent = "Docker isn't installed, so Archer will get results from DuckDuckGo. Install Docker Desktop any time to switch to your own SearXNG in Archer's settings.";
       note.hidden = false;
-      setNav({ label: "Continue", back: () => go("welcome"), status: "Ready to install.", tone: "ok",
+      setNav({ label: "Install Archer", back: () => go("welcome"), status: "Ready to install.", tone: "ok",
         primary: async () => { await api("searxng/choice", { mode: "duckduckgo" }); S.sxMode = "duckduckgo"; go("install"); } });
       return;
     }
     setNav({ label: "Continue", primary: () => go("search"), back: () => go("welcome"), status: "All good.", tone: "ok" });
-    later(() => S.view === "check" && go("search"), 1100);
   },
 
   search() {
     field.shape("target"); readout("SearXNG");
     $$("[data-sx]").forEach((n) => (n.hidden = true));
     $("[data-sx-error]").hidden = true;
-    const skip = { label: "Skip, use DuckDuckGo", run: async () => {
+    const skip = { label: "Install with DuckDuckGo", run: async () => {
       await api("searxng/choice", { mode: "duckduckgo" }); S.sxMode = "duckduckgo";
       $('[data-rail-step=search]').classList.add("is-skipped"); go("install");
     } };
@@ -420,8 +429,7 @@ const VIEWS = {
       field.glow = 0.4; field.ripple();
       api("searxng/choice", { mode: "searxng", url: sx.url, container: sx.container || "" });
       S.sxMode = "searxng"; S.sxUrl = sx.url;
-      setNav({ label: "Continue", primary: () => go("install"), back, status: "Using your SearXNG. Continuing…", tone: "ok" });
-      later(() => S.view === "search" && go("install"), 1900);
+      setNav({ label: "Install Archer", primary: () => go("install"), back, status: "Your SearXNG is ready.", tone: "ok" });
       return;
     }
 
@@ -498,30 +506,32 @@ const VIEWS = {
     field.progress = 1; field.glow = 0.5; field.ripple(); later(() => field.ripple(undefined, undefined, 0.6), 380);
     status_("Archer is installed.", "ok");
     setNav({ label: "Continue", primary: () => go("configure"), status: "Archer is installed.", tone: "ok" });
-    later(() => S.view === "install" && go("configure"), 1500);
   },
 
   configure() {
     field.shape("window"); readout("Your settings");
     const waiting = $("[data-waiting]"), text = $("[data-waiting-text]");
     waiting.classList.remove("is-ok");
-    text.textContent = "Waiting for you to finish in the Archer window…";
+    text.textContent = "Open Archer setup when you are ready.";
     const open = async () => {
       const r = await api("launch", {}).catch(() => ({ ok: false }));
       if (!r.ok) status_("Couldn't start Archer. Use the Archer shortcut on your desktop.", "bad");
-      else toast("Archer is opening");
+      else {
+        S.launched = true; text.textContent = "Waiting for you to finish in the Archer window…";
+        toast("Archer is opening");
+        setNav({ label: "Continue", primary: () => go("browser"), secondary: { label: "Reopen Archer", run: open } });
+      }
     };
-    if (!S.launched) { S.launched = true; open(); }
-    setNav({ label: "Continue", primary: () => go("browser"), secondary: { label: "Reopen Archer", run: open } });
+    setNav({ label: "Open Archer setup", primary: open, secondary: { label: "Set up later", run: () => go("browser") } });
     const poll = async () => {
       if (S.view !== "configure") return;
+      if (!S.launched) { later(poll, 3000); return; }
       const r = await api("onboarded").catch(() => ({}));
       if (r.onboarded) {
         waiting.classList.add("is-ok");
-        text.textContent = "Setup finished in Archer. Nice.";
+        text.textContent = "Archer setup is complete. Select Continue when you are ready.";
         field.glow = 0.4; field.ripple();
         status_("Archer is configured.", "ok");
-        later(() => S.view === "configure" && go("browser"), 1400);
         return;
       }
       later(poll, 1500);
@@ -606,8 +616,7 @@ async function runSearxng(skip) {
   if (snap.state !== "done") return failSx(snap.error, skip);
   S.sxMode = "searxng"; S.sxUrl = snap.result.url;
   field.glow = 0.45; field.ripple(); readout("SearXNG ready");
-  setNav({ label: "Continue", primary: () => go("install"), status: `SearXNG is running at ${snap.result.url}.`, tone: "ok" });
-  later(() => S.view === "search" && go("install"), 1500);
+  setNav({ label: "Install Archer", primary: () => go("install"), status: `SearXNG is running at ${snap.result.url}.`, tone: "ok" });
 }
 
 function failSx(message, skip) {
