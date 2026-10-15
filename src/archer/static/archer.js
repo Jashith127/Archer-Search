@@ -1930,19 +1930,16 @@ if (viewer) {
 }
 
 // ------------------------------------------------------ edge proximity
-// The point on a rect's edge nearest (x, y), how far away it is (from inside or outside), and which
-// side it is on. Past a corner, the side is the one the cursor is further out from.
+// The point on a rect's edge nearest (x, y), and how far away it is, from inside or outside.
 function edgePoint(rect, x, y) {
   const inside = x > rect.left && x < rect.right && y > rect.top && y < rect.bottom;
   if (!inside) {
     const px = Math.min(Math.max(x, rect.left), rect.right), py = Math.min(Math.max(y, rect.top), rect.bottom);
-    const dx = x - px, dy = y - py;
-    const side = Math.abs(dy) >= Math.abs(dx) ? (dy < 0 ? "top" : "bottom") : (dx < 0 ? "left" : "right");
-    return { x: px, y: py, d: Math.hypot(dx, dy), side };
+    return { x: px, y: py, d: Math.hypot(x - px, y - py) };
   }
-  const gaps = [[x - rect.left, rect.left, y, "left"], [rect.right - x, rect.right, y, "right"], [y - rect.top, x, rect.top, "top"], [rect.bottom - y, x, rect.bottom, "bottom"]];
-  const [d, px, py, side] = gaps.reduce((a, b) => (b[0] < a[0] ? b : a));
-  return { x: px, y: py, d, side };
+  const gaps = [[x - rect.left, rect.left, y], [rect.right - x, rect.right, y], [y - rect.top, x, rect.top], [rect.bottom - y, x, rect.bottom]];
+  const [d, px, py] = gaps.reduce((a, b) => (b[0] < a[0] ? b : a));
+  return { x: px, y: py, d };
 }
 // 1 on the edge, easing to 0 by EDGE_REACH px away from it (either side).
 const EDGE_REACH = 90;
@@ -1955,10 +1952,7 @@ const edgeStrength = (d) => { const t = Math.max(0, 1 - d / EDGE_REACH); return 
 // the results page; it only animates while on screen. With `pointer`, cells near the cursor light
 // up; `energy` (0..1, settable later) makes the bright flashes more frequent.
 // `span` is the share of the canvas (from the bottom) the field fills; the cursor glow can use all of it.
-// With `near` (an element), the cursor lights cells only around that element's edge, as light cast
-// outward from it: a smooth bell-shaped peak of dots, tallest at the point of the edge nearest the
-// cursor, falling away fast along the edge, and fading out as the cursor leaves the edge.
-function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1, pointer = false, energy = 0, span = 1, near = null } = {}) {
+function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1, pointer = false, energy = 0, span = 1 } = {}) {
   const ctx = canvas.getContext("2d");
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const LEVELS = [0.05, 0.12, 0.24, 0.42, 0.7];
@@ -1970,16 +1964,11 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
   const glow = pointer && !still ? Object.assign(document.createElement("canvas"), { className: canvas.className }) : null;
   const gctx = glow?.getContext("2d");
   let tx = 0, ty = 0, gx = 0, gy = 0, on = 0, target = 0, placed = false, painted = false, prev = 0;
-  let box = null;                                       // near: the element's rect in canvas px
   if (glow) {
     canvas.after(glow);
     addEventListener("pointermove", (e) => {
       const r = canvas.getBoundingClientRect();
-      if (near) {
-        const b = near.getBoundingClientRect(), p = edgePoint(b, e.clientX, e.clientY);
-        tx = p.x - r.left; ty = p.y - r.top; target = edgeStrength(p.d);
-        box = { L: b.left - r.left, T: b.top - r.top, R: b.right - r.left, B: b.bottom - r.top };
-      } else { tx = e.clientX - r.left; ty = e.clientY - r.top; target = 1; }
+      tx = e.clientX - r.left; ty = e.clientY - r.top; target = 1;
       if (!placed) { gx = tx; gy = ty; placed = true; }   // first sighting: appear in place, don't fly in
     }, { passive: true });
     document.documentElement.addEventListener("pointerleave", () => { target = 0; });
@@ -2051,7 +2040,7 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
       const d = Math.hypot(c * pitch + pitch / 2 - gx, r * pitch + pitch / 2 - gy) / REACH;
       if (d >= 1) continue;
       const k = r * cols + c;
-      const height = near ? 1 : (r + 1) / rows;             // fades linearly to nothing at the top edge
+      const height = (r + 1) / rows;                        // fades linearly to nothing at the top edge
       // Smoothstep falloff: no hard rim as the disc slides across the grid.
       const fall = 1 - d * d * (3 - 2 * d);
       gctx.globalAlpha = Math.max(0, fall * 0.6 * height * on - level[k] * fade[k] * 0.5);
@@ -2059,55 +2048,9 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
     }
   };
 
-  // Near an element: light cast out of its whole outline. Every cell outside the element measures
-  // how far out it is (to the nearest point of the outline) and how far that point is, walking
-  // along the outline, from the point nearest the cursor. It lights up if it is closer than a
-  // Gaussian of that walk, so the glow is a low, wide hill that wraps smoothly round corners
-  // instead of jumping from one side to the next. The peak follows the cursor with no easing (a
-  // fast sweep never trails). The hill keeps its size; closeness to the edge only brightens it.
-  const PEAK = 66, SIGMA = 78, BRIGHT = 0.5;
-  const along = (q, b) => {                             // clockwise from the top-left corner
-    const w = b.R - b.L, h = b.B - b.T;
-    if (q.y <= b.T) return q.x - b.L;
-    if (q.x >= b.R) return w + (q.y - b.T);
-    if (q.y >= b.B) return w + h + (b.R - q.x);
-    return 2 * w + h + (b.B - q.y);
-  };
-  const drawCast = (now) => {
-    const dt = Math.min(64, now - (prev || now)); prev = now;
-    on += (target - on) * (1 - Math.exp(-dt / 45));
-    const moved = tx !== gx || ty !== gy;
-    gx = tx; gy = ty;
-    const settled = !moved && Math.abs(target - on) < 0.004;
-    if (settled) { on = target; if (!painted) return; }
-    gctx.setTransform(1, 0, 0, 1, 0, 0);
-    gctx.clearRect(0, 0, glow.width, glow.height);
-    painted = !settled;
-    if (on < 0.004 || !box) return;
-    const b = box, P = 2 * (b.R - b.L + b.B - b.T), s0 = along({ x: gx, y: gy }, b), reach = PEAK;
-    const span = SIGMA * 3 + reach;
-    const off = (pitch - sq) / 2, size = sprite.width, rows = fade.length / cols;
-    const c0 = Math.max(0, Math.floor((gx - span) / pitch)), c1 = Math.min(cols - 1, Math.floor((gx + span) / pitch));
-    const r0 = Math.max(0, Math.floor((gy - span) / pitch)), r1 = Math.min(rows - 1, Math.floor((gy + span) / pitch));
-    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-      const x = c * pitch + pitch / 2, y = r * pitch + pitch / 2;
-      const q = { x: Math.min(Math.max(x, b.L), b.R), y: Math.min(Math.max(y, b.T), b.B) };
-      const v = Math.hypot(x - q.x, y - q.y);           // distance out from the outline
-      if (v <= 0 || v >= reach) continue;
-      let ds = Math.abs(along(q, b) - s0);
-      ds = Math.min(ds, P - ds);
-      const a = ds / SIGMA, bell = Math.exp(-a * a), h = reach * bell;
-      if (v >= h) continue;
-      const t = v / h, k = r * cols + c;
-      const alpha = on * BRIGHT * Math.sqrt(bell) * (1 - t * t) ** 1.3;   // holds up, then rolls off near the top
-      gctx.globalAlpha = Math.max(0, alpha - level[k] * fade[k] * 0.25);
-      gctx.drawImage(sprite, Math.round((c * pitch + off) * dpr), Math.round((r * pitch + off) * dpr), size, size);
-    }
-  };
-
   const tick = (now) => {
     if (visible && now - last > 66) { draw(now); last = now; }   // ~15fps: the motion is stepped anyway
-    if (glow && visible) (near ? drawCast : drawGlow)(now);
+    if (glow && visible) drawGlow(now);
     requestAnimationFrame(tick);
   };
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(canvas);
@@ -2282,7 +2225,7 @@ function decodeReveal(root) {
 }
 
 const homeField = $(".home-field");
-const homeDots = homeField ? dotField(homeField, { pointer: true, span: 0.56, near: $(".searchbar--home") }) : null;
+const homeDots = homeField ? dotField(homeField, { span: 0.56 }) : null;
 
 // ------------------------------------------------------------ home
 // One search box, two destinations: Search goes to /search, AI Mode to /ai. AI Mode only *opens*
@@ -2344,16 +2287,70 @@ if (home) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyM") { e.preventDefault(); setMode(current === "ai" ? "search" : "ai"); }
   });
 
-  // Edge light: the composer's border brightens around the point nearest the cursor, only near the edge.
+  // Pixel edge: near the cursor the ring (drawn in CSS) fades out and this canvas redraws that stretch
+  // of it as square dots as thick as the ring, one dot apart along the rounded outline. The falloff
+  // matches the ring's CSS mask: all dots within 26px of the cursor's edge point, solid again by 78px.
   const composer = form.parentElement;
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const dots = el("canvas", { class: "composer-dots", "aria-hidden": "true" });
+    composer.append(dots);
+    const g = dots.getContext("2d");
+    const RADIUS = 18, NEAR = 26, FAR = 78;
+    let ex = 0, ey = 0, edge = 0, queued = false;
+    const paint = () => {
+      queued = false;
+      const w = form.offsetWidth, h = form.offsetHeight, dpr = devicePixelRatio || 1;
+      if (dots.width !== Math.round(w * dpr) || dots.height !== Math.round(h * dpr)) {
+        dots.width = Math.round(w * dpr); dots.height = Math.round(h * dpr);
+      }
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      g.setTransform(1, 0, 0, 1, 0, 0);                    // dots are placed in device pixels
+      if (edge < 0.004) return;
+      const css = getComputedStyle(composer), bw = parseFloat(css.getPropertyValue("--bw")) || 3;
+      g.fillStyle = css.getPropertyValue("--dot").trim();
+      // The ring's centre line: a rounded rect inset by half the ring, walked clockwise from the top-left.
+      const half = bw / 2, x0 = half, y0 = half, x1 = w - half, y1 = h - half, r = RADIUS - half;
+      const size = Math.max(2, Math.round(bw * dpr));
+      const sw = x1 - x0 - 2 * r, sh = y1 - y0 - 2 * r, q = (Math.PI * r) / 2;
+      const turn = (cx, cy, from) => (t) => [cx + r * Math.cos(from + t / r), cy + r * Math.sin(from + t / r)];
+      const segs = [
+        [sw, (t) => [x0 + r + t, y0]], [q, turn(x1 - r, y0 + r, -Math.PI / 2)],
+        [sh, (t) => [x1, y0 + r + t]], [q, turn(x1 - r, y1 - r, 0)],
+        [sw, (t) => [x1 - r - t, y1]], [q, turn(x0 + r, y1 - r, Math.PI / 2)],
+        [sh, (t) => [x0, y1 - r - t]], [q, turn(x0 + r, y0 + r, Math.PI)],
+      ];
+      const total = segs.reduce((n, [len]) => n + len, 0), count = Math.round(total / (bw * 2)), step = total / count;
+      let seg = 0, start = 0;
+      for (let i = 0; i < count; i++) {
+        let at = i * step;
+        while (at - start > segs[seg][0] && seg < segs.length - 1) { start += segs[seg][0]; seg++; }
+        const [x, y] = segs[seg][1](at - start);
+        const alpha = edge * Math.min(1, Math.max(0, (FAR - Math.hypot(x - ex, y - ey)) / (FAR - NEAR)));
+        if (alpha <= 0) continue;
+        // Rounded like the mark's cells, and snapped to whole device pixels so each dot stays crisp.
+        g.globalAlpha = alpha;
+        g.beginPath();
+        g.roundRect(Math.round((x - half) * dpr), Math.round((y - half) * dpr), size, size, size * 0.28);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    };
+    const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(paint); } };
     addEventListener("pointermove", (e) => {
-      const r = form.getBoundingClientRect(), p = edgePoint(r, e.clientX, e.clientY);
-      composer.style.setProperty("--ex", p.x - r.left + "px");
-      composer.style.setProperty("--ey", p.y - r.top + "px");
-      composer.style.setProperty("--edge", edgeStrength(p.d).toFixed(3));
+      const rect = form.getBoundingClientRect(), p = edgePoint(rect, e.clientX, e.clientY);
+      ex = p.x - rect.left; ey = p.y - rect.top; edge = edgeStrength(p.d);
+      composer.style.setProperty("--ex", ex + "px");
+      composer.style.setProperty("--ey", ey + "px");
+      composer.style.setProperty("--edge", edge.toFixed(3));
+      schedule();
     }, { passive: true });
-    document.documentElement.addEventListener("pointerleave", () => composer.style.setProperty("--edge", "0"));
+    document.documentElement.addEventListener("pointerleave", () => { edge = 0; composer.style.setProperty("--edge", "0"); schedule(); });
+    // Focus thickens the ring and AI Mode recolours it, so the dots follow.
+    form.addEventListener("focusin", schedule);
+    form.addEventListener("focusout", schedule);
+    new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    addEventListener("resize", schedule);
   }
 
   // Starter chips fill the box and submit it in the current mode (so AI Mode keeps its one-shot flag).

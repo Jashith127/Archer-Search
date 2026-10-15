@@ -825,10 +825,14 @@ a.btn:hover { text-decoration: none; }
 .home-greeting-ask { color: var(--text-3); }
 
 /* The composer. Overrides the results bar's single-row layout and its small icon buttons. */
-.searchbox--home { width: min(720px, 100%); }
-.searchbar--home { flex-direction: column; align-items: stretch; height: auto; padding: 0; gap: 0; background: rgba(21, 21, 21, .86); border-color: rgba(255, 255, 255, .14); border-radius: 18px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px rgba(0, 0, 0, .5); transition: border-color .3s, box-shadow .3s, background .3s; }
-.searchbar--home:focus-within { border-color: rgba(255, 255, 255, .26); }
+.searchbox--home { width: min(720px, 100%); --bw: 3px; --ring: rgba(255, 255, 255, .13); --dot: rgba(255, 255, 255, .62); }
+.searchbox--home:focus-within { --bw: 4px; --ring: rgba(255, 255, 255, .24); --dot: rgba(255, 255, 255, .8); }
+.home-ai .searchbox--home { --ring: rgba(160, 140, 255, .3); --dot: rgba(200, 190, 255, .78); }
+.home-ai .searchbox--home:focus-within { --ring: rgba(175, 160, 255, .5); --dot: rgba(215, 205, 255, .92); }
+.searchbar--home { flex-direction: column; align-items: stretch; height: auto; padding: 0; gap: 0; background: var(--bg); border: 0; border-radius: 18px; box-shadow: none; }
+/* The card is the page's own colour, not a panel over it. Focus only thickens and brightens the
+   ring; the results bar's outer focus glow stays off here. */
+.searchbar--home:focus-within { box-shadow: none; }
 .searchbar-row { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 12px 0 20px; }
 .searchbar--home .searchbar-lead { font-size: 18px; color: var(--text-3); transition: color .2s; }
 .searchbar--home:focus-within .searchbar-lead { color: var(--text-2); }
@@ -840,17 +844,14 @@ a.btn:hover { text-decoration: none; }
 .searchbar--home .searchbar-go:active { transform: scale(.97); }
 .searchbar--home .searchbar-go svg { font-size: 15px; transition: transform .2s; }
 .searchbar--home .searchbar-go:hover svg { transform: translateX(2px); }
-.home-ai .searchbar--home { border-color: rgba(160, 140, 255, .3); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 70px rgba(60, 40, 140, .28); }
-.home-ai .searchbar--home:focus-within { border-color: rgba(175, 160, 255, .5); }
 
-/* Edge light: the border brightens around the point nearest the cursor, only while the cursor is
-   close to the card's edge (--edge 0..1 and --ex/--ey are set from archer.js). The dots just
-   outside that stretch of edge light up too (dotField's `near`). */
-.searchbox--home::before { content: ""; position: absolute; inset: 0; z-index: 2; padding: 1px; border-radius: 18px; pointer-events: none;
-  background: radial-gradient(150px circle at var(--ex, 50%) var(--ey, 50%), rgba(255, 255, 255, .75), rgba(255, 255, 255, .18) 45%, transparent 72%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
-  opacity: var(--edge, 0); }
-.home-ai .searchbox--home::before { background: radial-gradient(150px circle at var(--ex, 50%) var(--ey, 50%), rgba(205, 195, 255, .85), rgba(160, 140, 255, .22) 45%, transparent 72%); }
+/* The border is drawn here, not on the form: a solid ring --bw thick. Near the cursor (--edge 0..1
+   at --ex/--ey, set from archer.js) the ring fades out and .composer-dots redraws that stretch as
+   square pixels the size of the ring, so just that part of the border turns to dots. */
+.searchbox--home::before { content: ""; position: absolute; inset: 0; z-index: 2; padding: var(--bw); border-radius: 18px; background: var(--ring); pointer-events: none; transition: background .3s;
+  mask: radial-gradient(circle at var(--ex, -999px) var(--ey, -999px), rgb(0 0 0 / calc(1 - var(--edge, 0))) 26px, #000 78px), linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: intersect, exclude, add; }
+.composer-dots { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
 .home-ai .searchbar--home .searchbar-go { background: linear-gradient(135deg, #fff, #e3dcff); }
 
 .home-modes { position: relative; display: inline-flex; align-items: center; }
