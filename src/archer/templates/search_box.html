@@ -1,11 +1,22 @@
+{# Home renders a taller composer: the input row, then a footer row holding whatever the caller
+   passes (the mode switch) and the submit button. Results pages keep the single-row bar. #}
 {% macro search_box(q='', tab='all', home=false) %}
 <div class="searchbox{% if home %} searchbox--home{% endif %}" data-searchbox data-suggest-min="{{ suggest_min }}" data-suggest-max="{{ suggest_max_length }}">
   <form class="searchbar{% if home %} searchbar--home{% endif %}" action="/search" method="get" role="search">
+    {% if home %}<div class="searchbar-row">{% endif %}
     <svg class="searchbar-lead" aria-hidden="true"><use href="#i-search"/></svg>
     <input name="q" value="{{ q }}" {% if home %}autofocus placeholder="Search the web privately"{% endif %} autocomplete="off" spellcheck="false" aria-label="Search">
     {% if tab != 'all' %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
     <button type="button" class="searchbar-clear" aria-label="Clear search"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+    {% if home %}
+    </div>
+    <div class="searchbar-foot">
+      {% if caller is defined %}{{ caller() }}{% endif %}
+      <button type="submit" class="searchbar-go">Search<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+    </div>
+    {% else %}
     <button type="submit" class="searchbar-go"><svg aria-hidden="true"><use href="#i-search"/></svg>Search</button>
+    {% endif %}
   </form>
 </div>
 {% endmacro %}

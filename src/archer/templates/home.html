@@ -7,8 +7,9 @@
 <div class="home-glow" aria-hidden="true"></div>
 
 <header class="home-top">
-  <span class="home-clock" data-home-clock aria-hidden="true"></span>
+  <a class="home-wordmark" href="/" aria-label="Archer home">{{ pixel_mark(20) }}<span>Archer</span></a>
   <nav class="home-top-actions" aria-label="Archer">
+    <span class="home-clock" data-home-clock aria-hidden="true"></span>
     <a class="home-settings" href="/app" aria-label="Settings" title="Settings">
       <svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
     </a>
@@ -16,29 +17,39 @@
 </header>
 
 <main class="home-main" data-home data-ai-ready="{{ 'true' if ai_ready else 'false' }}">
-  <div class="home-brand">
-    {{ pixel_mark(44) }}
-    <span>Archer</span>
-  </div>
-  <p class="home-greeting" data-home-greeting>Search the web, or ask.</p>
+  {{ pixel_mark(56, "home-mark") }}
+  <h1 class="home-greeting"><span data-home-greeting>Hello.</span> <span class="home-greeting-ask">What are you looking for?</span></h1>
 
+  {% call search_box(home=true) %}
   <div class="home-modes" role="radiogroup" aria-label="Search mode">
     <span class="home-modes-thumb" aria-hidden="true"></span>
     <button type="button" class="home-mode is-active" role="radio" aria-checked="true" data-home-mode="search">
-      <svg aria-hidden="true"><use href="#i-search"/></svg>Search
+      Search
     </button>
     <button type="button" class="home-mode" role="radio" aria-checked="false" data-home-mode="ai">
-      <svg aria-hidden="true"><use href="#u-sparkle"/></svg>AI Mode
+      AI Mode
     </button>
   </div>
-
-  {{ search_box(home=true) }}
-
+  <span class="home-keys" aria-hidden="true"><span class="kbd">Alt</span><span class="kbd">M</span> switch · <span class="kbd">Ctrl</span><span class="kbd">↵</span> other mode</span>
+  {% endcall %}
 
   <p class="home-hint" data-home-hint>
     <span data-hint-for="search">Private results from your SearXNG · instant answers built in</span>
     <span data-hint-for="ai" hidden>{% if ai_ready %}Researches with live searches and page reading · answers cite sources{% else %}AI Mode needs an API key · <a href="/app#ai">Add one in Settings</a>{% endif %}</span>
-    <span class="home-keys"><span class="kbd">/</span> focus <span class="kbd">Alt</span><span class="kbd">M</span> switch mode <span class="kbd">Ctrl</span><span class="kbd">↵</span> other mode</span>
   </p>
+
+  <div class="home-try" aria-label="Try">
+    <div class="home-try-row" data-hint-for="search">
+      <button type="button" class="home-chip" data-home-try="weather tomorrow"><svg aria-hidden="true"><use href="#i-cloud-sun"/></svg>weather tomorrow</button>
+      <button type="button" class="home-chip" data-home-try="time in tokyo"><svg aria-hidden="true"><use href="#u-clock"/></svg>time in tokyo</button>
+      <button type="button" class="home-chip" data-home-try="define serendipity"><svg aria-hidden="true"><use href="#u-book"/></svg>define serendipity</button>
+      <button type="button" class="home-chip" data-home-try="18% of 2450"><svg aria-hidden="true"><use href="#u-hash"/></svg>18% of 2450</button>
+    </div>
+    <div class="home-try-row" data-hint-for="ai" hidden>
+      <button type="button" class="home-chip" data-home-try="How do mRNA vaccines train the immune system?"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>How do mRNA vaccines work?</button>
+      <button type="button" class="home-chip" data-home-try="Plan a relaxed 3-day trip to Kyoto in autumn"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>Plan 3 days in Kyoto</button>
+      <button type="button" class="home-chip" data-home-try="Compare the best budget phones of this year"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>Best budget phones this year</button>
+    </div>
+  </div>
 </main>
 {% endblock %}

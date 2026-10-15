@@ -106,6 +106,7 @@ def test_home_offers_both_modes_and_settings(client, monkeypatch, key, label):
     assert 'action="/search"' in html                      # works without JS; AI Mode switches the target
     assert 'data-home-mode="search"' in html and 'data-home-mode="ai"' in html
     assert 'class="home-settings" href="/app"' in html
+    assert 'data-home-try=' in html and 'class="searchbar-foot"' in html   # starters and the composer's mode row
     assert label in html
     assert "sk-test-secret-123" not in html                 # only readiness reaches the page, never the key
 

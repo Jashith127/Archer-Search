@@ -798,59 +798,99 @@ a.btn:hover { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 
 /* ---------------------------------------------------------------- home */
-/* Two modes share one search box. body.home-ai swaps the copy, the chips, the submit target and
-   lifts a soft glow behind the bar; the dot field below follows the pointer. */
+/* One composer card holds the input and, in its footer, the Search / AI Mode switch and the submit.
+   body.home-ai swaps the copy, the starter chips and the submit target, tints the card and lifts a
+   soft glow behind it; the dot field below follows the pointer. */
 .home { overflow-x: hidden; }
 .home-field { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.home-glow { position: fixed; left: 50%; top: 46%; width: min(900px, 120vw); height: 420px; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; transition: opacity .6s ease;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, .07), transparent 70%), radial-gradient(40% 50% at 30% 55%, rgba(124, 92, 255, .12), transparent 70%), radial-gradient(40% 50% at 70% 45%, rgba(94, 168, 255, .1), transparent 70%); }
+.home-glow { position: fixed; left: 50%; top: 44%; width: min(980px, 120vw); height: 480px; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; transition: opacity .6s ease;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .06), transparent 70%), radial-gradient(40% 50% at 30% 55%, rgba(124, 92, 255, .13), transparent 70%), radial-gradient(40% 50% at 70% 45%, rgba(94, 168, 255, .1), transparent 70%); }
 .home-ai .home-glow { opacity: 1; }
 
-.home-top { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; }
-.home-clock { font: 500 12px/1 var(--mono); color: var(--text-3); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
-.home-top-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.home-settings { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--text-2); transition: background .15s, color .15s; }
-.home-settings:hover, .home-settings:focus-visible { background: var(--surface-3); color: var(--text); }
-.home-settings svg { width: 20px; height: 20px; transition: transform .5s cubic-bezier(.3, .7, .2, 1); }
+.home-top { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px 14px 22px; }
+.home-wordmark { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font: 600 15px/1 var(--font-display); letter-spacing: -0.02em; }
+.home-wordmark:hover { text-decoration: none; }
+.home-wordmark .pxmark { --wave: 9.6s; }
+.home-clock { font: 500 12px/1 var(--mono); color: var(--text-3); letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: pre; }
+.home-top-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+.home-settings { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid transparent; color: var(--text-2); transition: background .15s, color .15s, border-color .15s; }
+.home-settings:hover, .home-settings:focus-visible { background: var(--surface-2); border-color: var(--border-soft); color: var(--text); }
+.home-settings svg { width: 18px; height: 18px; transition: transform .5s cubic-bezier(.3, .7, .2, 1); }
 .home-settings:hover svg { transform: rotate(60deg); }
 
-.home-main { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 72px 16px 18vh; }
-.home-brand .pxmark { width: 44px; height: 44px; }
-.home-brand { display: flex; align-items: center; gap: 14px; font: 600 46px/1 var(--font-display); letter-spacing: -0.03em; }
-.home-ai .home-brand .pxmark { --wave: 1.8s; --step: 40ms; }
-.home-greeting { margin: -4px 0 6px; color: var(--text-2); font-size: 15px; min-height: 1.6em; text-align: center; }
+.home-main { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 76px 16px 20vh; }
+.home-mark { width: 56px; height: 56px; color: var(--text); margin-bottom: 26px; }
+.home-ai .home-mark { --wave: 1.8s; --step: 40ms; color: #d9d6ff; }
+.home-greeting { margin: 0 0 30px; max-width: 680px; font: 500 clamp(26px, 4.2vw, 36px)/1.18 var(--font-display); letter-spacing: -0.035em; text-align: center; color: var(--text); text-wrap: balance; }
+.home-greeting-ask { color: var(--text-3); }
 
-.home-modes { position: relative; display: inline-flex; padding: 3px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 12px; }
-.home-modes-thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: var(--w, 0); transform: translateX(var(--x, 0)); background: var(--surface-3); border: 1px solid var(--border); border-radius: 9px; }
-.home-modes.is-ready .home-modes-thumb { transition: transform .32s cubic-bezier(.3, .7, .2, 1), width .32s cubic-bezier(.3, .7, .2, 1); }
-.home-mode { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 16px; border: 0; border-radius: 9px; background: none; color: var(--text-3); font-size: 13px; font-weight: 500; cursor: pointer; }
+/* The composer. Overrides the results bar's single-row layout and its small icon buttons. */
+.searchbox--home { width: min(720px, 100%); }
+.searchbar--home { flex-direction: column; align-items: stretch; height: auto; padding: 0; gap: 0; background: rgba(21, 21, 21, .86); border-color: rgba(255, 255, 255, .14); border-radius: 18px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 60px rgba(0, 0, 0, .5); transition: border-color .3s, box-shadow .3s, background .3s; }
+.searchbar--home:focus-within { border-color: rgba(255, 255, 255, .26); }
+.searchbar-row { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 12px 0 20px; }
+.searchbar--home .searchbar-lead { font-size: 18px; color: var(--text-3); transition: color .2s; }
+.searchbar--home:focus-within .searchbar-lead { color: var(--text-2); }
+.searchbar--home input { font-size: 17px; }
+.searchbar--home input::placeholder { color: var(--text-3); }
+.searchbar-foot { display: flex; align-items: center; gap: 12px; padding: 0 10px 10px; }
+.searchbar--home .searchbar-go { align-self: auto; height: 36px; margin-left: auto; padding: 0 14px 0 16px; gap: 8px; border: 0; border-radius: 10px; background: #fff; color: #111; font: 600 13.5px/1 var(--font); transition: background .2s, transform .15s; }
+.searchbar--home .searchbar-go:hover { background: #e4e4e4; color: #111; }
+.searchbar--home .searchbar-go:active { transform: scale(.97); }
+.searchbar--home .searchbar-go svg { font-size: 15px; transition: transform .2s; }
+.searchbar--home .searchbar-go:hover svg { transform: translateX(2px); }
+.home-ai .searchbar--home { border-color: rgba(160, 140, 255, .3); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 70px rgba(60, 40, 140, .28); }
+.home-ai .searchbar--home:focus-within { border-color: rgba(175, 160, 255, .5); }
+
+/* Edge light: the border brightens around the point nearest the cursor, only while the cursor is
+   close to the card's edge (--edge 0..1 and --ex/--ey are set from archer.js). The dots just
+   outside that stretch of edge light up too (dotField's `near`). */
+.searchbox--home::before { content: ""; position: absolute; inset: 0; z-index: 2; padding: 1px; border-radius: 18px; pointer-events: none;
+  background: radial-gradient(150px circle at var(--ex, 50%) var(--ey, 50%), rgba(255, 255, 255, .75), rgba(255, 255, 255, .18) 45%, transparent 72%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  opacity: var(--edge, 0); }
+.home-ai .searchbox--home::before { background: radial-gradient(150px circle at var(--ex, 50%) var(--ey, 50%), rgba(205, 195, 255, .85), rgba(160, 140, 255, .22) 45%, transparent 72%); }
+.home-ai .searchbar--home .searchbar-go { background: linear-gradient(135deg, #fff, #e3dcff); }
+
+.home-modes { position: relative; display: inline-flex; align-items: center; }
+.home-modes-thumb { position: absolute; left: 0; bottom: 1px; width: var(--w, 0); height: 2px; transform: translateX(var(--x, 0)); background: repeating-linear-gradient(90deg, var(--text) 0 2px, transparent 2px 4px); }
+.home-ai .home-modes-thumb { background: repeating-linear-gradient(90deg, var(--mark) 0 2px, transparent 2px 4px); }
+.home-modes.is-ready .home-modes-thumb { transition: transform .28s cubic-bezier(.3, .7, .2, 1), width .28s cubic-bezier(.3, .7, .2, 1); }
+.searchbar--home .home-mode { position: relative; display: inline-flex; align-items: center; width: auto; height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-3); font: 500 11.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 .home-modes.is-ready .home-mode { transition: color .2s; }
-.home-mode:hover { color: var(--text-2); }
-.home-mode.is-active { color: var(--text); }
-.home-mode svg { font-size: 14px; }
-.home-mode:focus-visible { outline: 2px solid rgba(255, 255, 255, .35); outline-offset: 1px; }
+.searchbar--home .home-mode:hover { background: none; color: var(--text-2); }
+.searchbar--home .home-mode.is-active { color: var(--text); }
+.home-mode:focus-visible { outline: 1px solid rgba(255, 255, 255, .35); outline-offset: -2px; }
 
-.searchbar--home { width: min(680px, 100%); flex: none; height: 58px; padding-left: 20px; gap: 12px; transition: border-color .3s, box-shadow .3s; }
-.searchbox--home { width: min(680px, 100%); }
-.searchbar--home:focus-within { box-shadow: 0 0 0 4px rgba(255, 255, 255, .04), 0 18px 50px rgba(0, 0, 0, .45); }
-.home-ai .searchbar--home { border-color: rgba(160, 140, 255, .35); box-shadow: 0 0 0 4px rgba(124, 92, 255, .07), 0 18px 60px rgba(60, 40, 140, .25); }
-.home-ai .searchbar-go { background: linear-gradient(135deg, #fff, #e6e0ff); }
-.searchbar-icon { color: var(--text-3); font-size: 20px; }
+.home-keys { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.home-keys .kbd { min-width: 18px; height: 18px; font-size: 10.5px; }
+.home-keys .kbd + .kbd { margin-left: 1px; }
 
-
-.home-hint { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin: 0; font-size: 12.5px; color: var(--text-3); text-align: center; }
+.home-hint { margin: 16px 0 0; font-size: 12.5px; color: var(--text-3); text-align: center; }
 .home-hint a { color: var(--text-2); }
-.home-keys { display: inline-flex; align-items: center; gap: 4px; }
-.home-keys .kbd + .kbd { margin-left: -1px; }
-.home-keys .kbd:not(:first-child) { margin-left: 8px; }
-.home-keys .kbd + .kbd:not(:first-child) { margin-left: 2px; }
-@media (max-width: 640px) {
-  .home-brand { font-size: 36px; }
+
+.home-try { margin-top: 22px; width: min(720px, 100%); }
+.home-try-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.home-chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 13px 0 11px; border: 1px solid var(--border-soft); border-radius: 999px; background: rgba(17, 17, 17, .8); color: var(--text-2); font-size: 13px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.home-chip svg { font-size: 14px; color: var(--text-3); transition: color .15s; }
+.home-chip:hover, .home-chip:focus-visible { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.home-chip:hover svg { color: var(--text-2); }
+.home-chip:focus-visible { outline: 2px solid rgba(255, 255, 255, .3); outline-offset: 1px; }
+.home-ai .home-chip svg { color: var(--mark); }
+
+@media (max-width: 760px) {
   .home-keys { display: none; }
+}
+@media (max-width: 640px) {
   .home-clock { display: none; }
+  .home-mark { width: 44px; height: 44px; margin-bottom: 20px; }
+  .home-greeting { margin-bottom: 22px; }
+  .home-greeting-ask { display: block; }
+  .home-main { padding-bottom: 14vh; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-modes-thumb, .home-glow, .home-settings svg { transition: none; }
+  .home-modes-thumb, .home-glow, .home-settings svg, .searchbar--home .searchbar-go svg { transition: none; }
 }
 
 /* ---------------------------------------------------------- responsive */
@@ -862,7 +902,7 @@ a.btn:hover { text-decoration: none; }
 @media (max-width: 900px) {
   .wrap { padding: 0 16px; }
   .top-inner { height: 64px; gap: 12px; }
-  .searchbar { height: 46px; padding-left: 16px; }
+  .searchbar:not(.searchbar--home) { height: 46px; padding-left: 16px; }
   .modes { display: none; }
   .layout, .layout--single { grid-template-columns: minmax(0, 1fr); }
   .panel { position: static; }
