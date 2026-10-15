@@ -63,6 +63,11 @@ _CSP = ("default-src 'self'; img-src * data:; media-src *; style-src 'self' 'uns
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    if request.url.path.startswith("/static/") and response.status_code == 200:
+        # CSS and JS carry a content hash (`asset()`), so a cached copy can never go stale: the
+        # browser keeps it without re-checking on every page. Fonts and icons are re-checked daily.
+        versioned = "v" in request.query_params
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if versioned else "public, max-age=86400"
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers["Content-Security-Policy"] = _CSP
         response.headers["Referrer-Policy"] = "no-referrer"

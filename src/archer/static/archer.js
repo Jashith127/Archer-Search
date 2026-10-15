@@ -958,7 +958,7 @@ function el(tag, props = {}, ...children) {
 
 function img(src, alt = "") {
   if (!isHttp(src)) return null;
-  const i = el("img", { src, alt, loading: "lazy", referrerpolicy: "no-referrer" });
+  const i = el("img", { src, alt, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" });
   i.addEventListener("error", () => i.remove());
   return i;
 }
@@ -2707,14 +2707,18 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
     }
   };
 
+  // The loop only runs while the field is on screen: scrolled away, no frames are requested at all.
+  let looping = false;
   const tick = (now) => {
-    if (visible && now - last > 66) { draw(now); last = now; }   // ~15fps: the motion is stepped anyway
-    if (glow && visible) drawGlow(now);
+    if (!visible) { looping = false; return; }
+    if (now - last > 66) { draw(now); last = now; }   // ~15fps: the motion is stepped anyway
+    if (glow) drawGlow(now);
     requestAnimationFrame(tick);
   };
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(canvas);
+  const start = () => { if (!still && visible && !looping) { looping = true; requestAnimationFrame(tick); } };
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; start(); }).observe(canvas);
   layout();
-  if (still) draw(performance.now()); else requestAnimationFrame(tick);
+  if (still) draw(performance.now()); else start();
   addEventListener("resize", () => { layout(); if (still) draw(performance.now()); });
   return {
     set energy(value) { energy = value; },

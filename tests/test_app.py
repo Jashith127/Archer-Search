@@ -183,3 +183,10 @@ def test_news_thumb_reads_share_image_and_refuses_other_sites(client, monkeypatc
     cross = client.get("/api/news/thumb", params={"url": "https://news.example.com/story"}, headers={"Sec-Fetch-Site": "cross-site"})
     assert cross.status_code == 403
     assert client.get("/api/news/thumb", params={"url": "file:///etc/passwd"}).json() == {"thumb": ""}
+
+
+def test_versioned_assets_are_cached_for_good(client):
+    page = client.get("/").text
+    css = re.search(r'href="(/static/archer\.css\?v=[0-9a-f]+)"', page).group(1)
+    assert client.get(css).headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/static/favicon.svg").headers["cache-control"] == "public, max-age=86400"
