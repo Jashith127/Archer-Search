@@ -99,15 +99,16 @@ def test_page_has_security_headers(client):
     assert resp.headers["referrer-policy"] == "no-referrer"
 
 
-@pytest.mark.parametrize("key,label", [("", "AI Mode needs an API key"), ("sk-test-secret-123", "answers cite sources")])
-def test_home_offers_both_modes_and_settings(client, monkeypatch, key, label):
+@pytest.mark.parametrize("key,warned", [("", True), ("sk-test-secret-123", False)])
+def test_home_offers_both_modes_and_settings(client, monkeypatch, key, warned):
     monkeypatch.setattr(settings, "deepseek_api_key", key)
     html = client.get("/").text
     assert 'action="/search"' in html                      # works without JS; AI Mode switches the target
     assert 'data-home-mode="search"' in html and 'data-home-mode="ai"' in html
     assert 'class="home-settings" href="/app"' in html
     assert 'data-home-try=' in html and 'class="searchbar-foot"' in html   # starters and the composer's mode row
-    assert label in html
+    assert ("AI Mode needs an API key" in html) is warned   # the only caption left, shown just without a key
+    assert "data-home-clock" not in html and "home-keys" not in html
     assert "sk-test-secret-123" not in html                 # only readiness reaches the page, never the key
 
 

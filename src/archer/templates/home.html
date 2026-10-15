@@ -7,9 +7,7 @@
 <div class="home-glow" aria-hidden="true"></div>
 
 <header class="home-top">
-  <a class="home-wordmark" href="/" aria-label="Archer home">{{ pixel_mark(20) }}<span>Archer</span></a>
   <nav class="home-top-actions" aria-label="Archer">
-    <span class="home-clock" data-home-clock aria-hidden="true"></span>
     <a class="home-settings" href="/app" aria-label="Settings" title="Settings">
       <svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
     </a>
@@ -30,13 +28,11 @@
       AI Mode
     </button>
   </div>
-  <span class="home-keys" aria-hidden="true"><span class="kbd">Alt</span><span class="kbd">M</span> switch · <span class="kbd">Ctrl</span><span class="kbd">↵</span> other mode</span>
   {% endcall %}
 
-  <p class="home-hint" data-home-hint>
-    <span data-hint-for="search">Private results from your SearXNG · instant answers built in</span>
-    <span data-hint-for="ai" hidden>{% if ai_ready %}Researches with live searches and page reading · answers cite sources{% else %}AI Mode needs an API key · <a href="/app#ai">Add one in Settings</a>{% endif %}</span>
-  </p>
+  {% if not ai_ready %}
+  <p class="home-hint" data-home-hint data-hint-for="ai" hidden>AI Mode needs an API key · <a href="/app#ai">Add one in Settings</a></p>
+  {% endif %}
 
   <div class="home-try" aria-label="Try">
     <div class="home-try-row" data-hint-for="search">

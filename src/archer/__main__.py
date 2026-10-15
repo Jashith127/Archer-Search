@@ -8,6 +8,7 @@
 import argparse
 import json
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -21,7 +22,19 @@ import uvicorn
 from archer.config import DATA_DIR, settings
 
 
+def _port_free() -> bool:
+    # Binding is instant; an HTTP probe of a closed port on Windows waits out its whole timeout.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("127.0.0.1", settings.port))
+            return True
+        except OSError:
+            return False
+
+
 def _already_running() -> bool:
+    if _port_free():
+        return False
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{settings.port}/health", timeout=1) as resp:
             return json.load(resp).get("app") == "archer"
@@ -70,12 +83,15 @@ def _show(url: str) -> None:
         open_app(url)
 
 
-def _run_tray(server: uvicorn.Server, restart: threading.Event, notify: bool) -> None:
+def _run_tray(server: uvicorn.Server, thread: threading.Thread, restart: threading.Event,
+              view: str | None, notify: bool) -> bool:
+    """Show the tray icon at once, while the server is still importing; returns False if it never started."""
     import pystray
 
     from archer import autostart
-    from archer.app import app
     from archer.icon import make_icon
+
+    failed = threading.Event()
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
@@ -88,13 +104,25 @@ def _run_tray(server: uvicorn.Server, restart: threading.Event, notify: bool) ->
         restart.set()
         stop(tray)
 
-    def ready(icon):
-        icon.visible = True
+    def boot():
+        if not _wait_started(server, thread):
+            failed.set()
+            tray.stop()
+            return
+        from archer.app import app
+        # The companion app can restart Archer too, to apply a new port or address.
+        app.state.restart = restart_app
+        if view:
+            _show(view)
         if notify:
             try:
-                icon.notify("Archer is running. Search from your address bar.", "Archer")
+                tray.notify("Archer is running. Search from your address bar.", "Archer")
             except Exception:  # notifications are a nicety; some shells refuse them
                 pass
+
+    def ready(icon):
+        icon.visible = True
+        threading.Thread(target=boot, daemon=True).start()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open Archer", lambda: _show(_companion_url()), default=True),
@@ -105,9 +133,8 @@ def _run_tray(server: uvicorn.Server, restart: threading.Event, notify: bool) ->
         pystray.MenuItem("Quit", lambda icon, item: stop(icon)),
     )
     tray = pystray.Icon("archer", make_icon(64), f"Archer · {settings.base_url}", menu)
-    # The companion app can restart Archer too, to apply a new port or address.
-    app.state.restart = restart_app
     tray.run(setup=ready)
+    return not failed.is_set()
 
 
 def main() -> None:
@@ -146,13 +173,13 @@ def main() -> None:
     server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port, access_log=False))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    if not _wait_started(server, thread):
-        print(f"Archer could not start on port {settings.port}; is another program using it?", file=sys.stderr)
-        sys.exit(1)
-    if view := _first_view(args):
-        _show(view)
+    view = _first_view(args)
 
     if args.no_tray:
+        if not _wait_started(server, thread):
+            _fail()
+        if view:
+            _show(view)
         try:
             while thread.is_alive():  # short joins so Ctrl+C reaches us on Windows
                 thread.join(0.5)
@@ -160,7 +187,8 @@ def main() -> None:
             server.should_exit = True
     else:
         restart = threading.Event()
-        _run_tray(server, restart, notify=args.startup and settings.startup_notify)
+        if not _run_tray(server, thread, restart, view, notify=args.startup and settings.startup_notify):
+            _fail()
         thread.join(timeout=5)
         if restart.is_set():
             # A fresh process re-reads .env, including a new port or address.
@@ -169,6 +197,10 @@ def main() -> None:
             return
     thread.join(timeout=5)
 
+
+def _fail() -> None:
+    print(f"Archer could not start on port {settings.port}; is another program using it?", file=sys.stderr)
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()

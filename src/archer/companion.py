@@ -132,6 +132,10 @@ def _docker(*args: str, timeout: float = 20) -> bool:
 
 
 def _launch_docker_desktop() -> bool:
+    # `docker desktop start` (Docker Desktop 4.37+) brings the engine up in the background; whether the
+    # dashboard opens too is Docker's own "Open Docker Dashboard when Docker Desktop starts" setting.
+    if _docker("desktop", "start", "--detach", timeout=30):
+        return True
     for home in _DOCKER_HOMES:
         exe = home / "Docker Desktop.exe"
         if exe.is_file():

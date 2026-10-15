@@ -2174,11 +2174,24 @@ function edgePoint(rect, x, y) {
 // the results page; it only animates while on screen. With `pointer`, cells near the cursor light
 // up; `energy` (0..1, settable later) makes the bright flashes more frequent.
 // `span` is the share of the canvas (from the bottom) the field fills; the cursor glow can use all of it.
-function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1, pointer = false, energy = 0, span = 1 } = {}) {
+// `palette` ([[colour, weight], ...]) gives each dot its own hue for when `tint` (0 or 1, settable
+// later) is raised: the field cross-fades from grey ink to those colours, keeping every dot's shade.
+// The coloured dots live on a second canvas, and the cross-fade is a CSS opacity transition between
+// the two, so it runs on the compositor while both keep the field's stepped ~15fps redraw.
+function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink = 1, pointer = false, energy = 0, span = 1, palette = null } = {}) {
   const ctx = canvas.getContext("2d");
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const LEVELS = [0.05, 0.12, 0.24, 0.42, 0.7];
-  let cols, fade, level, next, sprite, dpr, visible = true, last = 0;
+  let cols, fade, level, next, hue, sprite, sprites = [], dpr, visible = true, last = 0;
+  let tintTarget = 0, drawn = false, fadingUntil = 0;
+  const FADE = 900;
+  const tinted = palette ? Object.assign(document.createElement("canvas"), { className: canvas.className, ariaHidden: "true" }) : null;
+  const tctx = tinted?.getContext("2d");
+  if (tinted) {
+    canvas.after(tinted);
+    tinted.style.opacity = "0";
+    for (const c of [canvas, tinted]) c.style.transition = `opacity ${FADE}ms cubic-bezier(.4, 0, .2, 1)`;
+  }
   // The cursor glow lives on its own canvas above the field and redraws every frame while it moves,
   // so it stays smooth while the field keeps its stepped ~15fps. Its position and strength ease
   // toward the pointer instead of jumping.
@@ -2201,11 +2214,13 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
     dpr = devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    if (tinted) { tinted.width = canvas.width; tinted.height = canvas.height; }
     if (glow) { glow.width = canvas.width; glow.height = canvas.height; painted = true; }
     cols = Math.ceil(w / pitch);
     const rows = Math.ceil(h / pitch), now = performance.now();
     const top = rows - Math.ceil(rows * span);           // rows above this stay empty
     fade = new Float32Array(cols * rows); level = new Float32Array(cols * rows); next = new Float64Array(cols * rows);
+    hue = palette ? new Uint8Array(cols * rows) : null;
     for (let c = 0; c < cols; c++) {
       const u = ((c + 0.5) / cols) * 2 - 1;             // -1 at the left edge, 1 at the right
       const horizon = curve * (1 - u * u);              // how far down the field starts in this column
@@ -2217,18 +2232,35 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
         fade[k] = Math.random() < density * depth ** 1.1 ? ink * depth ** 1.8 : 0;
         level[k] = LEVELS[(Math.random() * LEVELS.length) | 0];
         next[k] = now + Math.random() * 3000;
+        if (hue) hue[k] = pick();
       }
     }
-    sprite = document.createElement("canvas");
-    sprite.width = sprite.height = Math.ceil(sq * dpr);
-    const g = sprite.getContext("2d");
-    g.scale(dpr, dpr); g.fillStyle = "#ededed";
-    g.beginPath(); g.roundRect(0, 0, sq, sq, sq * 0.25); g.fill();
+    const make = (colour) => {
+      const c = document.createElement("canvas");
+      c.width = c.height = Math.ceil(sq * dpr);
+      const g = c.getContext("2d");
+      g.scale(dpr, dpr); g.fillStyle = colour;
+      g.beginPath(); g.roundRect(0, 0, sq, sq, sq * 0.25); g.fill();
+      return c;
+    };
+    sprite = make("#ededed");
+    sprites = palette ? palette.map(([colour]) => make(colour)) : [];
+  };
+  // A dot's hue, drawn by the palette's weights.
+  const totalWeight = palette ? palette.reduce((n, [, w]) => n + w, 0) : 0;
+  const pick = () => {
+    let x = Math.random() * totalWeight, i = 0;
+    while (i < palette.length - 1 && (x -= palette[i][1]) > 0) i++;
+    return i;
   };
 
   const draw = (now) => {
+    drawn = true;
+    // Each layer is drawn only while it can be seen: always during a cross-fade, else by mode.
+    const fading = now < fadingUntil, grey = tintTarget < 1 || fading, colour = tinted && (tintTarget > 0 || fading);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (tinted) { tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tinted.width, tinted.height); }
     const off = (pitch - sq) / 2, size = sprite.width;
     for (let k = 0; k < fade.length; k++) {
       if (!fade[k]) continue;
@@ -2238,8 +2270,10 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
         level[k] = LEVELS[i];
         next[k] = now + (i === LEVELS.length - 1 ? 180 + Math.random() * 400 : 600 + Math.random() * 2800);
       }
-      ctx.globalAlpha = level[k] * fade[k];
-      ctx.drawImage(sprite, Math.round(((k % cols) * pitch + off) * dpr), Math.round(((k / cols | 0) * pitch + off) * dpr), size, size);
+      const a = level[k] * fade[k], x = Math.round(((k % cols) * pitch + off) * dpr), y = Math.round(((k / cols | 0) * pitch + off) * dpr);
+      if (grey) { ctx.globalAlpha = a; ctx.drawImage(sprite, x, y, size, size); }
+      // Coloured ink reads darker than grey at the same alpha, so it gets a small lift.
+      if (colour) { tctx.globalAlpha = Math.min(1, a * 1.25); tctx.drawImage(sprites[hue[k]], x, y, size, size); }
     }
   };
 
@@ -2279,7 +2313,23 @@ function dotField(canvas, { pitch = 12, sq = 9, density = 0.7, curve = 0.45, ink
   layout();
   if (still) draw(performance.now()); else requestAnimationFrame(tick);
   addEventListener("resize", () => { layout(); if (still) draw(performance.now()); });
-  return { set energy(value) { energy = value; } };
+  return {
+    set energy(value) { energy = value; },
+    set tint(value) {
+      if (!tinted || value === tintTarget) return;
+      tintTarget = value;
+      fadingUntil = performance.now() + FADE + 100;
+      // The first paint (a saved mode being restored) shows the right colours at once, without a fade.
+      const instant = !drawn;
+      for (const c of [canvas, tinted]) if (instant) c.style.transition = "none";
+      canvas.style.opacity = String(1 - value);
+      tinted.style.opacity = String(value);
+      if (instant) requestAnimationFrame(() => requestAnimationFrame(() => {
+        for (const c of [canvas, tinted]) c.style.transition = `opacity ${FADE}ms cubic-bezier(.4, 0, .2, 1)`;
+      }));
+      draw(performance.now());
+    },
+  };
 }
 
 // ------------------------------------------------------ AI loading and reveal
@@ -2447,7 +2497,10 @@ function decodeReveal(root) {
 }
 
 const homeField = $(".home-field");
-const homeDots = homeField ? dotField(homeField, { span: 0.56 }) : null;
+// In AI Mode the field takes AI Mode's colours: the violet and blue of its glow, the periwinkle of
+// its highlights, and a little of the green accent.
+const AI_DOTS = [["#8f94ff", 0.34], ["#7c5cff", 0.28], ["#5ea8ff", 0.26], ["#7cc9a6", 0.12]];
+const homeDots = homeField ? dotField(homeField, { span: 0.56, palette: AI_DOTS }) : null;
 
 // ------------------------------------------------------------ home
 // One search box, two destinations: Search goes to /search, AI Mode to /ai. AI Mode only *opens*
@@ -2478,7 +2531,7 @@ if (home) {
     if (goLabel) goLabel.textContent = COPY[current].go;
     form.action = COPY[current].action;
     placeThumb();
-    if (homeDots) homeDots.energy = current === "ai" ? 1 : 0;
+    if (homeDots) { homeDots.energy = current === "ai" ? 1 : 0; homeDots.tint = current === "ai" ? 1 : 0; }
     if (remember) try { localStorage.setItem("archer-home-mode", current); } catch { /* storage blocked */ }
   };
   buttons.forEach((b) => {
@@ -2509,22 +2562,27 @@ if (home) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyM") { e.preventDefault(); setMode(current === "ai" ? "search" : "ai"); }
   });
 
-  // Pixel edge. Near the cursor the ring (drawn in CSS) fades out and this canvas redraws that stretch
-  // as rounded dots along the outline: up to GROW px bigger than the ring right by the cursor, shrinking
-  // smoothly to the ring's own thickness further out, all dots within NEAR px of the cursor's edge point
-  // and solid ring again by FAR px (the ring's CSS mask uses the same numbers).
+  // Pixel edge. Near the cursor the composer's outer band (drawn in CSS) fades out and this canvas
+  // redraws that stretch as rounded dots in the composer's own colour: up to GROW px bigger than the
+  // band right by the cursor, shrinking smoothly to the band's thickness further out, with up to SPILL
+  // smaller rows dissolving outward from it near the cursor. The band is fully
+  // open within NEAR px of the cursor's edge point and solid again by FAR px (its CSS mask uses the same numbers).
   // One rAF loop owns the motion: the edge point follows the cursor on a very short ease (no visible
   // lag, no jitter) and the strength fades in quickly and out a little slower. The loop writes the CSS
-  // mask's variables and paints the dots from the same eased values, so ring and dots never disagree,
+  // mask's variables and paints the dots from the same eased values, so the band and dots never disagree,
   // and it sleeps once everything has settled.
   const composer = form.parentElement;
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const dots = el("canvas", { class: "composer-dots", "aria-hidden": "true" });
     composer.append(dots);
     const g = dots.getContext("2d");
-    const PAD = 10;                                     // the canvas overhangs the ring so big dots are never clipped
-    const RADIUS = 18, NEAR = 26, FAR = 78, GROW = 3, PITCH = 7;
-    const OUTSIDE = 80, INSIDE = 22;                    // how far from the edge the cursor still counts
+    const PAD = 20;                                     // the canvas overhangs the box so the spill rows are never clipped
+    const RADIUS = 18, NEAR = 32, FAR = 104, GROW = 4.5, PITCH = 7;
+    // Like the mark's legs, the edge dissolves outward: the band's own row of dots plus SPILL more rows
+    // stepping out one PITCH at a time, each smaller and appearing only closer to the cursor, the
+    // outermost one sparse (every other dot).
+    const SPILL = 2;
+    const OUTSIDE = 96, INSIDE = 22;                    // how far from the edge the cursor still counts
     const strength = (p) => { const t = Math.max(0, 1 - p.d / (p.inside ? INSIDE : OUTSIDE)); return t * t * (3 - 2 * t); };
     let tx = 0, ty = 0, target = 0, ex = 0, ey = 0, edge = 0, frame = 0, last = 0, awakeUntil = 0;
 
@@ -2536,34 +2594,53 @@ if (home) {
       g.clearRect(-PAD, -PAD, w + PAD * 2, h + PAD * 2);
       if (edge < 0.003) return;
       const css = getComputedStyle(composer), bw = parseFloat(css.getPropertyValue("--bw")) || 2;
-      g.fillStyle = css.getPropertyValue("--dot").trim();
-      // A fixed centre line (not tied to the ring's width), so the dots never reshuffle when focus
-      // thickens the ring. Walked clockwise from the top-left; dots sit at even steps along it.
-      const x0 = 1, y0 = 1, x1 = w - 1, y1 = h - 1, r = RADIUS - 1;
-      const sw = x1 - x0 - 2 * r, sh = y1 - y0 - 2 * r, q = (Math.PI * r) / 2;
-      const turn = (cx, cy, from) => (t) => [cx + r * Math.cos(from + t / r), cy + r * Math.sin(from + t / r)];
-      const segs = [
-        [sw, (t) => [x0 + r + t, y0]], [q, turn(x1 - r, y0 + r, -Math.PI / 2)],
-        [sh, (t) => [x1, y0 + r + t]], [q, turn(x1 - r, y1 - r, 0)],
-        [sw, (t) => [x1 - r - t, y1]], [q, turn(x0 + r, y1 - r, Math.PI / 2)],
-        [sh, (t) => [x0, y1 - r - t]], [q, turn(x0 + r, y0 + r, Math.PI)],
-      ];
-      const total = segs.reduce((n, [len]) => n + len, 0), count = Math.round(total / PITCH), step = total / count;
+      g.fillStyle = css.getPropertyValue("--fill").trim();
+      // Dots sit on the band's centre line (inset bw/2), walked clockwise from the top-left. Their
+      // count comes from a fixed reference outline, so they never reshuffle when focus widens the band.
+      const outline = (inset) => {
+        const r = RADIUS - inset, x0 = inset, y0 = inset, x1 = w - inset, y1 = h - inset;
+        const sw = x1 - x0 - 2 * r, sh = y1 - y0 - 2 * r, q = (Math.PI * r) / 2;
+        // Each step returns a point and the outward normal there.
+        const turn = (cx, cy, from) => (t) => { const a = from + t / r, c = Math.cos(a), n = Math.sin(a); return [cx + r * c, cy + r * n, c, n]; };
+        return [
+          [sw, (t) => [x0 + r + t, y0, 0, -1]], [q, turn(x1 - r, y0 + r, -Math.PI / 2)],
+          [sh, (t) => [x1, y0 + r + t, 1, 0]], [q, turn(x1 - r, y1 - r, 0)],
+          [sw, (t) => [x1 - r - t, y1, 0, 1]], [q, turn(x0 + r, y1 - r, Math.PI / 2)],
+          [sh, (t) => [x0, y1 - r - t, -1, 0]], [q, turn(x0 + r, y0 + r, Math.PI)],
+        ];
+      };
+      const length = (segs) => segs.reduce((n, [len]) => n + len, 0);
+      const segs = outline(bw / 2), total = length(segs);
+      g.setTransform(1, 0, 0, 1, 0, 0);                   // dots are placed in device pixels
+      const count = Math.round(length(outline(1)) / PITCH), step = total / count;
+      // Every dot is fully opaque in the exact fill colour, so it reads as part of the composer (a
+      // translucent dot over the darker page would come out a different grey). Only size falls off:
+      // big by the cursor, back to the band's own thickness by FAR px, where it merges into the band.
       let seg = 0, start = 0;
       for (let i = 0; i < count; i++) {
         const at = i * step;
         while (at - start > segs[seg][0] && seg < segs.length - 1) { start += segs[seg][0]; seg++; }
-        const [x, y] = segs[seg][1](at - start);
+        const [x, y, nx, ny] = segs[seg][1](at - start);
         const d = Math.hypot(x - ex, y - ey);
         if (d >= FAR) continue;
-        const alpha = edge * Math.min(1, (FAR - d) / (FAR - NEAR));
-        const t = 1 - d / FAR, size = bw + GROW * edge * t * t * (3 - 2 * t);
-        g.globalAlpha = alpha;
-        g.beginPath();
-        g.roundRect(x - size / 2, y - size / 2, size, size, size * 0.3);
-        g.fill();
+        const t = 1 - d / FAR, k = edge * t * t * (3 - 2 * t);
+        for (let row = 0; row <= SPILL; row++) {
+          if (row === SPILL && i % 2) continue;              // the outermost row is sparse
+          // Row 0 is the band itself; outer rows need a stronger pull to appear and stay smaller.
+          const need = row * 0.24, kr = row ? (k - need) / (1 - need) : k;
+          if (kr <= 0) continue;
+          const reach = row ? kr : 1, base = row ? bw * 0.8 : bw;
+          // Drawn in whole device pixels: a dot this small, left between pixels, is mostly
+          // anti-aliased edge and reads darker than the fill around it.
+          const size = Math.round((base + GROW * kr) * (1 - row * 0.3) * reach * dpr);
+          if (size < 1) continue;
+          const ox = x + nx * row * PITCH, oy = y + ny * row * PITCH;
+          const px = Math.round((ox + PAD) * dpr - size / 2), py = Math.round((oy + PAD) * dpr - size / 2);
+          g.beginPath();
+          g.roundRect(px, py, size, size, size >= 5 ? size * 0.3 : 0);
+          g.fill();
+        }
       }
-      g.globalAlpha = 1;
     };
 
     const tick = (now) => {
@@ -2580,7 +2657,7 @@ if (home) {
       paint();
       if (settled) last = 0; else frame = requestAnimationFrame(tick);
     };
-    // `ms` keeps the loop running through a CSS transition (ring width or colour) so the dots track it.
+    // `ms` keeps the loop running through a CSS transition (band width or colour) so the dots track it.
     const wake = (ms = 0) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); if (!frame) frame = requestAnimationFrame(tick); };
 
     addEventListener("pointermove", (e) => {
@@ -2603,12 +2680,11 @@ if (home) {
     form.requestSubmit();
   }));
 
-  // Greeting and a quiet clock, both local.
-  const greeting = $("[data-home-greeting]"), clock = $("[data-home-clock]");
+  // Greeting by local time of day.
+  const greeting = $("[data-home-greeting]");
   const tick = () => {
-    const now = new Date(), h = now.getHours();
+    const h = new Date().getHours();
     greeting.textContent = h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening.";
-    clock.textContent = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) + "  ·  " + now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   };
   tick();
   setInterval(tick, 15000);
