@@ -19,7 +19,7 @@ from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
 from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH
-from archer.sources import USER_AGENT, TTLCache, aimodels, lyrics, watch, weather, wiki
+from archer.sources import USER_AGENT, TTLCache, aimodels, credits, lyrics, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_provider import readiness
 from archer.ai_service import AIService
@@ -156,7 +156,8 @@ def home(request: Request) -> HTMLResponse:
 
 
 @app.get("/search")
-async def search(request: Request, q: str = Query(""), tab: str = Query("all"), p: int = Query(1, ge=1, le=20), full: bool = False) -> Response:
+async def search(request: Request, q: str = Query(""), tab: str = Query("all"), p: int = Query(1, ge=1, le=20), full: bool = False,
+                 about: str = "") -> Response:
     if not q.strip() and not full:
         return RedirectResponse("/", status_code=302)
     if any(tok.startswith("!") for tok in q.split()):
@@ -164,7 +165,7 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
         target = settings.results_url if settings.search_provider == "searxng" else "https://duckduckgo.com/?q={q}"
         return RedirectResponse(target.format(q=quote_plus(q)), status_code=302)
     tab = tab if tab in views.TABS else "all"
-    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p) if q.strip() else views.View("", "all", 1, classify(""))
+    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about.strip()[:200]) if q.strip() else views.View("", "all", 1, classify(""))
     if view.response and view.response.redirect:
         return RedirectResponse(view.response.redirect, status_code=302)
     ai = ai_service(request)
@@ -276,6 +277,32 @@ async def api_works(request: Request, qid: str, role: str) -> JSONResponse:
         return JSONResponse(await wiki.works(request.app.state.ext, qid, role))
     except (httpx.HTTPError, ValueError, KeyError):
         return JSONResponse([])
+
+
+_QID = re.compile(r"Q\d{1,12}")
+_TMDB_ID = re.compile(r"\d{0,9}")
+
+
+@app.get("/api/cast")
+async def api_cast(request: Request, qid: str, media: str = "movie", tmdb: str = "") -> JSONResponse:
+    """Full cast and key crew of a film or series, with photos (TMDB when keyed, else Wikidata + Wikipedia)."""
+    if not _QID.fullmatch(qid) or media not in ("movie", "tv") or not _TMDB_ID.fullmatch(tmdb):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    try:
+        return JSONResponse(await credits.cast(request.app.state.ext, qid, media, tmdb, settings.tmdb_api_key))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({"cast": [], "crew": [], "error": "unavailable"})
+
+
+@app.get("/api/filmography")
+async def api_filmography(request: Request, qid: str, tmdb: str = "") -> JSONResponse:
+    """An actor's films and series with posters, roles and years."""
+    if not _QID.fullmatch(qid) or not _TMDB_ID.fullmatch(tmdb):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    try:
+        return JSONResponse(await credits.filmography(request.app.state.ext, qid, tmdb, settings.tmdb_api_key))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({"items": [], "error": "unavailable"})
 
 
 @app.get("/api/lyrics")

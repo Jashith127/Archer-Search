@@ -196,9 +196,9 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 
 | Query type | Detected by | Example | Hero shows | Data source |
 |---|---|---|---|---|
-| Person | Wikipedia title match, Wikidata P31 = human | `zendaya` | Name, description, link chips (site, socials, IMDb), image collage, top story, tiles (age, birthplace, spouse/parents, height); **Movies and shows**, **Books** or **Albums** row; About + facts panel | Wikipedia, Wikidata, SearXNG images/news |
-| Film | Wikidata film types | `dune part two` | Poster, top stories, tiles (released, runtime, director, genre); budget, box office, cast in panel | Wikipedia, Wikidata |
-| TV series | Wikidata TV types | `the bear tv series` | Poster, tiles (years aired, seasons, episodes, network) | Wikipedia, Wikidata |
+| Person | Wikipedia title match (ambiguous names follow the web results: "dune" → the 2021 film, "apple" → Apple Inc.; other meanings become chips; a trailing "show"/"movie"/"company" picks the kind), Wikidata P31 = human | `zendaya` | Name, description, link chips (site, socials, IMDb), image collage, top story, tiles (age, birthplace, spouse/parents, height); actors get a full-width **Movies and shows** poster grid (All/Movies/TV, best known/newest, two rows then Show all, role under each title); writers and musicians a **Books** or **Albums** row; About + facts panel | Wikipedia, Wikidata, SearXNG images/news; TMDB posters when keyed |
+| Film | Wikidata film types | `dune part two` | Poster, where to watch (service logos), tiles (released, runtime, director, genre); budget, box office in panel; a full-width **Cast & crew** section below (key crew chips, every cast member with photo and character) | Wikipedia, Wikidata; TMDB credits when keyed |
+| TV series | Wikidata TV types | `the bear tv series` | Poster, tiles (years aired, seasons, episodes, network); **Cast & crew** section with episode counts when TMDB is keyed | Wikipedia, Wikidata; TMDB credits when keyed |
 | Book | Wikidata literary work | `atomic habits` | Cover, tiles (author, published, pages, genre) | Wikipedia, Wikidata |
 | Music | Band, album or song | `coldplay` | Collage, tiles (formed, genre, label, members), Albums row | Wikipedia, Wikidata |
 | Company / organisation | Business/organisation types | `infosys` | Tiles (founded, CEO, HQ, employees, revenue), founders | Wikipedia, Wikidata |
@@ -272,7 +272,7 @@ Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnai
 
 **Failures are visible.** If a card's data source (Open-Meteo, Wiktionary, MyMemory, CoinGecko) fails, the page says which one instead of silently dropping the card. Entity panels stay quiet on failure, because many general queries aren't entities anyway. Wikimedia timeouts are retried once.
 
-**Speed.** The SearXNG search and the hero lookup run concurrently. Slow extras load after the page is on screen: collage images, the top story, strips, the filmography row and the place weather tile. SearXNG responses are cached for 10 minutes and Wikipedia/Wikidata panels for a day, so reloads don't hit the upstream engines again.
+**Speed.** The SearXNG search and the hero lookup run concurrently. Slow extras load after the page is on screen: collage images, the top story, strips, the filmography grid, the cast section and the place weather tile. SearXNG responses are cached for 10 minutes and Wikipedia/Wikidata panels for a day, so reloads don't hit the upstream engines again.
 
 **Typing today vs. later.** Utility, weather, time and definition queries are matched by deterministic patterns (rules layer). Entities are decided by data: a Wikipedia title must match the query. When GLiNER2 arrives (step 2) it replaces the question/how-to/general guesses and feeds entity candidates. The hero modules, keyed by type, stay as they are.
 

@@ -34,6 +34,16 @@
         "tests/companion_browser_server.py"
       ],
       "port": 4790
+    },
+    {
+      "name": "screen-fixture",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "python",
+        "tests/screen_browser_server.py"
+      ],
+      "port": 4751
     }
   ]
 }

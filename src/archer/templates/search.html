@@ -48,6 +48,9 @@
   {% if v.hero %}{% include "heroes/" ~ v.hero.kind ~ ".html" %}{% endif %}
   {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
 
+  {% if v.tab == "all" and v.lazy.cast %}{% include "screen_cast.html" %}{% endif %}
+  {% if v.tab == "all" and v.lazy.filmography %}{% include "screen_filmography.html" %}{% endif %}
+
   {% if v.tab == "all" %}
   <div class="layout layout--single">
     <div class="results">

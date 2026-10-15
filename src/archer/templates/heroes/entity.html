@@ -5,7 +5,9 @@
 {# Thin panels (three facts or fewer) don't get a mostly-empty facts bento: the facts become
    stat chips and About takes the right side. #}
 {% set sparse = e.tiles|length <= 3 and not v.lazy.weather_at and not e.watch and not e.player %}
-{% set has_about = e.extract or e.facts or e.cast %}
+{# Films and series get a full cast section under the panel instead of name chips. #}
+{% set cast_chips = e.cast if not v.lazy.cast else [] %}
+{% set has_about = e.extract or e.facts or cast_chips %}
 
 {% macro tile_block(t, lead) -%}
 {% set longest = t.value.split()|map("length")|max %}
@@ -22,10 +24,10 @@
 {% if e.facts %}
 <dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
 {% endif %}
-{% if e.cast %}
+{% if cast_chips %}
 <div class="about-cast">
   <p class="about-sub">Cast</p>
-  <div class="chips chips--small">{% for name in e.cast %}<a class="chip" href="/search?q={{ name|qs }}">{{ name }}</a>{% endfor %}</div>
+  <div class="chips chips--small">{% for name in cast_chips %}<a class="chip" href="/search?q={{ name|qs }}">{{ name }}</a>{% endfor %}</div>
 </div>
 {% endif %}
 {%- endmacro %}
@@ -36,6 +38,13 @@
       {{ hero_badge(e.badge.icon, e.badge.label, flag=e.flag if show_flag else "") }}
       <h1 class="hero-title">{{ e.title }}</h1>
       {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      {# Other things this name means; each keeps the search and pins the panel to that article. #}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
     </div>
     <div class="hero-links">
       {% for tag in e.tags %}<a class="tag-chip" href="/search?q={{ tag|qs }}"><svg><use href="#u-tag"/></svg>{{ tag }}</a>{% endfor %}

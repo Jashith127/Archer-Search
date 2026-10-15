@@ -18,7 +18,7 @@
     {% if w.services %}
     <p class="watch-note">Found in the title's listings. Check current availability in {{ w.country_name }}.</p>
     <div class="watch-services">
-      {% for s in w.services %}<a class="watch-service" href="{{ s.url }}"><span class="watch-service-icon"><svg><use href="#u-tv"/></svg></span><span><strong>{{ s.name }}</strong><small>Open service</small></span><svg class="tab-ext"><use href="#i-ext"/></svg></a>{% endfor %}
+      {% for s in w.services %}<a class="watch-service" href="{{ s.url }}"><span class="watch-service-icon{% if s.color %} is-brand{% endif %}"{% if s.color %} style="--brand: {{ s.color }}"{% endif %}>{% if s.mark %}<svg><use href="#b-{{ s.mark }}"/></svg>{% elif s.color %}<b>{{ s.name[:1] }}</b>{% else %}<svg><use href="#u-tv"/></svg>{% endif %}</span><span><strong>{{ s.name }}</strong><small>Open service</small></span><svg class="tab-ext"><use href="#i-ext"/></svg></a>{% endfor %}
     </div>
     {% else %}
     <p class="watch-note">No streaming listings on Wikidata for this title.</p>

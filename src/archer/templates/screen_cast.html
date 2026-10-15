@@ -1,0 +1,18 @@
+{# Full cast and key crew of a film or series. The names Wikidata gave the panel render at once;
+   archer.js swaps in the complete list with photos and characters from /api/cast. #}
+{% set c = v.lazy.cast %}
+<section class="screen screen-cast" data-cast-qid="{{ c.qid }}" data-cast-media="{{ c.media }}" data-cast-tmdb="{{ c.tmdb }}" aria-labelledby="screen-cast-title">
+  <div class="screen-head">
+    <h2 class="section-title" id="screen-cast-title"><svg aria-hidden="true"><use href="#u-users"/></svg>Cast &amp; crew<span class="screen-count" data-screen-count></span></h2>
+  </div>
+  <div class="crew-row" data-crew hidden></div>
+  <div class="people-grid" data-people>
+    {% for name in c.names %}
+    <a class="person-card" href="/search?q={{ name|qs }}"><span class="person-photo skeleton"></span><span class="person-name">{{ name }}</span></a>
+    {% else %}
+    {% for _ in range(6) %}<div class="person-card"><span class="person-photo skeleton"></span><span class="person-name skeleton-line"></span></div>{% endfor %}
+    {% endfor %}
+  </div>
+  <button type="button" class="screen-more" data-screen-more hidden><span></span><svg aria-hidden="true"><use href="#u-chevron"/></svg></button>
+  <p class="screen-credit" data-screen-credit></p>
+</section>

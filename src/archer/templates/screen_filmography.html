@@ -1,0 +1,23 @@
+{# An actor's films and series as a poster grid, filled by archer.js from /api/filmography. #}
+{% set f = v.lazy.filmography %}
+<section class="screen screen-films" data-films-qid="{{ f.qid }}" data-films-tmdb="{{ f.tmdb }}" aria-labelledby="screen-films-title">
+  <div class="screen-head">
+    <h2 class="section-title" id="screen-films-title"><svg aria-hidden="true"><use href="#u-film"/></svg>Movies and shows<span class="screen-count" data-screen-count></span></h2>
+    <div class="screen-controls" data-films-controls hidden>
+      <div class="seg" role="group" aria-label="Show">
+        <button type="button" class="seg-btn is-active" data-films-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="seg-btn" data-films-filter="movie" aria-pressed="false">Movies</button>
+        <button type="button" class="seg-btn" data-films-filter="tv" aria-pressed="false">TV</button>
+      </div>
+      <div class="seg" role="group" aria-label="Sort">
+        <button type="button" class="seg-btn is-active" data-films-sort="popular" aria-pressed="true">Best known</button>
+        <button type="button" class="seg-btn" data-films-sort="newest" aria-pressed="false">Newest</button>
+      </div>
+    </div>
+  </div>
+  <div class="poster-grid" data-films-grid>
+    {% for _ in range(8) %}<div class="poster-card"><span class="poster-art skeleton"></span><span class="skeleton-line"></span></div>{% endfor %}
+  </div>
+  <button type="button" class="screen-more" data-screen-more hidden><span></span><svg aria-hidden="true"><use href="#u-chevron"/></svg></button>
+  <p class="screen-credit" data-screen-credit></p>
+</section>

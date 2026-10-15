@@ -123,8 +123,78 @@ def _places_hero(query: Query, response: SearchResponse) -> Hero:
 
 
 async def _entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
+    if query.entity_hint:
+        # "archer show": search for the TV series by name; the bare "Archer" is Archery.
+        kind, words = query.entity_hint
+        data = await wiki.lookup(ext, f"{query.entity_candidate} {words}")
+        if data and data["kind"] == kind:
+            return Hero("entity", data)
     data = await wiki.lookup(ext, query.entity_candidate)
+    if data and query.entity_hint and data["kind"] != query.entity_hint[0]:
+        return None  # the wrong kind of thing; the web results may still name the right article
     return Hero("entity", data) if data else None
+
+
+async def _about(ext: httpx.AsyncClient, title: str) -> Hero | None:
+    data = await wiki.lookup(ext, title)
+    return Hero("entity", data) if data else None
+
+
+def _site_name(host: str) -> str:
+    """"apple" for apple.com / www.apple.co.in: the name a brand's own domain spells."""
+    labels = host.removeprefix("www.").split(".")
+    while len(labels) > 1 and labels[-1] in ("com", "org", "net", "co", "in", "uk", "io", "tv", "us", "de", "fr", "jp", "au", "ca"):
+        labels.pop()
+    return labels[-1] if labels else ""
+
+
+async def _settle_meaning(ext: httpx.AsyncClient, query: Query, hero: Hero | None, results: list[Result],
+                          about: str = "") -> Hero | None:
+    """Pick the meaning people searching this usually want, and list the others.
+
+    Wikipedia's exact title is often the dictionary sense ("Dune" the landform, "Apple" the fruit,
+    "Archer" redirecting to Archery). The web results already rank meanings by what people want,
+    so the panel follows them: a brand's own site at #1 means its company (Wikidata's official-
+    website property), otherwise the first Wikipedia article about this name. The meanings left
+    over become "Other meanings" chips; `about` (from a chip) pins one and skips the choice.
+    """
+    current = hero.data if hero and hero.kind == "entity" else None
+    if hero and not current:
+        return hero  # an AI model card or similar: not a Wikipedia meaning
+    core, hint = query.entity_candidate, query.entity_hint
+    ranked = []  # Wikipedia articles about this name, in the web's order
+    for r in results[:10]:
+        title = wiki.article_title(r.url)
+        if title and wiki.matches(core, title) and title not in ranked:
+            ranked.append(title)
+    picks = []
+    if not about:
+        top = results[0] if results else None
+        if top and not wiki.article_title(top.url) and _site_name(top.host) == re.sub(r"[^a-z0-9]", "", core.lower()):
+            site = await _safe(wiki.title_for_site(ext, top.url, core), "wikidata site")
+            if site and site is not _FAILED:
+                picks.append(site)
+        picks += ranked[:1]
+    chosen, replaced = current, None
+    for title in picks:
+        if chosen and title.lower() == chosen["title"].lower():
+            break
+        data = await _safe(wiki.lookup(ext, title), "wikipedia")
+        if data and data is not _FAILED and (not hint or data["kind"] == hint[0]) and data["title"] != (chosen or {}).get("title"):
+            chosen, replaced = data, chosen
+            break
+    if not chosen:
+        return None
+    others, seen = [], {chosen["title"].lower()}
+    if replaced:
+        others.append({"title": replaced["title"], "desc": replaced.get("description", "")})
+        seen.add(replaced["title"].lower())
+    for title in ranked:
+        if title.lower() not in seen:
+            seen.add(title.lower())
+            others.append({"title": title, "desc": ""})
+    # Cached panels are shared between searches: copy before adding this search's chips.
+    return Hero("entity", {**chosen, "others": others[:4], "corrected": chosen["corrected"] and chosen is current})
 
 
 async def _ai_model_or_entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
@@ -194,7 +264,7 @@ def _song_from_results(query: str, results: list[Result]) -> Hero | None:
 
 # --------------------------------------------------------------------- build
 
-async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: int) -> View:
+async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: int, about: str = "") -> View:
     query = classify(q, settings.home_currency)
     view = View(q=query.text, tab=tab, page=page, query=query)
     first_page_all = tab == "all" and page == 1
@@ -205,6 +275,8 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
             view.hero = Hero(query.kind, query.data)
         elif builder := ASYNC_HEROES.get(query.kind):
             hero_task = _safe(builder(ext, query), query.kind)
+        elif query.kind in ("general", "question") and about:
+            hero_task = _safe(_about(ext, about), "wikipedia")
         elif query.kind in ("general", "question"):
             hero_task = _safe(_ai_model_or_entity(ext, query), "wikipedia")
 
@@ -221,6 +293,10 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
         response = await search_task
     view.response = response
     view.related = suggestion_terms(response.suggestions, view.q)
+    if first_page_all and query.kind in ("general", "question") and (query.entity_candidate or about)             and (view.hero is None or view.hero.kind == "entity"):
+        if not query.entity_candidate:  # a chip on a longer query: still offer the way back
+            query.entity_candidate = about
+        view.hero = await _settle_meaning(ext, query, view.hero, response.results, about)
     if first_page_all and not view.hero and query.kind in ("general", "question"):
         view.hero = _song_from_results(query.text, response.results)
     if first_page_all and query.kind == "places":
@@ -253,7 +329,12 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
             "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind == "aimodel")),
             "videos": query.wants_videos,
             "images": query.wants_images or kind in IMAGE_KINDS,
-            "works": {"qid": entity["qid"], "role": entity["works_role"]} if entity and entity.get("works_role") else None,
+            "works": {"qid": entity["qid"], "role": entity["works_role"]}
+            if entity and entity.get("works_role") in ("author", "performer") else None,
+            "filmography": {"qid": entity["qid"], "tmdb": entity.get("tmdb_person", "")}
+            if entity and entity.get("works_role") == "cast" else None,
+            "cast": {"qid": entity["qid"], "media": entity["watch"]["media"], "tmdb": entity["watch"]["tmdb"],
+                     "names": entity.get("cast", [])} if kind in ("film", "tv") and entity.get("watch") else None,
             "weather_at": entity["coords"] if kind in WEATHER_KINDS and entity.get("coords") else None,
         }
     return view

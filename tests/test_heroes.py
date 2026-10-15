@@ -150,7 +150,7 @@ def test_entity_hero(client):
     assert "hero-entity--person" in html
     assert "Tom Holland" in html          # 'mul' label fallback
     assert "178 cm" in html and "Oakland" in html and "Instagram" in html
-    assert 'data-works-role="cast"' in html
+    assert 'data-films-qid="Q189489"' in html and "data-works-qid" not in html   # poster grid, not the old row
 
 
 def test_typo_follows_wikipedia_suggestion(client):

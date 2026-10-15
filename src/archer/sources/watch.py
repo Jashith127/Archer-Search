@@ -12,7 +12,7 @@ import httpx
 from archer.sources import TTLCache
 
 _cache = TTLCache(ttl=12 * 3600)
-LOGO_BASE = "https://image.tmdb.org/t/p/w92"
+LOGO_BASE = "https://image.tmdb.org/t/p/w154"
 
 # TMDB category -> (label shown, order). Free options lead.
 CATEGORIES = [("free", "Free"), ("ads", "Free with ads"), ("flatrate", "Stream"), ("rent", "Rent"), ("buy", "Buy")]
@@ -33,6 +33,14 @@ WIKIDATA_SERVICES = {
     "P6466": ("Hulu", "https://www.hulu.com/movie/{}", ("film",)),
     "P9586": ("Apple TV", "https://tv.apple.com/movie/{}", ("film",)),
     "P9751": ("Apple TV", "https://tv.apple.com/show/{}", ("tv",)),
+}
+
+# How the no-key fallback draws each service: a Simple Icons mark where the brand allows one
+# (templates/brand_icons.html), otherwise its initial on the brand colour. Prime Video, Disney+
+# and Hulu asked Simple Icons to remove their logos, so Archer doesn't ship them either.
+SERVICE_BRANDS = {
+    "Netflix": ("netflix", "#e50914"), "Apple TV": ("appletv", "#2b2b2b"),
+    "Prime Video": ("", "#1a98ff"), "Disney+": ("", "#113ccf"), "Hulu": ("", "#1ce783"),
 }
 
 

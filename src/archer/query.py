@@ -14,6 +14,17 @@ from archer import utilities
 QUESTION_WORDS = ("who", "what", "why", "how", "when", "where", "which", "is", "are", "can",
                   "does", "do", "should", "will", "was", "did")
 _ENTITY_PREFIX = re.compile(r"^(?:who|what) (?:is|are|was|were) (?:an? |the )?|^tell me about ")
+# A trailing word that says which kind of thing is meant: "archer show", "dune movie", "apple company".
+# Panel kind (wiki.KINDS) and the words added to the Wikipedia search for it.
+KIND_HINTS = {
+    "tv show": ("tv", "TV series"), "tv series": ("tv", "TV series"), "series": ("tv", "TV series"),
+    "show": ("tv", "TV series"), "sitcom": ("tv", "TV series"), "anime": ("tv", "anime"),
+    "web series": ("tv", "web series"), "movie": ("film", "film"), "film": ("film", "film"),
+    "book": ("book", "book"), "novel": ("book", "novel"), "song": ("music", "song"), "album": ("music", "album"),
+    "band": ("music", "band"), "company": ("org", "company"), "brand": ("org", "company"),
+    "actor": ("person", "actor"), "actress": ("person", "actress"), "singer": ("person", "singer"),
+}
+_KIND_HINT = re.compile(r"^(?P<core>.+?)\s+(?:the\s+)?(?P<hint>" + "|".join(sorted(map(re.escape, KIND_HINTS), key=len, reverse=True)) + r")$")
 _WEATHER = re.compile(
     r"^(?:weather|forecast|temperature)(?:\s+(?:in|at|for|of))?(?:\s+(?P<a>.+?))?(?:\s+(?:today|tomorrow|now))?$"
     r"|^(?P<b>.+?)\s+(?:weather|forecast|temperature)(?:\s+(?:today|tomorrow|now))?$"
@@ -128,6 +139,7 @@ class Query:
     kind: str  # see views.HERO_KINDS; plus howto | question | general
     data: dict = field(default_factory=dict)
     entity_candidate: str | None = None  # text to look up on Wikipedia
+    entity_hint: tuple[str, str] | None = None  # (panel kind, search words) from "… show" / "… movie"
     wants_news: bool = False
     wants_videos: bool = False
     wants_images: bool = False
@@ -205,14 +217,17 @@ def classify(q: str, home_currency: str = "inr") -> Query:
     is_question = text.endswith("?") or (words and words[0] in QUESTION_WORDS)
     kind = "howto" if is_howto else "question" if is_question else "general"
 
-    candidate = None
+    candidate, hint = None, None
     stripped = _ENTITY_PREFIX.sub("", low)
     if not is_howto and len(stripped.split()) <= 6 and (kind == "general" or stripped != low):
         candidate = stripped
+        if m := _KIND_HINT.match(stripped):
+            candidate, hint = m.group("core"), KIND_HINTS[m.group("hint")]
 
     return Query(
         text, kind,
         entity_candidate=candidate,
+        entity_hint=hint,
         wants_news=bool(_NEWSY.search(low)),
         wants_videos=is_howto or bool(re.search(r"\b(?:video|videos|trailer|tutorial)\b", low)),
         wants_images=bool(_VISUAL.search(low)),

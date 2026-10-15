@@ -1182,10 +1182,92 @@ function firstLoading(candidates) {
   });
 }
 
+// ------------------------------------------ content-aware crop focus
+// When a picture is much taller (or wider) than its box, object-fit: cover keeps only a slice.
+// Pick the slice with the most going on: edges and colours that differ from the picture's own
+// border (its background), plus skin tones for photos of people. Needs a CORS-readable copy;
+// hosts that don't allow one keep the CSS default position.
+function focusCrop(pic, { faces = false } = {}) {
+  if (!pic) return;
+  // Runs once the picture has both loaded and been laid out: it may arrive from cache before it's
+  // in the page, or sit in a collapsed grid row until "Show all".
+  let done = false;
+  const observer = "ResizeObserver" in window ? new ResizeObserver(() => run()) : null;
+  const run = () => {
+    if (done || !pic.naturalWidth || !pic.naturalHeight) return;
+    const box = pic.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    done = true;
+    observer?.disconnect();
+    const imageRatio = pic.naturalWidth / pic.naturalHeight, boxRatio = box.width / box.height;
+    if (Math.abs(imageRatio - boxRatio) / boxRatio < 0.08) return;   // nearly fits: nothing to choose
+    const axis = imageRatio < boxRatio ? "y" : "x";
+    const visible = axis === "y" ? imageRatio / boxRatio : boxRatio / imageRatio;
+    const probe = new Image();
+    probe.crossOrigin = "anonymous";
+    probe.referrerPolicy = "no-referrer";
+    probe.onload = () => {
+      const at = focalPoint(probe, axis, visible, faces);
+      if (at != null) pic.style.objectPosition = axis === "y" ? `50% ${at}%` : `${at}% 50%`;
+    };
+    probe.src = pic.currentSrc || pic.src;
+  };
+  observer?.observe(pic);
+  pic.addEventListener("load", run, { once: true });
+  run();
+}
+
+// Percentage for object-position along one axis, or null when the picture can't be read or has
+// no clear subject.
+function focalPoint(image, axis, visible, faces) {
+  const scale = 64 / Math.max(image.naturalWidth, image.naturalHeight);
+  const w = Math.max(4, Math.round(image.naturalWidth * scale)), h = Math.max(4, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let px;
+  try { ctx.drawImage(image, 0, 0, w, h); px = ctx.getImageData(0, 0, w, h).data; } catch { return null; }
+  const at = (x, y) => (y * w + x) * 4;
+  // Background: the average colour around the edge.
+  let br = 0, bg = 0, bb = 0, n = 0;
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = at(x, y); br += px[i]; bg += px[i + 1]; bb += px[i + 2]; n++; }
+  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = at(x, y); br += px[i]; bg += px[i + 1]; bb += px[i + 2]; n++; }
+  br /= n; bg /= n; bb /= n;
+  const lum = (i) => 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+  const size = axis === "y" ? h : w;
+  const profile = new Float64Array(size);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = at(x, y), r = px[i], g = px[i + 1], b = px[i + 2];
+      if (px[i + 3] < 32) continue;   // transparent
+      const edge = (x + 1 < w ? Math.abs(lum(i) - lum(at(x + 1, y))) : 0) + (y + 1 < h ? Math.abs(lum(i) - lum(at(x, y + 1))) : 0);
+      const apart = Math.hypot(r - br, g - bg, b - bb) / 4;
+      let weight = edge + apart;
+      if (faces && r > 95 && g > 40 && b > 20 && r > g && r > b && r - Math.min(g, b) > 15 && Math.abs(r - g) > 15) weight *= 2.5;
+      // People: heads are near the top of the subject, so lean upward a little.
+      if (faces && axis === "y") weight *= 1.3 - 0.6 * (y / h);
+      profile[axis === "y" ? y : x] += weight;
+    }
+  }
+  const span = Math.max(1, Math.round(size * visible));
+  if (span >= size) return null;
+  let sum = 0;
+  for (let i = 0; i < span; i++) sum += profile[i];
+  let best = sum, start = 0, worst = sum;
+  for (let i = span; i < size; i++) {
+    sum += profile[i] - profile[i - span];
+    if (sum > best) { best = sum; start = i - span + 1; }
+    worst = Math.min(worst, sum);
+  }
+  if (!best || (best - worst) / best < 0.08) return null;   // evenly busy: keep the default
+  return Math.round((start / (size - span)) * 100);
+}
+
 // ------------------------------------------------- entity hero: collage
 for (const collage of $$("[data-collage-q]")) {
   const main = $(".collage-main", collage);
   const mainImage = $("img", main);
+  if (mainImage && !collage.classList.contains("is-logo") && !main.classList.contains("collage-flag")) focusCrop(mainImage, { faces: !collage.closest(".is-poster") });
   const recoverMain = async () => {
     if (mainImage?.dataset.fallback && mainImage.src !== mainImage.dataset.fallback) {
       const fallback = mainImage.dataset.fallback;
@@ -1194,13 +1276,16 @@ for (const collage of $$("[data-collage-q]")) {
       probe.referrerPolicy = "no-referrer";
       if (await new Promise((resolve) => { probe.onload = () => resolve(true); probe.onerror = () => resolve(false); probe.src = fallback; })) {
         mainImage.src = fallback;
+        focusCrop(mainImage);
         return;
       }
     }
     const items = await strip("images", collage.dataset.collageQ);
     const pic = await firstLoading(items.filter((i) => isHttp(i.thumb) && isHttp(i.url)));
     if (pic) {
-      main.replaceWith(el("a", { class: "collage-main", href: pic.url, title: pic.title }, img(pic.thumb, pic.title)));
+      const picture = img(pic.thumb, pic.title);
+      main.replaceWith(el("a", { class: "collage-main", href: pic.url, title: pic.title }, picture));
+      focusCrop(picture, { faces: true });
       collage.classList.remove("collage--empty", "is-logo");
     } else if (mainImage) {
       main.replaceWith(el("div", { class: "collage-main collage-placeholder" }, icon("tv")));
@@ -1222,8 +1307,11 @@ for (const collage of $$("[data-collage-q]")) {
       if (pic) picked.push(pic);
     }
     if (!picked.length) { collage.removeAttribute("data-collage-q"); return; }
-    side.replaceChildren(...picked.map((p) =>
-      el("a", { class: "collage-slot", href: p.url, title: p.title }, img(p.thumb, p.title))));
+    side.replaceChildren(...picked.map((p) => {
+      const picture = img(p.thumb, p.title);
+      focusCrop(picture, { faces: true });
+      return el("a", { class: "collage-slot", href: p.url, title: p.title }, picture);
+    }));
     side.style.gridTemplateRows = `repeat(${picked.length}, 1fr)`;
   });
 }
@@ -1265,6 +1353,143 @@ for (const section of $$("[data-works-qid]")) {
       el("a", { class: "work", href: `/search?q=${encodeURIComponent(w.title)}` },
         el("span", { class: "work-title", text: w.title }),
         el("span", { class: "work-meta", text: [w.year, w.type].filter(Boolean).join(" · ") }))));
+  });
+}
+
+// ---------------------------------- screen sections: filmography + cast
+// Both grids show one row, however many columns fit, until "Show all" opens the rest.
+const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const searchHref = (q) => `/search?q=${encodeURIComponent(q)}`;
+
+function clampGrid(section, grid, rows = 1) {
+  const more = $("[data-screen-more]", section);
+  let open = false;
+  const apply = () => {
+    const cards = [...grid.children];
+    const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+    const limit = cols * rows;
+    cards.forEach((c, i) => { c.hidden = !open && i >= limit; });
+    more.hidden = cards.length <= limit;
+    $("span", more).textContent = open ? "Show less" : `Show all ${cards.length}`;
+    more.classList.toggle("is-open", open);
+    more.setAttribute("aria-expanded", String(open));
+  };
+  more.onclick = () => {
+    open = !open;
+    apply();
+    if (!open) section.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  grid._clampApply = apply;
+  if (!grid._clampObserver && "ResizeObserver" in window) {
+    let lastWidth = 0;
+    grid._clampObserver = new ResizeObserver(([entry]) => {
+      if (Math.abs(entry.contentRect.width - lastWidth) > 1) { lastWidth = entry.contentRect.width; grid._clampApply(); }
+    });
+    grid._clampObserver.observe(grid);
+  }
+  apply();
+}
+
+function personCard(p, sub) {
+  const photo = el("span", { class: "person-photo" }, el("span", { class: "person-initials", text: initials(p.name) }));
+  const pic = img(p.photo, "");
+  if (pic) { photo.append(pic); pic.addEventListener("load", () => photo.classList.add("has-photo")); focusCrop(pic, { faces: true }); }
+  return el("a", { class: "person-card", href: searchHref(p.q || p.name), title: p.name },
+    photo,
+    el("span", { class: "person-name", text: p.name }),
+    sub ? el("span", { class: "person-role", text: sub }) : null);
+}
+
+for (const section of $$("[data-cast-qid]")) {
+  const { castQid, castMedia, castTmdb } = section.dataset;
+  const grid = $("[data-people]", section), crewRow = $("[data-crew]", section);
+  getJSON(`/api/cast?qid=${encodeURIComponent(castQid)}&media=${encodeURIComponent(castMedia)}&tmdb=${encodeURIComponent(castTmdb)}`).then((data) => {
+    const cast = Array.isArray(data?.cast) ? data.cast.filter((p) => p && p.name) : [];
+    const crew = Array.isArray(data?.crew) ? data.crew.filter((p) => p && p.name) : [];
+    if (!cast.length && !crew.length) {
+      // Keep the server-rendered names if there are any; otherwise there's nothing to show.
+      if (!$("a.person-card", grid)) return section.remove();
+      for (const photo of $$(".person-photo.skeleton", grid)) {
+        photo.classList.remove("skeleton");
+        photo.append(el("span", { class: "person-initials", text: initials(photo.nextElementSibling?.textContent || "") }));
+      }
+      return clampGrid(section, grid);
+    }
+    if (crew.length) {
+      crewRow.replaceChildren(...crew.map((c) => {
+        const face = el("span", { class: "crew-photo" }, el("span", { class: "person-initials", text: initials(c.name) }));
+        const pic = img(c.photo, "");
+        if (pic) { face.append(pic); focusCrop(pic, { faces: true }); }
+        return el("a", { class: "crew-chip", href: searchHref(c.q || c.name) }, face,
+          el("span", { class: "crew-text" }, el("span", { class: "crew-job", text: c.job }), el("span", { class: "crew-name", text: c.name })));
+      }));
+      crewRow.hidden = false;
+    }
+    if (cast.length) {
+      grid.replaceChildren(...cast.map((p) =>
+        personCard(p, [p.role, p.episodes > 1 ? `${p.episodes} episodes` : ""].filter(Boolean).join(" · "))));
+      clampGrid(section, grid);
+    } else {
+      grid.remove();
+    }
+    $("[data-screen-count]", section).textContent = cast.length ? String(cast.length) : "";
+    $("[data-screen-credit]", section).textContent = data.source === "tmdb"
+      ? "Credits and photos from TMDB · this product uses the TMDB API but is not endorsed or certified by TMDB"
+      : "Credits from Wikidata · photos from Wikipedia";
+  });
+}
+
+function posterCard(w) {
+  const art = el("span", { class: "poster-art is-empty" }, el("span", { class: "poster-fallback", text: w.title }));
+  const pic = img(w.poster, "");
+  if (pic) { art.append(pic); pic.addEventListener("load", () => art.classList.remove("is-empty")); focusCrop(pic); }
+  if (w.upcoming) art.append(el("span", { class: "poster-flag", text: "Upcoming" }));
+  const kind = w.media === "tv" ? (w.episodes > 1 ? `TV · ${w.episodes} ep` : "TV") : "Movie";
+  return el("a", { class: "poster-card", href: searchHref(w.q || w.title), title: w.title + (w.year ? ` (${w.year})` : "") },
+    art,
+    el("span", { class: "poster-title", text: w.title }),
+    el("span", { class: "poster-meta", text: [w.year, kind].filter(Boolean).join(" · ") }),
+    w.role ? el("span", { class: "poster-role", text: w.role }) : null);
+}
+
+for (const section of $$("[data-films-qid]")) {
+  const { filmsQid, filmsTmdb } = section.dataset;
+  const grid = $("[data-films-grid]", section), controls = $("[data-films-controls]", section);
+  getJSON(`/api/filmography?qid=${encodeURIComponent(filmsQid)}&tmdb=${encodeURIComponent(filmsTmdb)}`).then((data) => {
+    const items = Array.isArray(data?.items) ? data.items.filter((w) => w && w.title) : [];
+    if (!items.length) return section.remove();
+    const state = { filter: "all", sort: "popular" };
+    const counts = { all: items.length, movie: items.filter((w) => w.media === "movie").length, tv: items.filter((w) => w.media === "tv").length };
+    const render = () => {
+      const list = items.filter((w) => state.filter === "all" || w.media === state.filter);
+      // "Best known": most-voted (TMDB) or most-linked across Wikipedias first, newer breaking ties.
+      // Undated titles (often unreleased, sometimes just missing data) go last rather than first.
+      if (state.sort === "newest") list.sort((a, b) => (b.date || "0000").localeCompare(a.date || "0000"));
+      else list.sort((a, b) => (b.pop || 0) - (a.pop || 0) || (b.date || "").localeCompare(a.date || ""));
+      grid.replaceChildren(...list.map(posterCard));
+      $("[data-screen-count]", section).textContent = String(list.length);
+      clampGrid(section, grid);
+    };
+    const choose = (attr, btn) => $$(`[${attr}]`, controls).forEach((b) => {
+      b.classList.toggle("is-active", b === btn);
+      b.setAttribute("aria-pressed", String(b === btn));
+    });
+    for (const btn of $$("[data-films-filter]", controls)) {
+      const n = counts[btn.dataset.filmsFilter];
+      if (!n) { btn.hidden = true; continue; }
+      btn.append(el("span", { class: "seg-count", text: String(n) }));
+      btn.addEventListener("click", () => { state.filter = btn.dataset.filmsFilter; choose("data-films-filter", btn); render(); });
+    }
+    // Only films (or only series): the filter has nothing to choose between.
+    if (!counts.movie || !counts.tv) $(".seg", controls).hidden = true;
+    for (const btn of $$("[data-films-sort]", controls)) {
+      btn.addEventListener("click", () => { state.sort = btn.dataset.filmsSort; choose("data-films-sort", btn); render(); });
+    }
+    controls.hidden = false;
+    $("[data-screen-credit]", section).textContent = data.source === "tmdb"
+      ? "Credits and posters from TMDB · this product uses the TMDB API but is not endorsed or certified by TMDB"
+      : "Credits from Wikidata · posters from Wikipedia";
+    render();
   });
 }
 

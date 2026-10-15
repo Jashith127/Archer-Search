@@ -3,7 +3,7 @@
 import re
 import time
 from datetime import date
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -176,6 +176,44 @@ async def _find_page(client: httpx.AsyncClient, candidate: str, allow_suggestion
     return None, False
 
 
+matches = _matches  # public: views uses it to read which meaning the web results are about
+
+_NAMESPACES = ("Special:", "Category:", "File:", "Help:", "Wikipedia:", "Talk:", "Template:", "Portal:", "User:", "Draft:")
+
+
+def article_title(url: str) -> str:
+    """English Wikipedia article title from a result URL ("…/wiki/Dune_(2021_film)" -> "Dune (2021 film)"), else ""."""
+    parts = urlsplit(url)
+    if parts.hostname not in ("en.wikipedia.org", "en.m.wikipedia.org") or not parts.path.startswith("/wiki/"):
+        return ""
+    title = unquote(parts.path[len("/wiki/"):]).replace("_", " ").strip()
+    return "" if not title or title.startswith(_NAMESPACES) or "(disambiguation)" in title else title
+
+
+async def title_for_site(client: httpx.AsyncClient, url: str, name: str) -> str:
+    """The Wikipedia article whose Wikidata item lists this site as its official website (P856).
+
+    "apple" ranking apple.com first means Apple Inc., not the fruit. Only titles that match the
+    query count, so a product page on the same domain can't take over.
+    """
+    host = (urlsplit(url).hostname or "").removeprefix("www.")
+    if not host or "." not in host:
+        return ""
+    sites = [f"https://{h}{tail}" for h in (f"www.{host}", host) for tail in ("/", "")]
+    found = await _get(client, WD_API, action="query", list="search", format="json", srlimit=5,
+                       srsearch='haswbstatement:"' + "|".join(f"P856={site}" for site in sites) + '"')
+    ids = [hit["title"] for hit in found.get("query", {}).get("search", []) if re.fullmatch(r"Q\d+", hit.get("title", ""))]
+    if not ids:
+        return ""
+    ents = (await _get(client, WD_API, action="wbgetentities", ids="|".join(ids), props="sitelinks",
+                       sitefilter="enwiki", format="json")).get("entities", {})
+    for qid in ids:
+        title = ents.get(qid, {}).get("sitelinks", {}).get("enwiki", {}).get("title", "")
+        if title and _matches(name, title):
+            return title
+    return ""
+
+
 # --------------------------------------------------------------- Wikidata
 
 def _claims(entity: dict, prop: str) -> list[dict]:
@@ -303,7 +341,8 @@ def _watch_data(entity: dict, kind: str, title: str) -> dict:
         value = _first(entity, prop)
         if kind in kinds and isinstance(value, str) and name not in seen and re.fullmatch(r"[A-Za-z0-9_.\-]{2,80}", value):
             seen.add(name)
-            services.append({"name": name, "url": template.format(value)})
+            mark, color = watch.SERVICE_BRANDS.get(name, ("", ""))
+            services.append({"name": name, "url": template.format(value), "mark": mark, "color": color})
     tmdb = _first(entity, "P4983" if kind == "tv" else "P4947")
     country = settings.home_country.upper()
     return {"media": "tv" if kind == "tv" else "movie", "tmdb": tmdb if isinstance(tmdb, str) else "",
@@ -680,6 +719,8 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         "links": links,
         "cast": cast,
         "works_role": works_role,
+        # TMDB person id: lets the filmography use TMDB's posters when a key is configured.
+        "tmdb_person": string("P4985") if works_role == "cast" and re.fullmatch(r"\d{1,9}", string("P4985")) else "",
         "coords": {"lat": coords["latitude"], "lon": coords["longitude"]} if coords else None,
     }
     return _entity_cache.put(key, out)
@@ -723,40 +764,48 @@ async def works(client: httpx.AsyncClient, qid: str, role: str) -> list[dict]:
     return _works_cache.put(key, out[:20])
 
 
-_portrait_cache = TTLCache(ttl=86400)
+_thumb_cache = TTLCache(ttl=86400, size=4096)
 
 
-async def portraits(client: httpx.AsyncClient, titles: list[str]) -> dict[str, str]:
-    """Small Wikipedia thumbnails for exact article titles, as {requested title: image URL}.
+async def thumbs(client: httpx.AsyncClient, titles: list[str], size: int = 160, *, nonfree: bool = False) -> dict[str, str]:
+    """Wikipedia page images for exact article titles, as {requested title: image URL}.
 
-    Used beside AI key facts ("Portrayed by: Xander Berkeley"). Exact titles only, never a search,
-    so a fact can't pick up someone else's photo; disambiguation pages and pages without a
-    Wikidata item get nothing. One batched request covers every uncached title.
+    Exact titles only, never a search, so nothing can pick up someone else's photo;
+    disambiguation pages and pages without a Wikidata item get nothing. Batched 50 titles
+    per request. nonfree=True also returns fair-use art (film posters, book covers).
     """
     out, missing = {}, []
-    for title in dict.fromkeys(t.strip() for t in titles if t.strip()):
-        hit = _portrait_cache.get(title.lower())
+    for title in dict.fromkeys(t.strip() for t in titles if t and t.strip()):
+        hit = _thumb_cache.get((title.lower(), size, nonfree))
         if hit is None:
             missing.append(title)
         elif hit:
             out[title] = hit
-    if not missing:
-        return out
-    data = (await _get(client, WP_API, action="query", format="json", formatversion=2, redirects=1,
-                       titles="|".join(missing), prop="pageimages|pageprops", piprop="thumbnail",
-                       pithumbsize=160, ppprop="wikibase_item|disambiguation")).get("query", {})
-    # Follow "xander berkeley" -> "Xander Berkeley" -> redirect target back to what was asked.
-    alias = {t: t for t in missing}
-    for step in data.get("normalized", []) + data.get("redirects", []):
-        for asked, current in alias.items():
-            if current == step.get("from"):
-                alias[asked] = step.get("to")
-    pages = {p.get("title"): p for p in data.get("pages", [])}
-    for asked, final in alias.items():
-        page = pages.get(final, {})
-        source = page.get("thumbnail", {}).get("source", "") if _usable(page) else ""
-        source = source if source.startswith("https://") else ""
-        _portrait_cache.put(asked.lower(), source)
-        if source:
-            out[asked] = source
+    for i in range(0, len(missing), 50):
+        chunk = missing[i:i + 50]
+        params = {"action": "query", "format": "json", "formatversion": 2, "redirects": 1, "titles": "|".join(chunk),
+                  "prop": "pageimages|pageprops", "piprop": "thumbnail", "pithumbsize": size, "pilimit": 50,
+                  "ppprop": "wikibase_item|disambiguation"}
+        if nonfree:
+            params["pilicense"] = "any"
+        data = (await _get(client, WP_API, **params)).get("query", {})
+        # Follow "xander berkeley" -> "Xander Berkeley" -> redirect target back to what was asked.
+        alias = {t: t for t in chunk}
+        for step in data.get("normalized", []) + data.get("redirects", []):
+            for asked, current in alias.items():
+                if current == step.get("from"):
+                    alias[asked] = step.get("to")
+        pages = {p.get("title"): p for p in data.get("pages", [])}
+        for asked, final in alias.items():
+            page = pages.get(final, {})
+            source = page.get("thumbnail", {}).get("source", "") if _usable(page) else ""
+            source = source if source.startswith("https://") else ""
+            _thumb_cache.put((asked.lower(), size, nonfree), source)
+            if source:
+                out[asked] = source
     return out
+
+
+async def portraits(client: httpx.AsyncClient, titles: list[str]) -> dict[str, str]:
+    """Small thumbnails beside AI key facts ("Portrayed by: Xander Berkeley")."""
+    return await thumbs(client, titles, 160)
