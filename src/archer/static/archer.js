@@ -1930,20 +1930,17 @@ if (viewer) {
 }
 
 // ------------------------------------------------------ edge proximity
-// The point on a rect's edge nearest (x, y), and how far away it is, from inside or outside.
+// The point on a rect's edge nearest (x, y), how far away it is, and whether (x, y) is inside.
 function edgePoint(rect, x, y) {
   const inside = x > rect.left && x < rect.right && y > rect.top && y < rect.bottom;
   if (!inside) {
     const px = Math.min(Math.max(x, rect.left), rect.right), py = Math.min(Math.max(y, rect.top), rect.bottom);
-    return { x: px, y: py, d: Math.hypot(x - px, y - py) };
+    return { x: px, y: py, d: Math.hypot(x - px, y - py), inside };
   }
   const gaps = [[x - rect.left, rect.left, y], [rect.right - x, rect.right, y], [y - rect.top, x, rect.top], [rect.bottom - y, x, rect.bottom]];
   const [d, px, py] = gaps.reduce((a, b) => (b[0] < a[0] ? b : a));
-  return { x: px, y: py, d };
+  return { x: px, y: py, d, inside };
 }
-// 1 on the edge, easing to 0 by EDGE_REACH px away from it (either side).
-const EDGE_REACH = 90;
-const edgeStrength = (d) => { const t = Math.max(0, 1 - d / EDGE_REACH); return t * t * (3 - 2 * t); };
 
 // ------------------------------------------------------ dot-matrix fields
 // A grid of rounded squares that is densest at the bottom and thins out and fades toward the top.
@@ -2287,31 +2284,37 @@ if (home) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyM") { e.preventDefault(); setMode(current === "ai" ? "search" : "ai"); }
   });
 
-  // Pixel edge: near the cursor the ring (drawn in CSS) fades out and this canvas redraws that stretch
-  // of it as square dots as thick as the ring, one dot apart along the rounded outline. The falloff
-  // matches the ring's CSS mask: all dots within 26px of the cursor's edge point, solid again by 78px.
+  // Pixel edge. Near the cursor the ring (drawn in CSS) fades out and this canvas redraws that stretch
+  // as rounded dots along the outline: up to GROW px bigger than the ring right by the cursor, shrinking
+  // smoothly to the ring's own thickness further out, all dots within NEAR px of the cursor's edge point
+  // and solid ring again by FAR px (the ring's CSS mask uses the same numbers).
+  // One rAF loop owns the motion: the edge point follows the cursor on a very short ease (no visible
+  // lag, no jitter) and the strength fades in quickly and out a little slower. The loop writes the CSS
+  // mask's variables and paints the dots from the same eased values, so ring and dots never disagree,
+  // and it sleeps once everything has settled.
   const composer = form.parentElement;
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const dots = el("canvas", { class: "composer-dots", "aria-hidden": "true" });
     composer.append(dots);
     const g = dots.getContext("2d");
-    const RADIUS = 18, NEAR = 26, FAR = 78;
-    let ex = 0, ey = 0, edge = 0, queued = false;
+    const PAD = 10;                                     // the canvas overhangs the ring so big dots are never clipped
+    const RADIUS = 18, NEAR = 26, FAR = 78, GROW = 3, PITCH = 7;
+    const OUTSIDE = 80, INSIDE = 22;                    // how far from the edge the cursor still counts
+    const strength = (p) => { const t = Math.max(0, 1 - p.d / (p.inside ? INSIDE : OUTSIDE)); return t * t * (3 - 2 * t); };
+    let tx = 0, ty = 0, target = 0, ex = 0, ey = 0, edge = 0, frame = 0, last = 0, awakeUntil = 0;
+
     const paint = () => {
-      queued = false;
       const w = form.offsetWidth, h = form.offsetHeight, dpr = devicePixelRatio || 1;
-      if (dots.width !== Math.round(w * dpr) || dots.height !== Math.round(h * dpr)) {
-        dots.width = Math.round(w * dpr); dots.height = Math.round(h * dpr);
-      }
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, w, h);
-      g.setTransform(1, 0, 0, 1, 0, 0);                    // dots are placed in device pixels
-      if (edge < 0.004) return;
-      const css = getComputedStyle(composer), bw = parseFloat(css.getPropertyValue("--bw")) || 3;
+      const cw = Math.round((w + PAD * 2) * dpr), ch = Math.round((h + PAD * 2) * dpr);
+      if (dots.width !== cw || dots.height !== ch) { dots.width = cw; dots.height = ch; }
+      g.setTransform(dpr, 0, 0, dpr, PAD * dpr, PAD * dpr);
+      g.clearRect(-PAD, -PAD, w + PAD * 2, h + PAD * 2);
+      if (edge < 0.003) return;
+      const css = getComputedStyle(composer), bw = parseFloat(css.getPropertyValue("--bw")) || 2;
       g.fillStyle = css.getPropertyValue("--dot").trim();
-      // The ring's centre line: a rounded rect inset by half the ring, walked clockwise from the top-left.
-      const half = bw / 2, x0 = half, y0 = half, x1 = w - half, y1 = h - half, r = RADIUS - half;
-      const size = Math.max(2, Math.round(bw * dpr));
+      // A fixed centre line (not tied to the ring's width), so the dots never reshuffle when focus
+      // thickens the ring. Walked clockwise from the top-left; dots sit at even steps along it.
+      const x0 = 1, y0 = 1, x1 = w - 1, y1 = h - 1, r = RADIUS - 1;
       const sw = x1 - x0 - 2 * r, sh = y1 - y0 - 2 * r, q = (Math.PI * r) / 2;
       const turn = (cx, cy, from) => (t) => [cx + r * Math.cos(from + t / r), cy + r * Math.sin(from + t / r)];
       const segs = [
@@ -2320,37 +2323,53 @@ if (home) {
         [sw, (t) => [x1 - r - t, y1]], [q, turn(x0 + r, y1 - r, Math.PI / 2)],
         [sh, (t) => [x0, y1 - r - t]], [q, turn(x0 + r, y0 + r, Math.PI)],
       ];
-      const total = segs.reduce((n, [len]) => n + len, 0), count = Math.round(total / (bw * 2)), step = total / count;
+      const total = segs.reduce((n, [len]) => n + len, 0), count = Math.round(total / PITCH), step = total / count;
       let seg = 0, start = 0;
       for (let i = 0; i < count; i++) {
-        let at = i * step;
+        const at = i * step;
         while (at - start > segs[seg][0] && seg < segs.length - 1) { start += segs[seg][0]; seg++; }
         const [x, y] = segs[seg][1](at - start);
-        const alpha = edge * Math.min(1, Math.max(0, (FAR - Math.hypot(x - ex, y - ey)) / (FAR - NEAR)));
-        if (alpha <= 0) continue;
-        // Rounded like the mark's cells, and snapped to whole device pixels so each dot stays crisp.
+        const d = Math.hypot(x - ex, y - ey);
+        if (d >= FAR) continue;
+        const alpha = edge * Math.min(1, (FAR - d) / (FAR - NEAR));
+        const t = 1 - d / FAR, size = bw + GROW * edge * t * t * (3 - 2 * t);
         g.globalAlpha = alpha;
         g.beginPath();
-        g.roundRect(Math.round((x - half) * dpr), Math.round((y - half) * dpr), size, size, size * 0.28);
+        g.roundRect(x - size / 2, y - size / 2, size, size, size * 0.3);
         g.fill();
       }
       g.globalAlpha = 1;
     };
-    const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(paint); } };
+
+    const tick = (now) => {
+      frame = 0;
+      const dt = Math.min(48, now - (last || now)); last = now;
+      if (edge < 0.003) { ex = tx; ey = ty; }           // appear where the cursor is, never glide in
+      const kp = 1 - Math.exp(-dt / 32), ke = 1 - Math.exp(-dt / (target > edge ? 60 : 140));
+      ex += (tx - ex) * kp; ey += (ty - ey) * kp; edge += (target - edge) * ke;
+      const settled = Math.abs(tx - ex) < 0.15 && Math.abs(ty - ey) < 0.15 && Math.abs(target - edge) < 0.002 && now >= awakeUntil;
+      if (settled) { ex = tx; ey = ty; edge = target; }
+      composer.style.setProperty("--ex", ex.toFixed(2) + "px");
+      composer.style.setProperty("--ey", ey.toFixed(2) + "px");
+      composer.style.setProperty("--edge", edge.toFixed(4));
+      paint();
+      if (settled) last = 0; else frame = requestAnimationFrame(tick);
+    };
+    // `ms` keeps the loop running through a CSS transition (ring width or colour) so the dots track it.
+    const wake = (ms = 0) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); if (!frame) frame = requestAnimationFrame(tick); };
+
     addEventListener("pointermove", (e) => {
       const rect = form.getBoundingClientRect(), p = edgePoint(rect, e.clientX, e.clientY);
-      ex = p.x - rect.left; ey = p.y - rect.top; edge = edgeStrength(p.d);
-      composer.style.setProperty("--ex", ex + "px");
-      composer.style.setProperty("--ey", ey + "px");
-      composer.style.setProperty("--edge", edge.toFixed(3));
-      schedule();
+      tx = p.x - rect.left; ty = p.y - rect.top; target = strength(p);
+      wake();
     }, { passive: true });
-    document.documentElement.addEventListener("pointerleave", () => { edge = 0; composer.style.setProperty("--edge", "0"); schedule(); });
-    // Focus thickens the ring and AI Mode recolours it, so the dots follow.
-    form.addEventListener("focusin", schedule);
-    form.addEventListener("focusout", schedule);
-    new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    addEventListener("resize", schedule);
+    const leave = () => { target = 0; wake(); };
+    document.documentElement.addEventListener("pointerleave", leave);
+    addEventListener("blur", leave);
+    form.addEventListener("focusin", () => wake(260));
+    form.addEventListener("focusout", () => wake(260));
+    new MutationObserver(() => wake(340)).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    addEventListener("resize", () => wake());
   }
 
   // Starter chips fill the box and submit it in the current mode (so AI Mode keeps its one-shot flag).
