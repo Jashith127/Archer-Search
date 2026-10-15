@@ -161,6 +161,37 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2)
 /* strips (images / news / videos) */
 .strip { margin: 10px 0 18px; padding: 18px 0 4px; border-bottom: 1px solid var(--border-soft); }
 .strip-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+/* The scroller runs a little past the column's right edge (not to the window's), the edge with
+   more to show fades instead of slicing a card, and arrows page through it. */
+.strip-view { --bleed: 32px; position: relative; margin-right: calc(-1 * var(--bleed)); }
+.strip-view > .strip-row { padding-right: var(--bleed); scroll-padding-inline: 0 var(--bleed); scroll-snap-type: x proximity; scrollbar-width: none;
+  --fade-l: 0px; --fade-r: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent); }
+.strip-view > .strip-row::-webkit-scrollbar { display: none; }
+.strip-view > .strip-row > * { scroll-snap-align: start; }
+.strip-view.can-prev > .strip-row { --fade-l: 56px; }
+.strip-view.can-next > .strip-row { --fade-r: 96px; }
+.strip-nav { position: absolute; top: calc(50% - 7px); translate: 0 -50%; z-index: 2; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 50%; background: rgba(28, 28, 30, .86); color: var(--text); cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity .15s, background .15s; }
+.strip-nav:hover { background: var(--surface-3); }
+.strip-nav svg { width: 18px; height: 18px; }
+.strip-nav--prev { left: 8px; }
+.strip-nav--prev svg { rotate: 90deg; }
+.strip-nav--next { right: calc(var(--bleed) - 12px); }
+.strip-nav--next svg { rotate: -90deg; }
+.strip-view.can-prev .strip-nav--prev, .strip-view.can-next .strip-nav--next { opacity: 1; pointer-events: auto; }
+@media (max-width: 900px) {
+  /* Phones: the strip runs edge to edge and is swiped; arrows stay for mouse users. */
+  .strip-view { margin: 0 -16px; }
+  .strip-view > .strip-row { padding-inline: 16px; scroll-padding-inline: 16px; }
+  .strip-view.can-prev > .strip-row { --fade-l: 28px; }
+  .strip-view.can-next > .strip-row { --fade-r: 40px; }
+  .strip-nav--prev { left: 6px; }
+  .strip-nav--next { right: 6px; }
+}
+@media (hover: none) { .strip-nav { display: none; } }
 .strip--images .strip-row { grid-auto-columns: 150px; }
 .card { display: flex; flex-direction: column; min-height: 210px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden; color: var(--text); }
 .card:hover { text-decoration: none; border-color: var(--border); background: var(--surface-2); }
@@ -296,7 +327,9 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2)
 .tile--lead { grid-column: 1 / -1; background: linear-gradient(135deg, rgba(128, 144, 255, .12), transparent 65%), var(--surface-2); border-color: var(--border); }
 .tile--lead .tile-value { font-weight: 600; font-size: min(30px, calc(100cqi / (var(--chars, 6) * 0.58))); }
 .tile--lead .tile-value.is-long { font-size: min(18px, calc(100cqi / (var(--chars, 6) * 0.56))); }
-.tiles > .tile:last-child:nth-child(even):not(.tile--lead) { grid-column: 1 / -1; }
+/* Rows always close: an odd count lets the lead tile span the top row; an even count pairs
+   every tile, lead included, so no single tile stretches across a row on its own. */
+.tiles:has(> .tile:last-child:nth-child(even)) > .tile--lead { grid-column: auto; }
 .tile-flag { width: 26px; height: 18px; object-fit: cover; border-radius: 3px; flex: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, .14); }
 .tile-weather .tile-value { font-size: 17px; }
 
@@ -317,6 +350,7 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2)
 .about-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px 32px; padding: 0 16px 18px; }
 .about-body:not(:has(.about-facts)) { grid-template-columns: minmax(0, 1fr); }
 .about-text { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.65; }
+.about-body .about-facts:has(> div:only-child), .about-side .about-facts:has(> div:only-child) { grid-template-columns: 1fr; }
 .about-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; align-content: start; margin: 0; }
 .about-facts > div { padding: 8px 0; border-top: 1px solid var(--border-soft); }
 .about-facts dt { font-size: 12px; color: var(--text-3); }
@@ -1027,7 +1061,15 @@ a.btn:hover { text-decoration: none; }
 .player-facade img { width: 100%; height: 100%; object-fit: cover; opacity: .85; }
 .player-play { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; place-items: center; width: 68px; height: 48px; border-radius: 12px; background: rgba(255, 0, 51, .92); color: #fff; font-size: 22px; }
 .player-facade:hover .player-play { background: #ff0033; }
-.hero-entity.has-player .hero-grid { height: auto; grid-template-columns: minmax(0, 1.5fr) minmax(290px, 1fr); align-items: stretch; }
+/* Songs and albums: the media and its facts stack on the left; the players and lyrics fill the
+   right column, the lyrics growing (and scrolling) to end level with the left side. */
+.hero-entity.has-player .hero-grid { height: auto; grid-template-columns: minmax(0, 1.5fr) minmax(290px, 1fr);
+  grid-template-areas: "media side" "tiles side"; grid-template-rows: auto 1fr; align-items: stretch; }
+.hero-entity.has-player .hero-grid:has(> .music-artwork) { grid-template-rows: 1fr auto; }
+.hero-entity.has-player .hero-grid:not(:has(> .tiles)) { grid-template-areas: "media side"; grid-template-rows: auto; }
+.has-player .hero-grid > .player, .has-player .hero-grid > .music-artwork { grid-area: media; }
+.has-player .hero-grid > .music-side { grid-area: side; }
+.has-player .hero-grid > .tiles { grid-area: tiles; }
 .has-player .player-stage { flex: none; aspect-ratio: 16 / 9; }
 .has-player .player-pane { display: block; }
 .has-player .music-artwork { min-height: 320px; }
@@ -1038,7 +1080,8 @@ a.btn:hover { text-decoration: none; }
 .music-service-brand svg { width: 20px; height: 20px; }
 .music-service--spotify .music-service-brand svg { color: #1ed760; }
 .music-service-head a, .music-lyrics a { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text-2); }
-.music-embed { min-height: 152px; border-radius: 11px; overflow: hidden; background: var(--surface-2); }
+/* Players sit bare in the column: no card, border or fill of our own behind them. */
+.music-embed { min-height: 152px; border-radius: 12px; overflow: hidden; background: transparent; }
 .music-embed iframe { display: block; width: 100%; height: 152px; border: 0; }
 /* Apple Music's song player is 175px tall; the shimmer holds the space until the frame paints. */
 .music-embed[data-kind="applemusic"], .music-embed[data-kind="applemusic"] iframe { min-height: 175px; height: 175px; }
@@ -1048,10 +1091,18 @@ a.btn:hover { text-decoration: none; }
 .music-lyrics { display: grid; gap: 12px; align-content: start; }
 .music-lyrics .about-label, .music-lyrics p { margin: 0; }
 .music-lyrics p { font-size: 13px; color: var(--text-2); }
+.has-player .music-lyrics { flex: 1 1 auto; min-height: 220px; contain: size; display: flex; flex-direction: column; }
+.has-player .music-lyrics-text { flex: 1; min-height: 0; max-height: none; }
 .music-lyrics-text { max-height: 320px; overflow-y: auto; white-space: pre-line; color: var(--text); font-size: 13.5px; line-height: 1.7; scrollbar-width: thin; }
 .music-spotify-search { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; color: var(--text); font-size: 13px; }
-.has-player .tiles { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0,1fr)); grid-auto-rows: minmax(92px, auto); }
-.has-player .tiles > .tile:last-child:nth-child(even):not(.tile--lead) { grid-column: auto; }
+.has-player .tiles { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); grid-auto-rows: minmax(92px, 1fr); }
+.has-player .tiles > .tile--lead { grid-column: auto; }
+@media (max-width: 900px) {
+  .hero-entity.has-player .hero-grid, .hero-entity.has-player .hero-grid:has(> .music-artwork) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "media" "side" "tiles"; grid-template-rows: auto; }
+  .hero-entity.has-player .hero-grid:not(:has(> .tiles)) { grid-template-areas: "media" "side"; }
+  .has-player .music-lyrics { contain: none; min-height: 0; }
+  .has-player .music-lyrics-text { max-height: 320px; }
+}
 
 /* Where to watch (films/shows). */
 .watch { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 18px 20px; background: linear-gradient(145deg, rgba(255,255,255,.055), transparent 55%), var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: auto; }
@@ -1747,6 +1798,8 @@ a.pd-score:hover { text-decoration: none; border-color: var(--border); backgroun
 .pd-count:empty { display: none; }
 .pd-panel { padding-top: 20px; }
 .pd-panel .strip { margin: 22px 0 0; padding-top: 0; border-bottom: 0; }
+.pd-panel .strip-view { --bleed: 0px; margin-inline: 0; }
+.pd-panel .strip-view > .strip-row { padding-inline: 0; scroll-padding-inline: 0; }
 
 .pd-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 340px); gap: 28px; }
 .pd-overview:has(.pd-variants[hidden]) { grid-template-columns: minmax(0, 1fr); }

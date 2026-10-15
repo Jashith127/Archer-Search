@@ -99,6 +99,7 @@ async def generate(request: Request, body: Generate):
         run.watchers += 1
         try:
             while True:
+                changed = run.changed        # taken before draining, so nothing emitted after is missed
                 while cursor < len(run.events):
                     yield json.dumps(run.events[cursor], ensure_ascii=False) + "\n"
                     cursor += 1
@@ -106,7 +107,11 @@ async def generate(request: Request, body: Generate):
                     break
                 if await request.is_disconnected():
                     break
-                await asyncio.sleep(0.05)
+                try:
+                    # Wakes as soon as the run emits; the timeout only paces the disconnect check.
+                    await asyncio.wait_for(changed.wait(), 0.5)
+                except asyncio.TimeoutError:
+                    pass
         finally:
             run.watchers -= 1
             if not run.watchers and not run.done and run.task:

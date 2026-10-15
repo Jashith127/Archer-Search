@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from archer import __version__, views, websearch
+from archer.fetcher import lead_image
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
@@ -62,6 +63,11 @@ _CSP = ("default-src 'self'; img-src * data:; media-src *; style-src 'self' 'uns
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    if request.url.path.startswith("/static/") and response.status_code == 200:
+        # CSS and JS carry a content hash (`asset()`), so a cached copy can never go stale: the
+        # browser keeps it without re-checking on every page. Fonts and icons are re-checked daily.
+        versioned = "v" in request.query_params
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if versioned else "public, max-age=86400"
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers["Content-Security-Policy"] = _CSP
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -232,7 +238,7 @@ async def strip(request: Request, kind: str, q: str = Query(..., min_length=1, m
         items.append({"title": r.title, "url": r.url, "host": r.host, "thumb": thumb,
                       "ago": _ago(r.date), "source": r.source if kind == "images" else r.host,
                       "length": r.length, **({"full": r.img_src} if kind == "images" and r.img_src else {})})
-        if len(items) >= 12:
+        if len(items) >= 16:
             break
     return JSONResponse(items)
 
@@ -353,6 +359,15 @@ async def api_spotify(request: Request, title: str = Query(..., min_length=1, ma
     """The Spotify player for a song or album Wikidata has no Spotify ID for, found through a web search."""
     resp = await request.app.state.searx.search(f"{title} {artist} spotify".strip())
     return JSONResponse(views.spotify_from_results(resp.results, title, artist) or {})
+
+
+@app.get("/api/news/thumb")
+async def api_news_thumb(request: Request, url: str = Query(..., min_length=8, max_length=2000)) -> JSONResponse:
+    """A news card's picture when the engine sent none: the article's own share image (og:image).
+    Only this page's own scripts may ask; the reader only connects to public addresses."""
+    if request.headers.get("sec-fetch-site", "same-origin") != "same-origin":
+        return JSONResponse({}, status_code=403)
+    return JSONResponse({"thumb": await lead_image(url)})
 
 
 @app.get("/api/lyrics")

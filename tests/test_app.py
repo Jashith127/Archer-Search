@@ -164,3 +164,29 @@ def test_setup_shows_helium_urls(client):
 def test_rejects_foreign_host():
     with TestClient(app, base_url="http://evil.example") as other:
         assert other.get("/health").status_code == 400
+
+
+def test_news_thumb_reads_share_image_and_refuses_other_sites(client, monkeypatch):
+    import archer.fetcher as fetcher
+
+    async def page(url, limit, *, head=False):
+        assert head and limit <= 300_000
+        return ('<html><head><meta name="twitter:image" content="https://cdn.example.com/t.jpg">'
+                '<meta property="og:image" content="/img/lead.jpg"></head><body>'
+                '<meta property="og:image" content="https://evil.example/late.jpg"></body></html>',
+                "text/html", "https://news.example.com/story")
+
+    monkeypatch.setattr(fetcher, "fetch_html", page)
+    fetcher._lead_cache._data.clear()
+    reply = client.get("/api/news/thumb", params={"url": "https://news.example.com/story"})
+    assert reply.json() == {"thumb": "https://news.example.com/img/lead.jpg"}   # og:image wins, made absolute
+    cross = client.get("/api/news/thumb", params={"url": "https://news.example.com/story"}, headers={"Sec-Fetch-Site": "cross-site"})
+    assert cross.status_code == 403
+    assert client.get("/api/news/thumb", params={"url": "file:///etc/passwd"}).json() == {"thumb": ""}
+
+
+def test_versioned_assets_are_cached_for_good(client):
+    page = client.get("/").text
+    css = re.search(r'href="(/static/archer\.css\?v=[0-9a-f]+)"', page).group(1)
+    assert client.get(css).headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/static/favicon.svg").headers["cache-control"] == "public, max-age=86400"

@@ -215,9 +215,17 @@ class Run:
     parent: str = ""
     visual: dict = field(default_factory=dict)
     saved_as: str = ""
+    # Set (and swapped for a fresh one) whenever an event lands or the run ends, so streams sleep
+    # until there is something to send instead of polling.
+    changed: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+
+    def notify(self):
+        event, self.changed = self.changed, asyncio.Event()
+        event.set()
 
     def emit(self, event, data):
         self.events.append({"event": event, "data": data})
+        self.notify()
 
 
 class AIService:
@@ -353,6 +361,7 @@ class AIService:
             if not run.done:
                 run.emit("error", {"text": "Stopped before the run started."})
                 run.done = True
+                run.notify()
         run.task.add_done_callback(finished)
         return run
 
@@ -625,6 +634,7 @@ class AIService:
             if media_task and not media_task.done():
                 media_task.cancel()
             run.done = True
+            run.notify()
             if run.saved_as and run.events and run.events[-1]["event"] == "complete":
                 if len(self.saved) >= 64:
                     self.saved.pop(next(iter(self.saved)))

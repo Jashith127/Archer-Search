@@ -207,7 +207,7 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 | Film | Wikidata film types | `dune part two` | Poster, where to watch (service logos), tiles (released, runtime, director, genre); budget, box office in panel; a full-width **Cast & crew** section below (key crew chips, every cast member with photo and character) | Wikipedia, Wikidata; TMDB credits when keyed |
 | TV series | Wikidata TV types | `the bear tv series` | Poster, tiles (years aired, seasons, episodes, network); **Cast & crew** section with episode counts when TMDB is keyed | Wikipedia, Wikidata; TMDB credits when keyed |
 | Book | Wikidata literary work | `atomic habits` | Cover, tiles (author, published, pages, genre) | Wikipedia, Wikidata |
-| Music | Band, album or song | `coldplay` | Collage, tiles (formed, genre, label, members), Albums row | Wikipedia, Wikidata |
+| Music | Band, album or song | `coldplay` | Collage, tiles (formed, genre, label, members), Albums row. Songs and albums: video (or artwork) with its tiles in one row beneath it on the left; Spotify, Apple Music and lyrics on the right, the lyrics stretching to end level with the left side | Wikipedia, Wikidata |
 | Company / organisation | Business/organisation types | `infosys` | Tiles (founded, CEO, HQ, employees, revenue), founders | Wikipedia, Wikidata |
 | Place | Place types or coordinates | `bengaluru` | Collage, top story, tiles (country, population, area) + live weather tile | Wikipedia, Wikidata, Open-Meteo |
 | Species | Wikidata taxon | `snow leopard` | Tiles (scientific name, conservation status, parent taxon) | Wikipedia, Wikidata |
@@ -254,6 +254,8 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 | Videos | `how to …`, `trailer`, `tutorial` | Strip after result 3 |
 | Images | Visual queries (`photos`, `wallpaper`) and people/places | Strip after result 1 |
 | Related searches | Every query | Chips at the bottom |
+
+Strips scroll sideways in a viewport that runs 32px past the results column (edge to edge on phones). The side with more to show fades out instead of cutting a card, and round arrows page through it (hidden on touch-only screens). Images show up to 16 cards, news up to 10; a news story the engine sent without a picture gets the article's own share image (`og:image`, read from the page head by the pinned public-only fetcher).
 
 **Images tab.** Results are re-ranked by `imagerank.py` (query terms in title/URL, model numbers weighted 3x, duplicates, tiny images and svg icons dropped). Clicking a tile opens a sticky right-hand panel (large image, source, Visit page / View image, arrow-key navigation) with a Similar images grid below it, fetched from `/api/similar` by searching the picked image's own title. On narrow screens the panel is a full-screen overlay. SearXNG engines `devicons`, `lucide`, `unsplash`, `pexels` and `artic` are removed in its `settings.yml` (icons, stock photos and a host that 403s hotlinks).
 

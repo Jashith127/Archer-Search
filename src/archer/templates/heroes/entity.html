@@ -74,15 +74,13 @@
       {% set artist_tile = e.tiles|selectattr('label', 'equalto', 'Artist')|first|default(none) %}
       {% set spotify_sources = e.player.sources|selectattr('kind', 'equalto', 'spotify')|list %}
       {% for s in e.player.sources if s.kind != 'youtube' %}
-      <section class="music-service music-service--{{ s.kind }}">
-        <div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-{{ s.kind }}"/></svg>{{ s.label }}</span><a href="{{ s.url }}">Open <svg class="tab-ext"><use href="#i-ext"/></svg></a></div>
-        <div class="music-embed" data-embed="{{ s.embed }}" data-kind="{{ s.kind }}">
-          <div class="music-embed-wait" aria-hidden="true"></div>
-        </div>
-      </section>
+      {# The player stands alone: no card or header around it. #}
+      <div class="music-embed music-embed--{{ s.kind }}" data-embed="{{ s.embed }}" data-kind="{{ s.kind }}">
+        <div class="music-embed-wait" aria-hidden="true"></div>
+      </div>
       {% endfor %}
       {% if not spotify_sources %}
-      {# No Spotify ID on Wikidata: archer.js looks the track up (/api/spotify) and swaps in the player. #}
+      {# No Spotify ID on Wikidata: archer.js looks the track up (/api/spotify) and swaps the card for the bare player. #}
       <section class="music-service music-service--spotify" data-spotify-find="{{ e.title }}" data-spotify-artist="{{ artist_tile.value if artist_tile else '' }}">
         <div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-spotify"/></svg>Spotify</span></div>
         <p class="watch-note">Finding this recording on Spotify…</p>

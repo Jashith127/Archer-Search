@@ -85,53 +85,109 @@ class PageReader:
             return self.cache.put(url, text)
 
     async def _read(self, url):
-        original = url
-        async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=5) as client:
-            for _ in range(4):
-                p = urlsplit(url)
-                port = p.port or (443 if p.scheme == "https" else 80)
-                ip = await pinned_address(p.hostname, port)
-                target = httpx.URL(url).copy_with(host=ip)
-                host = p.netloc.encode("idna").decode("ascii")
-                async with client.stream("GET", target, headers={
-                    "Host": host, "User-Agent": USER_AGENT, "Accept": "text/html,text/plain",
-                    "Accept-Encoding": "gzip, deflate", "Cookie": "",
-                }, extensions={"sni_hostname": p.hostname}) as response:
-                    if response.is_redirect:
-                        url = public_url(urljoin(url, response.headers.get("location", "")))
-                        if not url:
-                            raise ValueError("Unsupported redirect.")
-                        continue
-                    response.raise_for_status()
-                    encoding = response.headers.get("content-encoding", "identity").lower()
-                    if encoding not in ("", "identity", "gzip", "deflate"):
-                        raise ValueError("Unsupported page compression.")
-                    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS) if encoding in ("gzip", "deflate") else None
-                    kind = response.headers.get("content-type", "").split(";")[0]
-                    if kind not in ("text/html", "text/plain", "application/xhtml+xml"):
-                        raise ValueError("This page is not readable text.")
-                    content, wire_bytes = bytearray(), 0
-                    async for chunk in response.aiter_raw(chunk_size=16384):
-                        wire_bytes += len(chunk)
-                        if wire_bytes > MAX_BYTES:
-                            raise ValueError("Page exceeds the transfer limit.")
-                        try:
-                            decoded = inflater.decompress(chunk, MAX_BYTES-len(content)+1) if inflater else chunk
-                        except zlib.error as exc:
-                            raise ValueError("Invalid compressed page.") from exc
-                        content.extend(decoded)
-                        if len(content) > MAX_BYTES:
+        text, kind, _ = await fetch_html(url, MAX_BYTES)
+        if kind != "text/plain":
+            parser = TextReader()
+            parser.feed(text)
+            text = " ".join(parser.parts)
+        lines = [" ".join(line.split()) for line in text.splitlines()]
+        text = "\n".join(line for line in lines if line)
+        if len(text) < 80:
+            raise ValueError("Not enough readable text.")
+        return text[:24000]
+
+
+async def fetch_html(url: str, limit: int, *, head: bool = False) -> tuple[str, str, str]:
+    """(text, content type, final URL) of a public page. `head` keeps the first `limit` bytes
+    instead of failing on a longer page, for reading only the <head>."""
+    original = url
+    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=5) as client:
+        for _ in range(4):
+            p = urlsplit(url)
+            port = p.port or (443 if p.scheme == "https" else 80)
+            ip = await pinned_address(p.hostname, port)
+            target = httpx.URL(url).copy_with(host=ip)
+            host = p.netloc.encode("idna").decode("ascii")
+            async with client.stream("GET", target, headers={
+                "Host": host, "User-Agent": USER_AGENT, "Accept": "text/html,text/plain",
+                "Accept-Encoding": "gzip, deflate", "Cookie": "",
+            }, extensions={"sni_hostname": p.hostname}) as response:
+                if response.is_redirect:
+                    url = public_url(urljoin(url, response.headers.get("location", "")))
+                    if not url:
+                        raise ValueError("Unsupported redirect.")
+                    continue
+                response.raise_for_status()
+                encoding = response.headers.get("content-encoding", "identity").lower()
+                if encoding not in ("", "identity", "gzip", "deflate"):
+                    raise ValueError("Unsupported page compression.")
+                inflater = zlib.decompressobj(16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS) if encoding in ("gzip", "deflate") else None
+                kind = response.headers.get("content-type", "").split(";")[0]
+                if kind not in ("text/html", "text/plain", "application/xhtml+xml"):
+                    raise ValueError("This page is not readable text.")
+                content, wire_bytes, cut = bytearray(), 0, False
+                async for chunk in response.aiter_raw(chunk_size=16384):
+                    wire_bytes += len(chunk)
+                    if wire_bytes > MAX_BYTES:
+                        raise ValueError("Page exceeds the transfer limit.")
+                    try:
+                        decoded = inflater.decompress(chunk, limit-len(content)+1) if inflater else chunk
+                    except zlib.error as exc:
+                        raise ValueError("Invalid compressed page.") from exc
+                    content.extend(decoded)
+                    if len(content) > limit:
+                        if not head:
                             raise ValueError("Page exceeds the reading limit.")
-                    if inflater and not inflater.eof:
-                        raise ValueError("Incomplete compressed page.")
-                    text = content.decode(response.encoding or "utf-8", errors="replace")
-                    if kind != "text/plain":
-                        parser = TextReader()
-                        parser.feed(text)
-                        text = " ".join(parser.parts)
-                    lines = [" ".join(line.split()) for line in text.splitlines()]
-                    text = "\n".join(line for line in lines if line)
-                    if len(text) < 80:
-                        raise ValueError("Not enough readable text.")
-                    return text[:24000]
-        raise ValueError(f"Too many redirects reading {urlsplit(original).hostname}.")
+                        del content[limit:]
+                        cut = True
+                        break
+                if inflater and not inflater.eof and not cut:
+                    raise ValueError("Incomplete compressed page.")
+                return content.decode(response.encoding or "utf-8", errors="replace"), kind, url
+    raise ValueError(f"Too many redirects reading {urlsplit(original).hostname}.")
+
+
+class _LeadImage(HTMLParser):
+    """og:image (or twitter:image / image_src) from a page's <head>."""
+    ORDER = ("og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src", "thumbnailurl", "image_src")
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = {}
+
+    def handle_starttag(self, tag, attrs):
+        a = {k.lower(): (v or "") for k, v in attrs}
+        if tag == "meta":
+            key = (a.get("property") or a.get("name") or a.get("itemprop") or "").lower()
+            if key in self.ORDER and a.get("content"):
+                self.found.setdefault(key, a["content"].strip())
+        elif tag == "link" and a.get("rel", "").lower() == "image_src" and a.get("href"):
+            self.found.setdefault("image_src", a["href"].strip())
+
+    def best(self):
+        return next((self.found[k] for k in self.ORDER if k in self.found), "")
+
+
+_lead_cache = TTLCache(86400, 1024)
+_lead_slots = asyncio.Semaphore(4)
+
+
+async def lead_image(url: str) -> str:
+    """The picture a page shows when it is shared (its og:image): a news card's thumbnail when
+    the search engine sent none. Empty when the page has none or can't be read."""
+    url = public_url(url)
+    if not url:
+        return ""
+    if (hit := _lead_cache.get(url)) is not None:
+        return hit
+    found = ""
+    try:
+        async with _lead_slots, asyncio.timeout(6):
+            text, kind, final = await fetch_html(url, 300_000, head=True)
+        if kind != "text/plain":
+            parser = _LeadImage()
+            parser.feed(text.split("</head>", 1)[0])
+            found = public_url(urljoin(final, parser.best())) if parser.best() else ""
+    except (ValueError, OSError, httpx.HTTPError, TimeoutError):
+        found = ""
+    return _lead_cache.put(url, found)

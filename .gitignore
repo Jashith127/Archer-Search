@@ -9,3 +9,4 @@ screenshots/
 installer/obj/
 installer/dist/
 .build-cache/
+installer/.refs/
