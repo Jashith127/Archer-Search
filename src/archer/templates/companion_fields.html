@@ -6,8 +6,8 @@
   "b-helium": "helium.computer", "b-chrome": "chrome.com", "b-edge": "microsoftedgeinsider.com", "b-brave": "brave.com",
   "b-vivaldi": "vivaldi.com", "b-opera": "opera.com", "b-firefox": "firefox.com"} %}
 
-{% macro logo(id, label) -%}
-<span class="c-logo" data-letter="{{ label[:1] }}">{% if id in LOGOS %}<img src="/api/favicon/{{ LOGOS[id] }}" alt="" loading="lazy" data-logo>{% else %}<svg aria-hidden="true"><use href="#u-code"/></svg>{% endif %}</span>
+{% macro logo(id, label, size="") -%}
+<span class="c-logo{% if size %} c-logo--{{ size }}{% endif %}" data-letter="{{ label[:1] }}">{% if id in LOGOS %}<img src="/api/favicon/{{ LOGOS[id] }}" alt="" loading="lazy" data-logo>{% else %}<svg aria-hidden="true"><use href="#u-code"/></svg>{% endif %}</span>
 {%- endmacro %}
 
 {% macro test_label(test) -%}
@@ -19,16 +19,18 @@
 {% set id = "f-" ~ spec.name ~ uid %}
 <div class="c-row c-row--{{ spec.kind }}" data-field="{{ spec.name }}" data-kind="{{ spec.kind }}"{% if spec.when %} data-when="{{ spec.when }}"{% endif %}{% if item.locked %} data-locked{% endif %}>
   {% if spec.kind == "cards" %}
-  <fieldset class="c-cards" {% if item.locked %}disabled{% endif %}>
+  {# A radio list, one option per line: the choice and the fields it needs share one group. #}
+  <fieldset class="c-cards"{% if item.locked %} disabled{% endif %}>
     <legend class="c-sr">{{ spec.label }}</legend>
     {% for o in spec.options %}
     <label class="c-card">
-      <input type="radio" name="{{ spec.name }}{{ uid }}" value="{{ o.value }}" data-input{% if o.value == item.value %} checked{% endif %}>
-      <span class="c-card-body">
-        <span class="c-card-head">{{ logo(o.value, o.label) }}<b>{{ o.label }}</b>{% if o.badge %}<em class="c-badge{% if o.badge == 'Recommended' %} is-accent{% endif %}">{{ o.badge }}</em>{% endif %}<span class="c-card-check" aria-hidden="true"></span></span>
+      <input type="radio" class="c-radio" name="{{ spec.name }}{{ uid }}" value="{{ o.value }}" data-input{% if o.value == item.value %} checked{% endif %}>
+      {{ logo(o.value, o.label) }}
+      <span class="c-card-text">
+        <span class="c-card-name"><b>{{ o.label }}</b>{% if o.badge %}<em class="c-badge">{{ o.badge }}</em>{% endif %}</span>
         <span class="c-card-note">{{ o.note }}</span>
-        <span class="c-card-status" data-card-status="{{ o.value }}"></span>
       </span>
+      <span class="c-card-status" data-card-status="{{ o.value }}"></span>
     </label>
     {% endfor %}
   </fieldset>
@@ -51,10 +53,10 @@
     <input type="checkbox" role="switch" class="c-switch" id="{{ id }}" data-input{% if item.value == "true" %} checked{% endif %}{% if item.locked %} disabled{% endif %}>
     {% elif spec.kind == "secret" %}
     <div class="c-secret" data-secret data-set="{{ 'true' if item.set else 'false' }}">
-      <span class="c-secret-state"><span class="c-dot" aria-hidden="true"></span><span data-secret-hint>{{ item.hint if item.set else "Not set" }}</span></span>
+      <span class="c-secret-state"><svg aria-hidden="true"><use href="#c-key"/></svg><span data-secret-hint>{{ item.hint if item.set else "Not set" }}</span></span>
       <span class="c-secret-entry" hidden>
         <input type="password" id="{{ id }}" data-input autocomplete="off" spellcheck="false" placeholder="{{ spec.placeholder }}">
-        <button type="button" class="c-icon" data-reveal aria-label="Show key" title="Show"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        <button type="button" class="c-icon" data-reveal aria-label="Show key" title="Show"><svg aria-hidden="true"><use href="#c-eye"/></svg></button>
       </span>
       {% if not item.locked %}
       <span class="c-secret-actions">
@@ -106,25 +108,37 @@
 </div>
 {%- endmacro %}
 
-{% macro copy_rows(rows) -%}
-{% for label, value in rows %}
-<div class="c-row c-row--copy">
-  <div class="c-label"><span class="c-label-text">{{ label }}</span><code>{{ value }}</code></div>
-  <div class="c-control"><button type="button" class="c-button" data-copy="{{ value }}"><svg aria-hidden="true"><use href="#i-copy"/></svg>Copy</button></div>
+{# {% call action_row("Label", "Help") %}<button …>{% endcall %}: a row whose control is a button. #}
+{% macro action_row(label, help="", when="", result=false) -%}
+<div class="c-row c-row--action"{% if when %} data-when="{{ when }}"{% endif %}>
+  <div class="c-label"><span class="c-label-text">{{ label }}</span>{% if help %}<p>{{ help }}</p>{% endif %}</div>
+  <div class="c-control">{{ caller() }}</div>
+  {% if result %}<p class="c-result" data-test-result role="status"></p>{% endif %}
 </div>
+{%- endmacro %}
+
+{% macro copy_rows(rows) -%}
+<div class="c-copylist">
+{% for label, value in rows %}
+  <div class="c-copy">
+    <span class="c-copy-label">{{ label }}</span>
+    <code class="c-copy-value">{{ value }}</code>
+    <button type="button" class="c-button c-button--small" data-copy="{{ value }}"><svg aria-hidden="true"><use href="#i-copy"/></svg>Copy</button>
+  </div>
 {% endfor %}
+</div>
 {%- endmacro %}
 
 {% macro browser_list(browsers) -%}
-<div class="c-browsers" data-browsers>
+<div class="c-list c-browsers" data-browsers>
   {% for b in browsers %}
   <div class="c-browser">
     {{ logo("b-" ~ b.id, b.name) }}
-    <div><b>{{ b.name }}</b>{% if b.default %}<em class="c-badge is-accent">Default browser</em>{% endif %}<p>{{ "Opens its search engine settings" if b.chromium else "Search settings, then add Archer from its address bar" }}</p></div>
-    <button type="button" class="c-button" data-browser="{{ b.id }}">Open settings ↗</button>
+    <div class="c-browser-text"><b>{{ b.name }}</b>{% if b.default %}<em class="c-badge">Default</em>{% endif %}<p>{{ "Opens its search engine settings" if b.chromium else "Search settings, then add Archer from its address bar" }}</p></div>
+    <button type="button" class="c-button" data-browser="{{ b.id }}">Open settings</button>
   </div>
   {% else %}
-  <p class="c-muted">No supported browser was found in its usual place. Open your browser's search engine settings yourself.</p>
+  <p class="c-empty">No supported browser was found in its usual place. Open your browser's search engine settings yourself.</p>
   {% endfor %}
 </div>
 {%- endmacro %}

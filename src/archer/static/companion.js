@@ -499,27 +499,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ------------------------------------------------------------ state display
+  // Home's status rows and the tabs' warning dots. tone: "ok", "warn" or "" (neutral).
   function renderTiles() {
     const p = state.providers;
-    const tile = name => $(`[data-tile="${name}"]`);
-    if (tile("search")) {
-      $("[data-tile-title]", tile("search")).textContent = p.search.label;
-      $("[data-tile-text]", tile("search")).textContent = !p.search.ready ? p.search.missing
-        : p.search.fallback && p.search.id !== "duckduckgo" ? "Falls back to DuckDuckGo if it fails" : "Ready";
-      $(".c-dot", tile("search")).className = "c-dot " + (p.search.ready ? "is-ok" : "is-warn");
-    }
-    if (tile("ai")) {
-      $("[data-tile-title]", tile("ai")).textContent = p.ai.label + (p.ai.model ? " · " + p.ai.model : "");
-      $("[data-tile-text]", tile("ai")).textContent = !p.ai.ready ? p.ai.missing : !state.ai.consent ? "Ready · turned off until you enable it"
-        : state.ai.mode === "balanced" ? "Balanced answers on" : "Answers when you ask";
-      $(".c-dot", tile("ai")).className = "c-dot " + (!p.ai.ready ? "is-warn" : state.ai.consent ? "is-ok" : "");
-    }
-    if (tile("startup")) {
-      const on = state.autostart?.enabled;
-      $("[data-tile-title]", tile("startup")).textContent = on ? "Starts with Windows" : "Starts when you open it";
-      $("[data-tile-text]", tile("startup")).textContent = on ? "Search works as soon as you sign in" : "Turn on Start with Windows so searches always work";
-      $(".c-dot", tile("startup")).className = "c-dot " + (on ? "is-ok" : "");
-    }
+    const paint = (name, title, text, badge, tone) => {
+      const tile = $(`[data-tile="${name}"]`);
+      if (tile) {
+        $("[data-tile-title]", tile).textContent = title;
+        $("[data-tile-text]", tile).textContent = text;
+        const chip = $("[data-tile-badge]", tile);
+        chip.textContent = badge;
+        chip.className = "c-state" + (tone ? " is-" + tone : "");
+      }
+      const dot = $(`[data-nav-dot="${name}"]`);
+      if (dot) dot.className = "c-nav-dot" + (tone === "warn" ? " is-warn" : "");
+    };
+    paint("search", p.search.label,
+      !p.search.ready ? p.search.missing : p.search.fallback && p.search.id !== "duckduckgo" ? "Falls back to DuckDuckGo if it fails" : "Ready",
+      p.search.ready ? "Ready" : "Needs setup", p.search.ready ? "ok" : "warn");
+    paint("ai", p.ai.label + (p.ai.model ? " · " + p.ai.model : ""),
+      !p.ai.ready ? p.ai.missing : !state.ai.consent ? "Ready · turned off until you enable it"
+        : state.ai.mode === "balanced" ? "Balanced answers on" : "Answers when you ask",
+      !p.ai.ready ? "Needs setup" : state.ai.consent ? "On" : "Off", !p.ai.ready ? "warn" : state.ai.consent ? "ok" : "");
+    const on = Boolean(state.autostart?.enabled);
+    paint("startup", on ? "Starts with Windows" : "Starts when you open it",
+      on ? "Search works as soon as you sign in" : "Turn on Start with Windows so searches always work", on ? "On" : "Off", on ? "ok" : "");
   }
   function renderState() {
     syncAI();
@@ -563,15 +567,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function appNavigation() {
     const links = $$("[data-nav]");
     const panes = $$("[data-pane]");
+    const toolbar = $(".c-toolbar");
     const show = () => {
       const id = (location.hash || "#overview").slice(1).split("/")[0];
-      const pane = panes.find(p => p.id === id) || panes[0];
+      const pane = panes.find(p => p.dataset.pane === id) || panes[0];
       panes.forEach(p => { p.hidden = p !== pane; });
-      links.forEach(link => link.setAttribute("aria-current", String(link.dataset.nav === pane.id)));
-      $(".c-main").scrollTop = 0;
+      links.forEach(link => link.setAttribute("aria-current", String(link.dataset.nav === pane.dataset.pane)));
       scrollTo(0, 0);
     };
     addEventListener("hashchange", show);
+    addEventListener("scroll", () => toolbar?.classList.toggle("is-scrolled", scrollY > 4), { passive: true });
     show();
   }
 
@@ -611,7 +616,7 @@ document.addEventListener("DOMContentLoaded", () => {
       say("");
       applyWhen();
       enter(key);
-      $(".w-main").scrollTop = 0;
+      scrollTo(0, 0);
     };
 
     // Suggestions for a first run: only for settings that are still Archer's defaults.

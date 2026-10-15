@@ -11,9 +11,14 @@ Archer is being prepared for people other than its author, so setup no longer as
 SearXNG or a DeepSeek key.
 
 - **Companion app** (`/app`, opened as its own window from the Start menu or tray) replaces the
-  Settings page: Overview, Search, AI, Personal, Startup, Browser, Connections, Privacy & data.
+  Settings page: Home, Search, AI, Personal, Startup, Browser, Connections, Privacy & data.
   **First-run setup** (`/app/welcome`) walks through search, AI, personal defaults, startup and
   browser in seven steps and opens automatically until it is finished.
+- **Companion layout (15 October 2026):** a plain preferences window, not a dashboard. A toolbar
+  of tabs across the top, one centred column, settings in inset lists of label/control rows, and
+  provider choices as radio lists in the same list as the fields they need. Neutral greys; white
+  marks what is on or selected, green and amber are kept for status. Unsaved edits collect in a
+  save bar docked to the bottom. Setup is a narrow centred column with a segmented step bar.
 - **Search providers:** DuckDuckGo (no key; its HTML page, since it has no official results API),
   SearXNG, Google (Serper, because Google's own JSON API takes no new customers and ends on
   1 January 2027; legacy Programmable Search keys still work) and Brave's official API. A failing
