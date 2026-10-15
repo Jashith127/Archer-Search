@@ -255,6 +255,8 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 | Images | Visual queries (`photos`, `wallpaper`) and people/places | Strip after result 1 |
 | Related searches | Every query | Chips at the bottom |
 
+Strips scroll sideways in a viewport that runs 32px past the results column (edge to edge on phones). The side with more to show fades out instead of cutting a card, and round arrows page through it (hidden on touch-only screens). Images show up to 16 cards, news up to 10; a news story the engine sent without a picture gets the article's own share image (`og:image`, read from the page head by the pinned public-only fetcher).
+
 **Images tab.** Results are re-ranked by `imagerank.py` (query terms in title/URL, model numbers weighted 3x, duplicates, tiny images and svg icons dropped). Clicking a tile opens a sticky right-hand panel (large image, source, Visit page / View image, arrow-key navigation) with a Similar images grid below it, fetched from `/api/similar` by searching the picked image's own title. On narrow screens the panel is a full-screen overlay. SearXNG engines `devicons`, `lucide`, `unsplash`, `pexels` and `artic` are removed in its `settings.yml` (icons, stock photos and a host that 403s hotlinks).
 
 Results show a site badge, site name, breadcrumb, title, date, snippet, thumbnail, and **which engines returned the result**, so SearXNG's agreement-based ranking stays visible.

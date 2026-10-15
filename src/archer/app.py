@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from archer import __version__, views, websearch
+from archer.fetcher import lead_image
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
@@ -232,7 +233,7 @@ async def strip(request: Request, kind: str, q: str = Query(..., min_length=1, m
         items.append({"title": r.title, "url": r.url, "host": r.host, "thumb": thumb,
                       "ago": _ago(r.date), "source": r.source if kind == "images" else r.host,
                       "length": r.length, **({"full": r.img_src} if kind == "images" and r.img_src else {})})
-        if len(items) >= 12:
+        if len(items) >= 16:
             break
     return JSONResponse(items)
 
@@ -353,6 +354,15 @@ async def api_spotify(request: Request, title: str = Query(..., min_length=1, ma
     """The Spotify player for a song or album Wikidata has no Spotify ID for, found through a web search."""
     resp = await request.app.state.searx.search(f"{title} {artist} spotify".strip())
     return JSONResponse(views.spotify_from_results(resp.results, title, artist) or {})
+
+
+@app.get("/api/news/thumb")
+async def api_news_thumb(request: Request, url: str = Query(..., min_length=8, max_length=2000)) -> JSONResponse:
+    """A news card's picture when the engine sent none: the article's own share image (og:image).
+    Only this page's own scripts may ask; the reader only connects to public addresses."""
+    if request.headers.get("sec-fetch-site", "same-origin") != "same-origin":
+        return JSONResponse({}, status_code=403)
+    return JSONResponse({"thumb": await lead_image(url)})
 
 
 @app.get("/api/lyrics")

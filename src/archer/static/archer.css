@@ -161,6 +161,37 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2)
 /* strips (images / news / videos) */
 .strip { margin: 10px 0 18px; padding: 18px 0 4px; border-bottom: 1px solid var(--border-soft); }
 .strip-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+/* The scroller runs a little past the column's right edge (not to the window's), the edge with
+   more to show fades instead of slicing a card, and arrows page through it. */
+.strip-view { --bleed: 32px; position: relative; margin-right: calc(-1 * var(--bleed)); }
+.strip-view > .strip-row { padding-right: var(--bleed); scroll-padding-inline: 0 var(--bleed); scroll-snap-type: x proximity; scrollbar-width: none;
+  --fade-l: 0px; --fade-r: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent); }
+.strip-view > .strip-row::-webkit-scrollbar { display: none; }
+.strip-view > .strip-row > * { scroll-snap-align: start; }
+.strip-view.can-prev > .strip-row { --fade-l: 56px; }
+.strip-view.can-next > .strip-row { --fade-r: 96px; }
+.strip-nav { position: absolute; top: calc(50% - 7px); translate: 0 -50%; z-index: 2; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 50%; background: rgba(28, 28, 30, .86); color: var(--text); cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity .15s, background .15s; }
+.strip-nav:hover { background: var(--surface-3); }
+.strip-nav svg { width: 18px; height: 18px; }
+.strip-nav--prev { left: 8px; }
+.strip-nav--prev svg { rotate: 90deg; }
+.strip-nav--next { right: calc(var(--bleed) - 12px); }
+.strip-nav--next svg { rotate: -90deg; }
+.strip-view.can-prev .strip-nav--prev, .strip-view.can-next .strip-nav--next { opacity: 1; pointer-events: auto; }
+@media (max-width: 900px) {
+  /* Phones: the strip runs edge to edge and is swiped; arrows stay for mouse users. */
+  .strip-view { margin: 0 -16px; }
+  .strip-view > .strip-row { padding-inline: 16px; scroll-padding-inline: 16px; }
+  .strip-view.can-prev > .strip-row { --fade-l: 28px; }
+  .strip-view.can-next > .strip-row { --fade-r: 40px; }
+  .strip-nav--prev { left: 6px; }
+  .strip-nav--next { right: 6px; }
+}
+@media (hover: none) { .strip-nav { display: none; } }
 .strip--images .strip-row { grid-auto-columns: 150px; }
 .card { display: flex; flex-direction: column; min-height: 210px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden; color: var(--text); }
 .card:hover { text-decoration: none; border-color: var(--border); background: var(--surface-2); }
@@ -1767,6 +1798,8 @@ a.pd-score:hover { text-decoration: none; border-color: var(--border); backgroun
 .pd-count:empty { display: none; }
 .pd-panel { padding-top: 20px; }
 .pd-panel .strip { margin: 22px 0 0; padding-top: 0; border-bottom: 0; }
+.pd-panel .strip-view { --bleed: 0px; margin-inline: 0; }
+.pd-panel .strip-view > .strip-row { padding-inline: 0; scroll-padding-inline: 0; }
 
 .pd-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 340px); gap: 28px; }
 .pd-overview:has(.pd-variants[hidden]) { grid-template-columns: minmax(0, 1fr); }

@@ -1202,10 +1202,22 @@ if (topBar) {
 }
 
 // ---------------------------------------------------- strips (lazy)
+// A news story the engine sent without a picture borrows the article's own share image.
+const leadImage = (url) => getJSON(`/api/news/thumb?url=${encodeURIComponent(url)}`).then((d) => (d && isHttp(d.thumb) ? d.thumb : ""));
+
 function card(kind, item) {
   const media = el("div", { class: "card-img" + (item.thumb ? "" : " card-img--empty") });
   const picture = img(item.thumb);
   if (picture) media.append(picture); else media.textContent = kind === "news" ? "📰" : "▶";
+  if (kind === "news" && !picture) {
+    // Swapped in only once it loads, so a dead link never replaces the placeholder with nothing.
+    leadImage(item.url).then((thumb) => (thumb ? firstLoading([{ thumb }]) : null)).then((ok) => {
+      const found = ok && img(ok.thumb);
+      if (!found) return;
+      media.classList.remove("card-img--empty");
+      media.replaceChildren(found);
+    });
+  }
   if (kind === "videos" && item.length) media.append(el("span", { class: "length", text: item.length }));
   if (kind === "images") return el("a", { class: "card", href: item.url, title: item.title }, media);
   return el("a", { class: "card", href: item.url },
@@ -1216,13 +1228,40 @@ function card(kind, item) {
       item.ago ? el("span", { class: "card-age", text: item.ago }) : null));
 }
 
+// Strips scroll sideways inside a viewport: arrows page through them, and the edge that has more
+// to show fades out instead of cutting a card off.
+function scroller(row) {
+  if (row.parentElement.classList.contains("strip-view")) return;
+  const view = el("div", { class: "strip-view" });
+  row.replaceWith(view);
+  const arrow = (dir, label) => {
+    const b = el("button", { type: "button", class: `strip-nav strip-nav--${dir}`, "aria-label": label, tabindex: "-1" }, icon("chevron"));
+    b.addEventListener("click", () => {
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      row.scrollBy({ left: (dir === "next" ? 1 : -1) * row.clientWidth * 0.85, behavior: still ? "auto" : "smooth" });
+    });
+    return b;
+  };
+  view.append(row, arrow("prev", "Scroll left"), arrow("next", "Scroll right"));
+  const update = () => {
+    const max = row.scrollWidth - row.clientWidth;
+    view.classList.toggle("can-prev", row.scrollLeft > 4);
+    view.classList.toggle("can-next", row.scrollLeft < max - 4);
+  };
+  row.addEventListener("scroll", update, { passive: true });
+  new ResizeObserver(update).observe(row);
+  new MutationObserver(update).observe(row, { childList: true });
+  update();
+}
+for (const row of $$(".strip-row")) scroller(row);
+
 for (const section of $$("[data-lazy]")) {
   const kind = section.dataset.lazy;
   strip(kind, section.dataset.q).then((items) => {
     items = items.filter((i) => isHttp(i.url) && (kind === "news" || i.thumb));
     if (kind === "news") items = [...items.filter((i) => i.thumb), ...items.filter((i) => !i.thumb)];
     if (items.length < 2) return section.remove();
-    $(".strip-row", section).replaceChildren(...items.slice(0, kind === "images" ? 12 : 8).map((i) => card(kind, i)));
+    $(".strip-row", section).replaceChildren(...items.slice(0, kind === "images" ? 16 : 10).map((i) => card(kind, i)));
   });
 }
 
@@ -1671,7 +1710,12 @@ for (const slot of $$("[data-hero-news]")) {
     items = items.filter((i) => isHttp(i.url));
     if (!items.length) { slot.remove(); hero?.classList.add("no-news"); return; }
     slot.classList.remove("skeleton");
-    const top = await firstLoading(items.filter((i) => isHttp(i.thumb)));
+    let top = await firstLoading(items.filter((i) => isHttp(i.thumb)));
+    if (!top) {
+      // No engine pictures: the lead story's own share image still makes a proper card.
+      const thumb = await leadImage(items[0].url);
+      top = thumb ? await firstLoading([{ ...items[0], thumb }]) : null;
+    }
     if (top) {
       slot.href = top.url;
       slot.replaceChildren(
