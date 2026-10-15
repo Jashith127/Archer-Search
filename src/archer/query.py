@@ -43,6 +43,15 @@ _DEFINE = re.compile(
     r"|^(?P<b>[\w'-]+(?: [\w'-]+)?)\s+(?:meaning|definition)$"
     r"|^what does (?P<c>[\w' -]+) mean\??$"
 )
+# Shopping words around a product name: "iphone 16 pro price in india", "buy kindle paperwhite".
+# The product panel opens on the matching section; the name alone goes to the entity lookup.
+_PRODUCT_INTENT = re.compile(
+    r"^(?:buy\s+)?(?P<core>.+?)\s+(?P<intent>prices?(?: in (?:india|the us|usa|us|uk))?|cost|reviews?|specs|"
+    r"specifications|spec sheet|buy(?: online)?|deals?|offers?|colou?rs|variants|launch price)$"
+    r"|^buy\s+(?P<core2>.+)$"
+)
+_INTENT_KIND = {"cost": "price", "deal": "price", "offer": "price", "buy": "price", "launch": "price", "review": "review",
+                "spec": "specs", "colou": "variants", "color": "variants", "varia": "variants", "price": "price"}
 _NEWSY = re.compile(r"\b(?:news|latest|today|live|update|updates|breaking)\b")
 _VISUAL = re.compile(r"\b(?:photos?|pictures?|images?|wallpapers?|pics)\b")
 
@@ -140,6 +149,7 @@ class Query:
     data: dict = field(default_factory=dict)
     entity_candidate: str | None = None  # text to look up on Wikipedia
     entity_hint: tuple[str, str] | None = None  # (panel kind, search words) from "… show" / "… movie"
+    product_intent: str = ""  # price | review | specs | variants, from "… price" / "buy …"
     wants_news: bool = False
     wants_videos: bool = False
     wants_images: bool = False
@@ -217,8 +227,12 @@ def classify(q: str, home_currency: str = "inr") -> Query:
     is_question = text.endswith("?") or (words and words[0] in QUESTION_WORDS)
     kind = "howto" if is_howto else "question" if is_question else "general"
 
-    candidate, hint = None, None
+    candidate, hint, intent = None, None, ""
     stripped = _ENTITY_PREFIX.sub("", low)
+    if kind == "general" and (m := _PRODUCT_INTENT.match(stripped)):
+        stripped = (m.group("core") or m.group("core2")).strip()
+        word = m.group("intent") or "buy"
+        intent = next(v for k, v in _INTENT_KIND.items() if word.startswith(k))
     if not is_howto and len(stripped.split()) <= 6 and (kind == "general" or stripped != low):
         candidate = stripped
         if m := _KIND_HINT.match(stripped):
@@ -228,6 +242,7 @@ def classify(q: str, home_currency: str = "inr") -> Query:
         text, kind,
         entity_candidate=candidate,
         entity_hint=hint,
+        product_intent=intent,
         wants_news=bool(_NEWSY.search(low)),
         wants_videos=is_howto or bool(re.search(r"\b(?:video|videos|trailer|tutorial)\b", low)),
         wants_images=bool(_VISUAL.search(low)),

@@ -3,10 +3,13 @@
 The configured provider answers (SearXNG here; DuckDuckGo, Google and Brave in `websearch.py`).
 Upstream engines rate-limit and CAPTCHA quickly, so identical requests (reloads,
 back/forward, lazy modules) are served from memory instead of fanning out again. When the
-provider fails, DuckDuckGo answers instead (if the fallback is on) and the page says so.
+provider fails or is rate-limited, the next provider that is set up answers instead (if the fallback is
+on) and the page says so. Rate limits are remembered for a cooldown, so later searches go straight to a
+free provider, and the results page shows them in a banner until dismissed.
 """
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
@@ -77,6 +80,48 @@ class SearchResponse:
     error: str | None = None
     provider: str = "searxng"  # which provider answered
     notice: str | None = None  # e.g. "SearXNG didn't answer, so these results are from DuckDuckGo"
+    limited: list[tuple[str, str]] = field(default_factory=list)  # (engine, reason) rate-limited for this search
+
+
+# ------------------------------------------------------------- rate limits
+# Engine suspensions inside SearXNG ("Suspended: too many requests", "CAPTCHA", "access denied") and
+# provider errors (429, used-up credits, DuckDuckGo's bot check) all count.
+RATE_LIMITED = re.compile(r"suspend|too many|captcha|access denied|rate.?limit|\b429\b|credits|used up|limit", re.I)
+COOLDOWN = 600       # seconds a rate-limited provider is skipped
+SHOWN_FOR = 3600     # seconds a rate limit stays in the banner after it was last seen
+_limits: dict[str, dict] = {}
+
+
+def note_limit(engine: str, reason: str, provider: str = "") -> None:
+    """Remember a rate limit. `provider` names the whole provider to skip ("searxng", "duckduckgo")."""
+    now = time.time()
+    # One entry per engine family: SearXNG reports "brave.images", "google cse" and "startpage news" separately.
+    engine = re.split(r"[ .]", engine.strip())[0] if not provider else engine
+    key = f"{provider}|{engine}".lower()
+    entry = _limits.get(key) or {"engine": engine, "provider": provider, "since": now}
+    entry.update(reason=reason, seen=now, until=now + COOLDOWN)
+    _limits[key] = entry
+
+
+def cooling(provider: str) -> bool:
+    now = time.time()
+    return any(e["provider"] == provider and e["until"] > now for e in _limits.values())
+
+
+def active_limits() -> list[dict]:
+    """Rate limits seen within the last hour, newest first, for the banner."""
+    now = time.time()
+    for key in [k for k, e in _limits.items() if now - e["seen"] > SHOWN_FOR]:
+        _limits.pop(key)
+    return sorted(_limits.values(), key=lambda e: e["seen"], reverse=True)
+
+
+def fallback_order(primary: str) -> list[str]:
+    """The configured provider first, then every other one that can answer: Google and Brave when their
+    keys are set, keyless DuckDuckGo, then a local SearXNG."""
+    ready = {"google:serper": bool(settings.serper_api_key), "google:cse": bool(settings.google_api_key and settings.google_cx),
+             "brave": bool(settings.brave_api_key), "duckduckgo": True, "searxng": True}
+    return [primary] + [name for name, ok in ready.items() if ok and name != primary]
 
 
 def _http_url(value: str | None) -> str:
@@ -138,16 +183,42 @@ class Search:
             return hit[1]
 
         name = websearch.backend()
-        borrowed = category not in websearch.CATEGORIES.get(name, ())
-        if borrowed:
+        if category not in websearch.CATEGORIES.get(name, ()):
             name = "duckduckgo"  # e.g. news from a Google key that only covers web and images
-        out = await (self._searxng(q, category, page) if name == "searxng" else websearch.search(self._client, name, q, category, page))
-        if out.error and name != "duckduckgo" and settings.search_fallback:
-            backup = await websearch.search(self._client, "duckduckgo", q, category, page)
-            if backup.results:
-                label = websearch.LABELS.get(name.split(":")[0], name)
-                backup.notice = f"{label} didn't answer ({out.error}), so these results are from DuckDuckGo."
-                out = backup
+        names = fallback_order(name) if settings.search_fallback else [name]
+        names = [n for n in names if category in websearch.CATEGORIES.get(n, ())]
+        # A provider still cooling down from a rate limit is skipped, unless nothing else is left.
+        fresh = [n for n in names if not cooling(n.split(":")[0])]
+        names = fresh or names[:1]
+        primary = websearch.LABELS.get(name.split(":")[0], name)
+        # (who failed first, why): the configured provider, even when its cooldown meant it wasn't asked.
+        first = (primary, "rate-limited") if names[0] != name else None
+        out, limited = SearchResponse(error="No search provider is available."), []
+        for current in names:
+            got = await (self._searxng(q, category, page) if current == "searxng"
+                         else websearch.search(self._client, current, q, category, page))
+            base, label = current.split(":")[0], websearch.LABELS.get(current.split(":")[0], current)
+            engines = [(engine, why) for engine, why in got.unresponsive if RATE_LIMITED.search(why or "")]
+            for engine, why in engines:
+                note_limit(engine, why)
+            empty = not (got.results or got.answers or got.redirect)
+            if (got.error and RATE_LIMITED.search(got.error)) or (base == "searxng" and empty and engines):
+                reason = got.error or "every engine is rate-limited"
+                note_limit(label, reason, base)  # skip the whole provider for the cooldown
+                engines.append((label, reason))
+            limited += [e for e in engines if e not in limited]
+            if first is None:
+                first = (label, "rate-limited" if engines else got.error or "no results")
+            out = got
+            if not empty or not (got.error or engines):
+                break  # an answer, or a genuine "nothing found" from a working provider
+        out.limited = limited
+        if limited and not (out.results or out.answers or out.redirect or out.error):
+            out.error = "Every search provider Archer can use is rate-limited right now" if len(names) > 1 else \
+                f"{websearch.LABELS.get(out.provider, out.provider)} is rate-limited right now"
+        if first and out.results and out.provider != name.split(":")[0]:
+            why = "is rate-limited" if first[1] == "rate-limited" else f"didn't answer ({first[1]})"
+            out.notice = f"{first[0]} {why}, so these results are from {websearch.LABELS.get(out.provider, out.provider)}."
         if out.results or out.answers:  # don't pin an empty, rate-limited response
             if len(self._cache) >= _CACHE_MAX:
                 self._cache.pop(next(iter(self._cache)))
@@ -174,6 +245,7 @@ class Search:
             return SearchResponse(error="SearXNG returned invalid JSON")
 
         out = SearchResponse(
+            provider="searxng",
             results=[r for r in map(_to_result, data.get("results", [])) if r],
             answers=data.get("answers", []),
             infoboxes=data.get("infoboxes", []),
@@ -204,9 +276,12 @@ class Search:
         from archer import websearch
         try:
             if source == "searxng":
-                resp = await self._client.get("/autocompleter", params={"q": q}, timeout=timeout)
-                resp.raise_for_status()
-                data = resp.json()
+                try:
+                    resp = await self._client.get("/autocompleter", params={"q": q}, timeout=timeout)
+                    resp.raise_for_status()
+                    data = resp.json()
+                except (httpx.HTTPError, ValueError):
+                    data = await websearch.suggest(self._client, "duckduckgo", q, timeout)  # SearXNG down or limited
             else:
                 data = await websearch.suggest(self._client, source, q, timeout)
         except (httpx.HTTPError, ValueError):

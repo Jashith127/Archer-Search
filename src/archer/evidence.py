@@ -51,6 +51,19 @@ def add(bundle: list[Evidence], title: str, url: str, text: str, **kwargs) -> Ev
     return item
 
 
+def product_facts(data: dict) -> dict:
+    """A product card as evidence: prices with their stores, scores with their outlets; no pictures."""
+    return {
+        **{k: data.get(k) for k in ("name", "brand", "category", "released", "description", "price", "rating",
+                                    "score", "used", "variants", "highlights", "specs", "lineage")},
+        "released_year": (data.get("secondhand") or {}).get("year"),
+        "offers": [{k: o.get(k) for k in ("store", "role", "price_text", "rating", "stock", "url")} for o in data.get("offers", [])],
+        "reviews": [{k: r.get(k) for k in ("site", "score_text", "date", "excerpt", "url")} for r in data.get("reviews", [])],
+        "note": "Prices and ratings come from search-result snippets on the date retrieved; stores were not visited. "
+                "Offers with role 'used' are second-hand or refurbished listings, priced separately from new.",
+    }
+
+
 def from_view(view) -> list[Evidence]:
     bundle = []
     if view.hero:
@@ -65,6 +78,8 @@ def from_view(view) -> list[Evidence]:
             "image", "image_fallback", "image_logo", "image_tall", "flag", "badge", "player", "links", "path")}
         if kind == "entity":
             kept = {k: data.get(k) for k in ("title", "description", "extract")}
+        if kind == "product":
+            kept = product_facts(data)
         add(bundle, f"Archer {kind} card", url, json.dumps(kept, ensure_ascii=False, default=str),
             kind="card", limitation="Existing card snapshot; cached upstream data may be older. "
             "Wikidata streaming links do not confirm regional availability. "

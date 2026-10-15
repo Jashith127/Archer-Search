@@ -45,3 +45,18 @@ def test_lyrics_lookup_prefers_matching_track_and_artist():
     found = asyncio.run(fetch())
     assert found["text"] == "Line one\nLine two"
     assert found["url"] == "https://lrclib.net/tracks/2"
+
+
+def test_spotify_track_found_from_search_results():
+    from archer.searxng import Result
+    from archer.views import spotify_from_results
+
+    def r(url, title, content=""):
+        return Result(title=title, url=url, host="open.spotify.com", crumbs=[], content=content, engines=["google"])
+    results = [r("https://open.spotify.com/track/1111111111111111111111", "Blinding Lights (Remix) - song by Someone Else | Spotify"),
+               r("https://open.spotify.com/intl-de/track/0VjIjW4GlUZAMYd2vXMi3b?si=x", "Blinding Lights - song and lyrics by The Weeknd | Spotify")]
+    found = spotify_from_results(results, "Blinding Lights", "The Weeknd")
+    assert found == {"embed": "https://open.spotify.com/embed/track/0VjIjW4GlUZAMYd2vXMi3b",
+                     "url": "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b"}
+    assert spotify_from_results(results, "Save Your Tears", "The Weeknd") is None
+    assert spotify_from_results([r("https://open.spotify.com/search/blinding", "Blinding Lights - Spotify search")], "Blinding Lights") is None

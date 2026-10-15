@@ -5,6 +5,7 @@
 {% block title %}{{ v.q }} · Archer{% endblock %}
 {% block body_class %}serp tab-{{ v.tab }}{% if ai_view %} ai-fullview{% endif %}{% endblock %}
 {% block body %}
+{% include "ratelimit_banner.html" %}
 <header class="top">
   <div class="wrap top-inner">
     <a class="brand" href="/" aria-label="Archer home">{{ pixel_mark(32) }}</a>

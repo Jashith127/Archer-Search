@@ -18,8 +18,8 @@ from archer import __version__, views, websearch
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
-from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH
-from archer.sources import USER_AGENT, TTLCache, aimodels, credits, lyrics, watch, weather, wiki
+from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH, active_limits
+from archer.sources import USER_AGENT, TTLCache, aimodels, credits, lyrics, products, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_provider import readiness
 from archer.ai_service import AIService
@@ -135,6 +135,28 @@ def _asset(name: str) -> str:
     return f"/static/{name}?v={_asset_versions[key]}"
 
 
+# Brand colours for the rate-limit banner, by engine or provider name (SearXNG's names included).
+ENGINE_COLORS = {"searxng": "#3050ff", "duckduckgo": "#de5833", "google": "#4285f4", "brave": "#fb542b",
+                 "startpage": "#6573ff", "bing": "#00809d", "qwant": "#5c97ff", "mojeek": "#7ab93c", "yahoo": "#6001d2",
+                 "yandex": "#fc3f1d", "presearch": "#2d8eff", "wikipedia": "#a2a9b1", "wikidata": "#339966",
+                 "serper": "#4285f4", "ecosia": "#4a9e4f", "marginalia": "#c58f2b"}
+ENGINE_NAMES = {"duckduckgo": "DuckDuckGo", "google cse": "Google", "google": "Google", "brave": "Brave",
+                "brave search": "Brave", "searxng": "SearXNG", "startpage": "Startpage", "bing": "Bing", "qwant": "Qwant"}
+
+
+def _rate_limits() -> list[dict]:
+    """Recent rate limits with a display name and brand colour, for templates/ratelimit_banner.html."""
+    out = []
+    for entry in active_limits():
+        key = entry["engine"].lower()
+        color = next((c for name, c in ENGINE_COLORS.items() if name in key), "#8f94ff")
+        label = ENGINE_NAMES.get(key, entry["engine"][:1].upper() + entry["engine"][1:])
+        reason = re.sub(r"^Suspended:\s*", "", entry["reason"]).strip().rstrip(".")
+        out.append({**entry, "key": key, "label": label, "color": color, "reason": reason[:1].lower() + reason[1:] if reason[1:2].islower() else reason})  # keeps "CAPTCHA"
+    return out
+
+
+templates.env.globals["rate_limits"] = _rate_limits
 templates.env.globals["asset"] = _asset
 templates.env.globals["tmdb_enabled"] = lambda: bool(settings.tmdb_api_key)
 templates.env.globals["suggest_min"] = SUGGEST_MIN
@@ -209,7 +231,7 @@ async def strip(request: Request, kind: str, q: str = Query(..., min_length=1, m
             continue
         items.append({"title": r.title, "url": r.url, "host": r.host, "thumb": thumb,
                       "ago": _ago(r.date), "source": r.source if kind == "images" else r.host,
-                      "length": r.length})
+                      "length": r.length, **({"full": r.img_src} if kind == "images" and r.img_src else {})})
         if len(items) >= 12:
             break
     return JSONResponse(items)
@@ -244,6 +266,26 @@ async def api_places(request: Request, cat: str, area: str = Query("", max_lengt
         return JSONResponse(await views.places_payload(request.app.state.ext, cat, area, near))
     except (httpx.HTTPError, ValueError, KeyError, IndexError):
         return JSONResponse({"error": "OpenStreetMap's servers didn't answer in time. Try again in a minute."})
+
+
+@app.get("/api/product")
+async def api_product(request: Request, name: str = Query(..., min_length=1, max_length=120),
+                      q: str = Query(..., min_length=1, max_length=300), brand: str = Query("", max_length=60),
+                      alias: str = Query("", max_length=120), used: bool = False, stale: bool = False) -> JSONResponse:
+    """More prices and reviews for a product panel: this search plus a price search and a review search,
+    and for an older model a search on the home country's second-hand market."""
+    market = products.secondhand(name, 1, settings.home_country, 9999)["market"] if used else ""
+    results = await products.gather(request.app.state.searx, name, q, market)
+    return JSONResponse(products.live_parts(name, results, brand=brand, home=settings.home_currency,
+                                            aliases=(alias,) if alias else (), country=settings.home_country, old=stale))
+
+
+@app.get("/api/product/photos")
+async def api_product_photos(request: Request, name: str = Query(..., min_length=1, max_length=120),
+                             brand: str = Query("", max_length=60), alias: str = Query("", max_length=120)) -> JSONResponse:
+    """Photos for a product panel, credited to the maker's site, a store or a review site."""
+    resp = await request.app.state.searx.search(name, "images")
+    return JSONResponse(products.photos(rank_images(name, resp.results), name, brand, (alias,) if alias else ()))
 
 
 @app.get("/api/watch")
@@ -303,6 +345,14 @@ async def api_filmography(request: Request, qid: str, tmdb: str = "") -> JSONRes
         return JSONResponse(await credits.filmography(request.app.state.ext, qid, tmdb, settings.tmdb_api_key))
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return JSONResponse({"items": [], "error": "unavailable"})
+
+
+@app.get("/api/spotify")
+async def api_spotify(request: Request, title: str = Query(..., min_length=1, max_length=120),
+                      artist: str = Query("", max_length=120)) -> JSONResponse:
+    """The Spotify player for a song or album Wikidata has no Spotify ID for, found through a web search."""
+    resp = await request.app.state.searx.search(f"{title} {artist} spotify".strip())
+    return JSONResponse(views.spotify_from_results(resp.results, title, artist) or {})
 
 
 @app.get("/api/lyrics")

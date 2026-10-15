@@ -586,3 +586,65 @@ def test_swe_bench_tab_is_pinned():
 def test_ai_model_unavailable_falls_back_to_entity(client):
     html = client.get("/search", params={"q": "zendaya"}).text            # epoch.ai 404s in `upstream`
     assert "hero-entity" in html and "hero-aimodel" not in html
+
+
+def searxng_reply(results):
+    return httpx.MockTransport(lambda r: httpx.Response(200, json={**EMPTY_SEARCH, "results": results}))
+
+
+SONY_LISTINGS = [
+    {"title": "WH-1000XM5 | Wireless Noise Cancelling Headphones - Sony India", "url": "https://www.sony.co.in/wh-1000xm5",
+     "content": "Our ultra comfortable WH-1000XM5 headphones rewrite the rules.", "engines": ["google"]},
+    {"title": "SONY WH-1000XM5 Wireless Noise Cancellation (Midnight Blue)", "url": "https://www.flipkart.com/sony-wh-1000xm5/p/1",
+     "content": "Buy SONY WH-1000XM5 for Rs.34990 Online ; 30 Hours Battery Life", "engines": ["google"]},
+    {"title": "Sony WH-1000XM5 price drop", "url": "https://www.croma.com/sony-wh-1000xm5/p/2", "content": "Now ₹24,990.",
+     "engines": ["google"]},
+    {"title": "Sony WH-1000XM5 review - SoundGuys", "url": "https://www.soundguys.com/sony-wh-1000xm5-review",
+     "content": "20 May 2022 ... Strong bass and treble emphasis. Score 8.5/10", "engines": ["google"]},
+]
+
+
+def test_product_hero_from_store_listings(client):
+    app.state.searx = SearXNG(httpx.AsyncClient(base_url=settings.searxng_url, transport=searxng_reply(SONY_LISTINGS)))
+    html = client.get("/search", params={"q": "sony wh-1000xm5"}).text
+    assert "hero-product" in html and "Sony WH-1000XM5" in html and "Headphones" in html
+    assert "₹24,990" in html and "to ₹34,990" in html and "lowest at Croma" in html
+    assert "SoundGuys" in html and "8.5/10" in html and "Video reviews" in html
+    assert 'data-ai-question="Is the Sony WH-1000XM5 worth buying?"' in html   # opens AI Mode on that question
+    live = client.get("/api/product", params={"name": "Sony WH-1000XM5", "q": "sony wh-1000xm5", "brand": "Sony"}).json()
+    assert live["price"]["low_text"] == "₹24,990" and {o["store"] for o in live["offers"]} >= {"Croma", "Flipkart", "Sony"}
+    ai = client.get("/ai", params={"q": "sony wh-1000xm5"}).text
+    assert "ai-welcome-asks" in ai and "Where is the Sony WH-1000XM5 cheapest right now?" in ai
+
+
+def test_product_hero_from_wikidata(client):
+    page = {"query": {"pages": [{"title": "IPhone 16 Pro", "fullurl": "https://en.wikipedia.org/wiki/IPhone_16_Pro",
+                                 "description": "2024 smartphone by Apple", "extract": "The iPhone 16 Pro is a smartphone.",
+                                 "pageprops": {"wikibase_item": "Q130267746"},
+                                 "original": {"source": "https://upload.wikimedia.org/i16.svg", "width": 600, "height": 900},
+                                 "thumbnail": {"source": "https://upload.wikimedia.org/i16.png"}}]}}
+    claims = {"entities": {"Q130267746": {"claims": {
+        "P31": [item("Q19723451")], "P176": [item("Q312")], "P1716": [item("Q312")], "P155": [item("Q1")], "P156": [item("Q2")],
+        "P306": [item("Q48493")],
+        "P2067": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "quantity", "value": {"amount": "+199", "unit": "http://www.wikidata.org/entity/Q41803"}}}, "rank": "normal"}],
+    }}}}
+    labels = {"entities": {"Q312": {"labels": {"en": {"value": "Apple Inc."}}}, "Q1": {"labels": {"en": {"value": "iPhone 15 Pro"}}},
+                           "Q2": {"labels": {"en": {"value": "iPhone 17 Pro"}}}, "Q48493": {"labels": {"en": {"value": "iOS"}}},
+                           "Q19723451": {"labels": {"en": {"value": "smartphone model"}}}}}
+
+    def reply(request):
+        if request.url.host == "en.wikipedia.org":
+            return httpx.Response(200, json=page)
+        if request.url.host == "www.wikidata.org":
+            return httpx.Response(200, json=claims if request.url.params.get("props", "").startswith("claims") else labels)
+        return httpx.Response(404)
+
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(reply))
+    app.state.searx = SearXNG(httpx.AsyncClient(base_url=settings.searxng_url, transport=searxng_reply([
+        {"title": "Apple iPhone 16 Pro (Desert Titanium, 256 GB)", "url": "https://www.flipkart.com/iphone-16-pro/p/3",
+         "content": "₹1,19,900 ; A18 Pro Chip, 6 Core Processor", "engines": ["google"]}])))
+    html = client.get("/search", params={"q": "iphone 16 pro price"}).text
+    assert "hero-product" in html and "iPhone 16 Pro" in html and "Smartphone" in html
+    assert "https://upload.wikimedia.org/i16.png" in html                    # the SVG drawing's PNG render
+    assert "iPhone 15 Pro" in html and "iPhone 17 Pro" in html                # model line
+    assert "Operating system" in html and "199 g" in html and "₹1,19,900" in html and "Desert Titanium" in html

@@ -19,7 +19,8 @@ from archer import visuals
 from archer.ai_budget import Budget
 from archer.ai_provider import AIError, Provider, readiness, resolve
 from archer.ai_tools import Toolbox, schemas
-from archer.evidence import from_view, now, add
+from archer.evidence import from_view, now, add, product_facts, public_url
+from archer.sources import products
 from archer.fetcher import PageReader
 
 
@@ -38,7 +39,7 @@ class Cell(BaseModel):
 class Block(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["summary", "paragraph", "callout", "facts", "verdict", "proscons", "products", "bars",
-                  "timeline", "quote", "inference", "limitation", "table", "list", "steps"] = "paragraph"
+                  "timeline", "quote", "inference", "limitation", "table", "list", "steps", "specs"] = "paragraph"
     tone: Literal["key", "tip", "warning", "positive", "mixed", "negative"] = "key"
     heading: str = Field(default="", max_length=120)
     text: str = Field(default="", max_length=2500)
@@ -61,7 +62,14 @@ building the mechanism step by step; how-to -> summary + steps (+ a warning call
 pitfall); comparison -> summary naming the deciding difference + table; recommendation -> summary +
 inference with explicit conditions ("If you mainly X, choose A"); overview -> summary + what it is,
 how it works / key features, practical uses, availability and tradeoffs where evidenced; current
-event -> summary with dates, then what is confirmed vs reported.
+event -> summary with dates, then what is confirmed vs reported; product (one specific model, and the
+evidence has an "Archer product card") -> summary with the bottom line and the price range the card
+shows, verdict for buy/worth-it questions, specs, proscons drawn from the reviews, bars of expert
+scores when two or more outlets give one (value out of 10, label = outlet), and products for
+alternatives or where to buy (cite the store listing). Name prices with their store and date caveat.
+With two or more product cards (a comparison), add a table with one column per product (price, the specs
+both cards or their listings give, expert score) and say which to pick for whom; "role":"used" offers are
+second-hand prices, never a product's new price.
 
 BLOCKS. Schema: {"kind":..., "heading":"optional", "text":"plain text", "citations":["S1"]}.
 - summary: ALWAYS the first block. One or two sentences that directly answer the question with the
@@ -84,6 +92,9 @@ BLOCKS. Schema: {"kind":..., "heading":"optional", "text":"plain text", "citatio
 - products: 1-6 product or option cards, items:[{"label":"Product name","value":"₹8,600",
   "text":"one-line differentiator","citations":["S4"]}]. Cite the listing/retailer source for each
   item: Archer shows that source's photo and link. Use for shopping, deals and alternatives.
+- specs: one product's spec sheet, 4-12 rows, items:[{"label":"Display","text":"6.3-inch OLED, 120 Hz",
+  "citations":["S2"]}]. Labels <= 3 words (Display, Chip, Battery, Cameras, Weight, Storage). Use it
+  instead of facts when a product has more than four specs worth knowing.
 - bars: 2-8 comparable numbers on one scale (prices, scores, speeds), items:[{"label":"This deal",
   "value":"8600","text":"optional unit or note","citations":["S2"]}]. value is digits only.
 - timeline: 2-8 dated events in order, items:[{"label":"2019","text":"what happened","citations":["S3"]}].
@@ -365,6 +376,61 @@ class AIService:
         self.runs[run.id] = run
         return run
 
+    async def product_card(self, run, toolbox):
+        """A product search opens AI Mode with its product card, refreshed with a price and a review search.
+        A comparison ("iPhone 16 vs iPhone 17") gets a card, listings and reviews for every product it names."""
+        sid = next((k for k, card in run.ui.items() if card["kind"] == "product"), None)
+        sides = products.comparison_sides(run.question)
+        if not sid and not sides:
+            return
+        run.emit("status", {"stage": "gathering", "text": "Checking store listings and reviews"})
+        covered = None
+        if sid and run.parent:
+            data = run.ui[sid]["data"]  # a follow-up: its card is already on screen above
+            covered = products.Matcher(data["name"], *data.get("aliases", []))
+        elif sid:
+            card = run.ui[sid]
+            data = card["data"]
+            found = await self.product_results(data["name"], run.snapshot.query or data["name"],
+                                               (data.get("secondhand") or {}).get("market", ""))
+            if found:
+                data.update(products.live_parts(data["name"], found, brand=data.get("brand", ""), home=self.settings.home_currency,
+                                                aliases=tuple(data.get("aliases", [])), country=self.settings.home_country,
+                                                old=(data.get("secondhand") or {}).get("stale", False)))
+                evidence = next((e for e in run.evidence if e.id == sid), None)
+                if evidence:
+                    evidence.text = json.dumps(product_facts(data), ensure_ascii=False)[:24000]
+                self.add_listings(run, found, products.Matcher(data["name"], *data.get("aliases", [])))
+            run.emit("card", {"source_id": sid, **card})
+            toolbox.shown.add(sid)
+            covered = products.Matcher(data["name"], *data.get("aliases", []))
+        for side in sides:
+            if covered and covered(side):
+                continue  # the search's own product already has its card
+            found = await self.product_results(side, side)
+            if not found or not products.detect(side, found):
+                continue
+            data = products.panel(side, found, home=self.settings.home_currency, country=self.settings.home_country)
+            # No URL, so the card never merges with a search result of the same page.
+            card = add(run.evidence, "Archer product card · " + data["name"], "", json.dumps(product_facts(data), ensure_ascii=False),
+                       kind="card", limitation="Product card built from search-result snippets; stores were not visited.")
+            run.ui[card.id] = {"kind": "product", "title": card.title, "data": data}
+            self.add_listings(run, found, products.Matcher(data["name"], *data.get("aliases", [])))
+            run.emit("card", {"source_id": card.id, **run.ui[card.id]})
+            toolbox.shown.add(card.id)
+
+    async def product_results(self, name, q, market=""):
+        try:
+            return await products.gather(self.searx, name, q, market)
+        except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+            return []
+
+    def add_listings(self, run, found, match):
+        """The listings and reviews behind a product card's figures, so the answer can cite each one."""
+        for result in [r for r in found if match(r.title)][:10]:
+            add(run.evidence, result.title, result.url, result.content or result.title, engines=result.engines,
+                published=result.date, thumbnail=public_url(result.thumbnail))
+
     async def execute(self, run, selected):
         limits = {"input": 0, "output": 0, "usd": 0.0,
             "input_limit": 12000 if run.depth == "compact" else 40000,
@@ -380,11 +446,13 @@ class AIService:
                 for warning in run.snapshot.warnings:
                     run.emit("notice", {"text": warning})
                 run.emit("status", {"stage": "gathering", "text": "Gathering the evidence"})
+                if run.depth == "research" and not selected:
+                    await self.product_card(run, toolbox)
                 if not run.snapshot.query and not run.history:
                     response = await self.searx.search(run.question)
                     for result in response.results[:10]:
                         add(run.evidence, result.title, result.url, result.content or result.title,
-                            engines=result.engines, published=result.date, thumbnail=result.thumbnail)
+                            engines=result.engines, published=result.date, thumbnail=public_url(result.thumbnail))
                 if not run.evidence and run.depth == "compact":
                     # A deterministic card adapter may still answer a weather task below.
                     if not weather_task(run.question):
@@ -608,6 +676,13 @@ class AIService:
             return json.dumps(summary, ensure_ascii=False)
         if card["kind"] == "calculation":
             return json.dumps(data, ensure_ascii=False)  # Preserve exact inputs, results and conventions.
+        if card["kind"] == "product":
+            # Every price with its store and every score with its outlet, kept whole; the reviews' text
+            # and the listing links are separate sources, so they stay out of the card.
+            facts = product_facts(data)
+            facts["offers"] = [{k: v for k, v in o.items() if k != "url"} for o in facts["offers"]]
+            facts["reviews"] = [{k: r[k] for k in ("site", "score_text", "date")} for r in facts["reviews"]]
+            return json.dumps(facts, ensure_ascii=False)[:max(chars, 4000)]
         return evidence.text[:chars]
 
     async def close(self):
@@ -651,6 +726,16 @@ def picture_title(item):
     return title
 
 
+def store_listing(card, label):
+    """The listing URL of the store a product item names ("Croma (cheapest found)" -> Croma's page)."""
+    try:
+        offers = json.loads(card.text).get("offers", [])
+    except (ValueError, AttributeError):
+        return ""
+    low = label.lower()
+    return next((o["url"] for o in offers if o.get("store") and o["store"].lower() in low and o.get("url")), "")
+
+
 def validate_block(raw, evidence, first=False):
     block = Block.model_validate(raw)
     known = {e.id for e in evidence}
@@ -675,7 +760,7 @@ def validate_block(raw, evidence, first=False):
     block.text = limit_marks(block.text, 1 if block.kind in ("summary", "callout") else 2)
     if block.kind == "verdict" and block.citations:
         check_numbers(block.text, block.citations, evidence)
-    labelled = ("facts", "products", "bars", "timeline")
+    labelled = ("facts", "products", "bars", "timeline", "specs")
     if block.kind == "proscons":
         if not block.pros and not block.cons:
             raise AIError("AI returned an unusable layout block.")
@@ -704,6 +789,9 @@ def validate_block(raw, evidence, first=False):
         source = by_id.get(item.citations[0])
         item.image = source.thumbnail if block.kind == "products" and source else ""
         item.url = source.url if block.kind == "products" and source else ""
+        if block.kind == "products" and source and source.title.startswith("Archer product card"):
+            # Cited the product card: link the listing of the store the item names, never the card's own page.
+            item.image, item.url = "", store_listing(source, item.label)
         item.text = limit_marks(item.text, 1)
     if block.kind in ("list", "steps", *labelled) and not block.items:
         raise AIError("AI returned an empty list.")

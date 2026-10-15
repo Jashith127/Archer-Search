@@ -1,0 +1,191 @@
+{% from "macros.html" import hero_badge, link_chip, site_badge %}
+{% set p = v.hero.data %}
+{# Product panel: gallery + buy box up top, then Overview / Reviews / Specs. Prices, ratings and scores
+   come from search listings (sources/products.py); archer.js adds more after the page is up. #}
+{% macro stars(value) -%}
+<span class="pd-stars" style="--v: {{ value }}" aria-hidden="true"></span>
+{%- endmacro %}
+{% macro ring(score, size="") -%}
+<span class="pd-ring{% if size %} pd-ring--{{ size }}{% endif %} {{ 'is-high' if score >= 8 else 'is-mid' if score >= 6.5 else 'is-low' }}" aria-hidden="true">
+  <svg viewBox="0 0 36 36"><circle class="pd-ring-track" cx="18" cy="18" r="15.5"/><circle class="pd-ring-fill" cx="18" cy="18" r="15.5" pathLength="100" stroke-dasharray="{{ (score * 10)|round(1) }} 100"/></svg>
+  <span>{{ '%g'|format(score) }}</span>
+</span>
+{%- endmacro %}
+{% macro offer_row(o) -%}
+<li class="pd-offer{% if o.best %} is-best{% endif %}" data-pd-role="{{ o.role }}">
+  <a href="{{ o.url }}" rel="noopener noreferrer">
+    {{ site_badge(o.host) }}
+    <span class="pd-offer-store"><strong>{{ o.store }}</strong><small>{% if o.variant %}{{ o.variant }} · {% endif %}{{ {"official": "Official store", "store": "Store", "guide": "Price tracker", "used": "Used or refurbished"}[o.role] }}{% if o.stock %} · {{ o.stock }}{% endif %}{% if o.rating %} · ★ {{ o.rating }}{% endif %}</small></span>
+    {% if o.best %}<span class="pd-tag">Lowest</span>{% endif %}
+    <span class="pd-offer-price">{% if o.price_text %}{{ o.price_text }}{% else %}<span class="muted">See price</span>{% endif %}</span>
+    <svg class="pd-offer-go" aria-hidden="true"><use href="#i-ext"/></svg>
+  </a>
+</li>
+{%- endmacro %}
+
+<section class="hero hero-product" data-product data-name="{{ p.name }}" data-q="{{ v.q }}" data-brand="{{ p.brand }}"
+  data-alias="{{ p.aliases[0] if p.aliases else '' }}" data-intent="{{ p.intent }}"{% if p.secondhand.old %} data-used="1"{% endif %}{% if p.secondhand.stale %} data-stale="1"{% endif %}>
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge("package", "Product", p.category) }}
+      <h1 class="hero-title">{{ p.name }}</h1>
+      <p class="hero-sub pd-sub">
+        {%- set bits = [] %}{% if p.brand %}{% set _ = bits.append(p.brand) %}{% endif %}{% if p.released %}{% set _ = bits.append("Released " ~ p.released) %}{% endif %}
+        {{- bits|join(" · ") }}{% if bits and p.description %} · {% endif %}{% if p.description %}<span class="muted">{{ p.description[:1]|upper }}{{ p.description[1:] }}</span>{% endif %}
+      </p>
+    </div>
+    {% if p.links %}<div class="hero-links">{% for l in p.links %}{{ link_chip(l) }}{% endfor %}</div>{% endif %}
+  </div>
+
+  <div class="pd-top">
+    <div class="pd-gallery" data-pd-gallery>
+      <div class="pd-stage{% if not p.images %} is-loading{% endif %}">
+        {% if p.images %}
+        <img data-pd-main src="{{ p.images[0] }}" alt="{{ p.name }}" referrerpolicy="no-referrer">
+        {% else %}
+        <svg class="pd-stage-empty" data-pd-empty aria-hidden="true"><use href="#u-package"/></svg>
+        <img data-pd-main alt="{{ p.name }}" referrerpolicy="no-referrer" hidden>
+        {% endif %}
+        <a class="pd-credit" data-pd-credit{% if p.images %} href="{{ p.wiki_url }}"{% else %} hidden{% endif %} rel="noopener noreferrer">{% if p.images %}Photo · Wikipedia{% endif %}</a>
+      </div>
+      <div class="pd-thumbs" data-pd-thumbs{% if p.images|length < 2 %} hidden{% endif %}>
+        {% for src in p.images %}
+        <button type="button" class="pd-thumb{% if loop.first %} is-active{% endif %}" data-pd-thumb="{{ src }}" data-pd-full="{{ src }}" data-pd-url="{{ p.wiki_url }}" data-pd-source="Wikipedia" aria-label="Picture {{ loop.index }}"><img src="{{ src }}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="pd-buy">
+      <div class="pd-price" data-pd-price>
+        {% if p.price %}
+        <p class="pd-eyebrow">{{ "Listed price" if p.price.listed else "Price" }}</p>
+        <p class="pd-price-main"><strong>{{ p.price.low_text }}</strong>{% if p.price.high_text %}<span class="pd-price-to">to {{ p.price.high_text }}</span>{% endif %}</p>
+        <p class="pd-price-sub">{% if p.price.variant %}<b>{{ p.price.variant }}</b> · {% endif %}{% if p.price.listed %}From price trackers; no store page shows a price yet{% elif p.price.stores > 1 %}Across {{ p.price.stores }} stores{% set best = p.offers|selectattr("best")|first %}{% if best %} · lowest at {{ best.store }}{% endif %}{% else %}From one store's product page{% endif %}</p>
+        {% else %}
+        <p class="pd-eyebrow">Price</p>
+        <p class="pd-price-main pd-price-main--none"><strong>Checking stores…</strong></p>
+        <p class="pd-price-sub">{% if p.secondhand.old %}No store listing shows a price. Released in {{ p.secondhand.year }}, so second-hand options are below too.{% else %}No listing in these results shows a price yet.{% endif %}</p>
+        {% endif %}
+      </div>
+
+      <div class="pd-scores" data-pd-scores{% if not (p.rating or p.score) %} hidden{% endif %}>
+        {% if p.score %}
+        <a class="pd-score" href="#pd-reviews" data-pd-goto="reviews">{{ ring(p.score.value) }}<span><strong>Expert score</strong><small>{{ p.score.count }} review{{ "s" if p.score.count != 1 }} · out of 10</small></span></a>
+        {% endif %}
+        {% if p.rating %}
+        <div class="pd-score">{{ stars(p.rating.value) }}<span><strong>{{ p.rating.value }} <span class="muted">/ 5</span></strong><small>Store rating{% if p.rating.votes %} · {{ "{:,}".format(p.rating.votes) }} ratings{% endif %}</small></span></div>
+        {% endif %}
+      </div>
+
+      {% set fresh = p.offers|rejectattr("role", "equalto", "used")|list %}
+      {% set used = p.offers|selectattr("role", "equalto", "used")|list %}
+      <ol class="pd-offers{% if fresh|length > 5 and p.intent != 'price' %} is-clamped{% endif %}" data-pd-offers>
+        {% for o in fresh %}{{ offer_row(o) }}{% endfor %}
+      </ol>
+      <button type="button" class="pd-more" data-pd-more{% if fresh|length <= 5 or p.intent == 'price' %} hidden{% endif %}>Show all {{ fresh|length }} listings</button>
+      {# Older models: the country's second-hand markets, priced on their own line. #}
+      <div class="pd-used" data-pd-used{% if not (p.secondhand.old or used) %} hidden{% endif %}>
+        <p class="pd-eyebrow">Second-hand</p>
+        <p class="pd-used-sum" data-pd-used-sum>{% if p.used %}Used from <b>{{ p.used.low_text }}</b> · {{ p.used.count }} listing{{ "s" if p.used.count != 1 }}{% elif p.secondhand.year %}Released in {{ p.secondhand.year }}, so it often sells used. Looking for listings…{% endif %}</p>
+        <ol class="pd-offers pd-offers--used" data-pd-used-offers>{% for o in used %}{{ offer_row(o) }}{% endfor %}</ol>
+        {% if p.secondhand.links %}
+        <div class="pd-used-links">{% for l in p.secondhand.links %}<a class="pd-chip pd-chip--link" href="{{ l.url }}" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-search"/></svg>Search {{ l.name }}</a>{% endfor %}</div>
+        {% endif %}
+      </div>
+      <p class="pd-fine">Only stores' own product pages are listed. Prices come from their search listings and can lag the store, so check before you buy.</p>
+    </div>
+  </div>
+
+  <nav class="pd-tabs" role="tablist" aria-label="Product details">
+    <button type="button" role="tab" class="pd-tab" data-pd-tab="overview" aria-selected="{{ 'true' if p.tab in ('overview', 'prices') else 'false' }}">Overview</button>
+    <button type="button" role="tab" class="pd-tab" data-pd-tab="reviews" aria-selected="{{ 'true' if p.tab == 'reviews' else 'false' }}">Reviews <span class="pd-count" data-pd-review-count>{{ p.reviews|length or "" }}</span></button>
+    <button type="button" role="tab" class="pd-tab" data-pd-tab="specs" aria-selected="{{ 'true' if p.tab == 'specs' else 'false' }}"{% if not (p.specs or p.highlights) %} hidden{% endif %}>Specs</button>
+  </nav>
+
+  <div class="pd-panel" role="tabpanel" data-pd-panel="overview"{% if p.tab not in ('overview', 'prices') %} hidden{% endif %}>
+    <div class="pd-overview">
+      <div class="pd-overview-main">
+        {% if p.extract %}<p class="pd-about">{{ p.extract|truncate(620, True, "…") }} <a href="{{ p.wiki_url }}">Wikipedia</a></p>{% endif %}
+        <div class="pd-highlights" data-pd-highlights{% if not p.highlights %} hidden{% endif %}>
+          <p class="pd-label">Highlights</p>
+          <ul>{% for h in p.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
+        </div>
+        {% if p.lineage.previous or p.lineage.next %}
+        <div class="pd-lineage">
+          <p class="pd-label">Model line</p>
+          <div class="pd-line">
+            {% if p.lineage.previous %}<a class="pd-line-step" href="/search?q={{ p.lineage.previous|qs }}"><small>Previous</small>{{ p.lineage.previous }}</a>{% endif %}
+            <span class="pd-line-step is-current"><small>This model</small>{{ p.name }}</span>
+            {% if p.lineage.next %}<a class="pd-line-step" href="/search?q={{ p.lineage.next|qs }}"><small>Next</small>{{ p.lineage.next }}</a>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+        {% set quotes = p.reviews|selectattr("excerpt")|list %}
+        <div class="pd-quotes" data-pd-quotes{% if not quotes %} hidden{% endif %}>
+          <p class="pd-label">What reviewers say</p>
+          {% for r in quotes[:3] %}
+          <blockquote class="pd-quote"><p>{{ r.excerpt }}</p><footer>{{ site_badge(r.host) }}<a href="{{ r.url }}" rel="noopener noreferrer">{{ r.site }}</a>{% if r.score is not none %}<span class="muted">· {{ r.score_text }}</span>{% endif %}</footer></blockquote>
+          {% endfor %}
+        </div>
+      </div>
+      <aside class="pd-variants" data-pd-variants{% if not (p.variants.storage or p.variants.colors) %} hidden{% endif %}>
+        <div data-pd-storage{% if not p.variants.storage %} hidden{% endif %}>
+          <p class="pd-label">Storage</p>
+          <div class="pd-chips">{% for s in p.variants.storage %}<span class="pd-chip">{{ s }}</span>{% endfor %}</div>
+        </div>
+        <div data-pd-colors{% if not p.variants.colors %} hidden{% endif %}>
+          <p class="pd-label">Colours</p>
+          <div class="pd-chips">{% for c in p.variants.colors %}<span class="pd-chip pd-colour"><i style="--c: {{ c.hex }}"></i>{{ c.name }}</span>{% endfor %}</div>
+        </div>
+      </aside>
+    </div>
+    {% if p.rivals %}
+    <div class="pd-compare">
+      <p class="pd-label">Compare with</p>
+      <div class="pd-chips">{% for r in p.rivals %}<a class="pd-chip pd-chip--link" href="/search?q={{ (p.name ~ ' vs ' ~ r)|qs }}"><svg aria-hidden="true"><use href="#u-scale"/></svg>{{ r }}</a>{% endfor %}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="pd-panel" role="tabpanel" id="pd-reviews" data-pd-panel="reviews"{% if p.tab != 'reviews' %} hidden{% endif %}>
+    <div class="pd-reviews" data-pd-reviews>
+      {% for r in p.reviews %}
+      <a class="pd-review" href="{{ r.url }}" rel="noopener noreferrer">
+        <span class="pd-review-head">{{ site_badge(r.host) }}<span><strong>{{ r.site }}</strong>{% if r.date %}<small>{{ r.date }}</small>{% endif %}</span>{% if r.score is not none %}{{ ring(r.score, "sm") }}{% endif %}</span>
+        <span class="pd-review-title">{{ r.title }}</span>
+        {% if r.excerpt %}<span class="pd-review-text">{{ r.excerpt }}</span>{% endif %}
+      </a>
+      {% else %}
+      <p class="muted pd-empty" data-pd-reviews-empty>Looking for expert reviews…</p>
+      {% endfor %}
+    </div>
+    <section class="strip strip--videos" data-pd-videos hidden>
+      <h2 class="section-title"><svg><use href="#i-video"/></svg>Video reviews</h2>
+      <div class="strip-row"></div>
+    </section>
+  </div>
+
+  <div class="pd-panel" role="tabpanel" data-pd-panel="specs"{% if p.tab != 'specs' %} hidden{% endif %}>
+    {% if p.specs %}
+    <dl class="pd-specs">
+      {% for label, value, icon in p.specs %}
+      <div><dt><svg aria-hidden="true"><use href="#u-{{ icon }}"/></svg>{{ label }}</dt><dd>{{ value }}</dd></div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% if p.highlights %}
+    <p class="pd-label">From store listings</p>
+    <ul class="pd-spec-list">{% for h in p.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p class="pd-fine">{% if p.specs %}Specs from Wikidata{% if p.highlights %} and store listings{% endif %}.{% else %}From store listings.{% endif %}</p>
+  </div>
+
+  {% if ai.snapshot %}
+  <div class="pd-ask">
+    <span class="pd-ask-label"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>Ask AI Mode</span>
+    <div class="pd-ask-list">
+      {% for question in p.questions %}<button type="button" class="pd-ask-chip" data-ai-question="{{ question }}">{{ question }}<span aria-hidden="true">↗</span></button>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>

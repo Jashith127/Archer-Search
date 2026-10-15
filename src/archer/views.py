@@ -13,7 +13,7 @@ from archer.config import settings
 from archer.imagerank import rank_images
 from archer.query import PLACE_TYPES, Query, classify
 from archer.searxng import Result, SearchResponse, SearXNG, suggestion_terms
-from archer.sources import aimodels, crypto, dictionary, fx, modelprices, places, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, fx, modelprices, places, products, translate, weather, wiki
 from archer.utilities import parse_currency_answer
 
 log = logging.getLogger("archer")
@@ -205,6 +205,24 @@ async def _ai_model_or_entity(ext: httpx.AsyncClient, query: Query) -> Hero | No
     return await _entity(ext, query) if query.entity_candidate else None
 
 
+def _product_hero(query: Query, hero: Hero | None, response: SearchResponse, related: list[str]) -> Hero | None:
+    """A product panel when Wikidata calls the entity a product, or when stores list the model searched for."""
+    entity = hero.data if hero and hero.kind == "entity" else None
+    if hero and not entity:
+        return None  # an AI model card or another dedicated hero
+    name = query.entity_candidate or ""
+    if entity and entity["kind"] == "product":
+        return Hero("product", products.panel(name or entity["title"], response.results, entity=entity,
+                                              intent=query.product_intent, related=related, home=settings.home_currency,
+                                              country=settings.home_country))
+    if entity and entity["kind"] != "thing" and products.Matcher(name)(entity["title"]):
+        return None  # a film, person or company of this name, not something to buy
+    if name and products.detect(name, response.results):
+        return Hero("product", products.panel(name, response.results, intent=query.product_intent, related=related,
+                                              home=settings.home_currency, country=settings.home_country))
+    return None
+
+
 ASYNC_HEROES = {"weather": _place_hero, "time": _place_hero, "sun": _place_hero, "define": _define,
                 "translate": _translate, "crypto": _crypto}
 # Named in the "couldn't load" notice when a hero's source fails.
@@ -220,6 +238,23 @@ def _quick_answer(response: SearchResponse) -> Hero | None:
         if answer.get("engine") == "duckduckgo" and len(text) > 40 and url.startswith("https://"):
             host = url.split("/")[2].removeprefix("www.")
             return Hero("answer", {"text": text, "url": url, "host": host})
+    return None
+
+
+_SPOTIFY_PAGE = re.compile(r"^https://open\.spotify\.com/(?:intl-[a-z]{2}/)?(track|album)/([A-Za-z0-9]{22})(?:[/?#]|$)")
+
+
+def spotify_from_results(results: list[Result], title: str, artist: str = "") -> dict | None:
+    """A Spotify track or album page among search results that names this title (and artist, when known)."""
+    def norm(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", text.casefold())
+    want, by = norm(title), norm(re.split(r",| and | & | feat", artist)[0]) if artist else ""
+    for result in results[:15]:
+        match = _SPOTIFY_PAGE.match(result.url)
+        text = norm(f"{result.title} {result.content}")
+        if match and want and want in text and (not by or by in text):
+            kind, item = match.groups()
+            return {"embed": f"https://open.spotify.com/embed/{kind}/{item}", "url": f"https://open.spotify.com/{kind}/{item}"}
     return None
 
 
@@ -297,6 +332,8 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
         if not query.entity_candidate:  # a chip on a longer query: still offer the way back
             query.entity_candidate = about
         view.hero = await _settle_meaning(ext, query, view.hero, response.results, about)
+    if first_page_all and query.kind == "general" and query.entity_candidate:
+        view.hero = _product_hero(query, view.hero, response, view.related) or view.hero
     if first_page_all and not view.hero and query.kind in ("general", "question"):
         view.hero = _song_from_results(query.text, response.results)
     if first_page_all and query.kind == "places":
@@ -325,8 +362,9 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
     if first_page_all:
         entity = view.hero.data if view.hero and view.hero.kind == "entity" else None
         kind = entity["kind"] if entity else None
+        product = view.hero.data if view.hero and view.hero.kind == "product" else None
         view.lazy = {
-            "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind == "aimodel")),
+            "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind in ("aimodel", "product"))),
             "videos": query.wants_videos,
             "images": query.wants_images or kind in IMAGE_KINDS,
             "works": {"qid": entity["qid"], "role": entity["works_role"]}
@@ -336,5 +374,7 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
             "cast": {"qid": entity["qid"], "media": entity["watch"]["media"], "tmdb": entity["watch"]["tmdb"],
                      "names": entity.get("cast", [])} if kind in ("film", "tv") and entity.get("watch") else None,
             "weather_at": entity["coords"] if kind in WEATHER_KINDS and entity.get("coords") else None,
+            # More prices and reviews (two cached searches) and a picture gallery, after the page is up.
+            "product": {"name": product["name"], "q": query.text} if product else None,
         }
     return view

@@ -314,6 +314,11 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }).catch(() => {});
       }
+    } else if (block.kind === "specs") {
+      // A product's spec sheet: label + value rows, each with a small icon for the kind of spec.
+      section.append(el("dl", { class: "ai-specs" }, ...block.items.map(item => el("div", { class: "ai-spec" },
+        el("dt", {}, icon(specIcon(item.label)), document.createTextNode(item.label)),
+        el("dd", {}, formatted(item.text), citations(item.citations))))));
     } else if (block.kind === "verdict") {
       const mark = { positive: "✓", mixed: "≈", negative: "✕" }[block.tone] || "≈";
       section.classList.add("ai-verdict--" + block.tone);
@@ -381,6 +386,39 @@ document.addEventListener("DOMContentLoaded", () => {
     decodeReveal(section);
   };
   const fact = (label, value) => el("div", { class: "ai-fact" }, el("small", { text: label }), el("strong", { text: String(value) }));
+  // The product this research is about: the same listings and scores as the results-page panel.
+  const productCard = (panel, data) => {
+    panel.classList.add("ai-pcard");
+    const lead = [data.brand, data.category].filter(Boolean).join(" · ");
+    const price = data.price;
+    const body = el("div", { class: "ai-pcard-body" },
+      lead ? el("small", { class: "ai-pcard-lead", text: lead }) : null,
+      el("strong", { class: "ai-pcard-name", text: data.name }),
+      price ? el("p", { class: "ai-pcard-price" }, el("b", { text: price.low_text }), price.high_text ? document.createTextNode(" – " + price.high_text) : null,
+        el("span", { text: price.listed ? " · listed price" : price.stores > 1 ? " · " + price.stores + " stores" : " · 1 store" })) : null);
+    const stats = el("div", { class: "ai-pcard-stats" });
+    if (data.score) stats.append(el("span", {}, scoreRing(data.score.value, true), el("small", { text: "Experts · " + data.score.count + (data.score.count === 1 ? " review" : " reviews") })));
+    if (data.rating) {
+      const stars = el("span", { class: "pd-stars", "aria-hidden": "true" });
+      stars.style.setProperty("--v", data.rating.value);
+      stats.append(el("span", {}, stars, el("small", { text: data.rating.value + " / 5 in stores" })));
+    }
+    if (stats.children.length) body.append(stats);
+    // The article photo, else the image search for this model (as on the results page), else a listing thumbnail.
+    const photo = el("span", { class: "ai-pcard-photo" }, icon("package"));
+    const fill = list => firstLoading(list.filter(isHttp).map(src => ({ thumb: src }))).then(found => { if (found) photo.replaceChildren(img(found.thumb, data.name)); });
+    if (data.images?.length) fill([...data.images]);
+    else getJSON("/api/product/photos?name=" + encodeURIComponent(data.name) + "&brand=" + encodeURIComponent(data.brand || ""))
+      .then(items => fill([...(Array.isArray(items) ? items : []).slice(0, 4).map(i => i.full || i.thumb), ...(data.thumbs || [])]));
+    const head = el("div", { class: "ai-pcard-head" }, photo, body);
+    const offers = el("div", { class: "ai-pcard-offers" });
+    for (const offer of (data.offers || []).filter(o => o.role !== "guide" && isHttp(o.url)).slice(0, 4)) {
+      offers.append(el("a", { class: "ai-pcard-offer" + (offer.best ? " is-best" : ""), href: offer.url, target: "_blank", rel: "noopener noreferrer" },
+        siteBadge(hostOf(offer.url)), el("span", { text: offer.store }), el("b", { text: offer.price_text || "See price" })));
+    }
+    panel.append(head);
+    if (offers.children.length) panel.append(offers);
+  };
   const renderCard = card => {
     if (turn.shown.has(card.source_id)) return;
     turn.shown.add(card.source_id);
@@ -425,6 +463,8 @@ document.addEventListener("DOMContentLoaded", () => {
         panel.append(row);
       }
       panel.append(safeLink(data.map, "Open map ↗"), el("p", { class: "ai-fine", text: "OpenStreetMap listings · no ratings or reviews · distance from the area centre" }));
+    } else if (card.kind === "product") {
+      productCard(panel, data);
     } else if (card.kind === "entity") {
       if (data.description) panel.append(el("p", { text: data.description }));
       const grid = el("div", { class: "ai-facts" });
@@ -518,7 +558,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (block.kind === "table") {
         lines.push("| " + block.columns.join(" | ") + " |", "|" + block.columns.map(() => " --- |").join(""));
         for (const row of block.rows) lines.push("| " + row.map(c => plain(c.text)).join(" | ") + " |");
-      } else if (["facts", "timeline", "products", "bars"].includes(block.kind)) block.items.forEach(item => lines.push("- " + [item.label + ":", item.value, plain(item.text)].filter(Boolean).join(" ")));
+      } else if (["facts", "timeline", "products", "bars", "specs"].includes(block.kind)) block.items.forEach(item => lines.push("- " + [item.label + ":", item.value, plain(item.text)].filter(Boolean).join(" ")));
       else if (block.kind === "proscons") {
         block.pros.forEach(item => lines.push("+ " + plain(item.text)));
         block.cons.forEach(item => lines.push("− " + plain(item.text)));
@@ -824,6 +864,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   find("[data-ai-begin]").addEventListener("click", () => start("research"));
+  // Suggested questions (the product panel, AI Mode's welcome) open research on that exact question.
+  document.querySelectorAll("[data-ai-question]").forEach(button => button.addEventListener("click", () => start("research", { question: button.dataset.aiQuestion })));
   find("[data-ai-back]").addEventListener("click", leaveFullView);
   find("[data-ai-web]").addEventListener("click", leaveFullView);
   document.addEventListener("keydown", event => {
@@ -940,6 +982,24 @@ function wireFavicon(imgEl) {
   else { imgEl.addEventListener("load", ok); imgEl.addEventListener("error", () => imgEl.remove()); }
 }
 $$(".badge-icon").forEach(wireFavicon);
+
+// ------------------------------------------------ rate-limit banner
+// Shown on every results page until dismissed; the dismissal covers this set of engines only, so a new
+// rate limit brings it back.
+const rateBanner = $("[data-rl-banner]");
+if (rateBanner) {
+  let dismissed = "";
+  try { dismissed = localStorage.getItem("archer-rl-dismissed") || ""; } catch { /* storage blocked: always show */ }
+  if (dismissed !== rateBanner.dataset.rlKey) {
+    rateBanner.hidden = false;
+    document.body.classList.add("has-rl");
+  }
+  $("[data-rl-close]", rateBanner).addEventListener("click", () => {
+    rateBanner.hidden = true;
+    document.body.classList.remove("has-rl");
+    try { localStorage.setItem("archer-rl-dismissed", rateBanner.dataset.rlKey); } catch { /* shows again next page */ }
+  });
+}
 
 const cache = new Map();
 function getJSON(url) {
@@ -1165,6 +1225,294 @@ for (const section of $$("[data-lazy]")) {
     $(".strip-row", section).replaceChildren(...items.slice(0, kind === "images" ? 12 : 8).map((i) => card(kind, i)));
   });
 }
+
+// ---------------------------------------------------- product panel
+// Gallery, tabs and "show all"; then /api/product adds listings and reviews from a price search and a
+// review search, and the image search adds pictures. Server markup is kept when nothing new arrives.
+function hostBadge(host) {
+  const parts = host.split(".");
+  const second = new Set(["co", "com", "org", "net", "ac", "gov", "edu", "nic", "gen", "ne", "or"]);
+  const raw = parts.length >= 3 && second.has(parts.at(-2)) ? parts.at(-3) : parts.length >= 2 ? parts.at(-2) : host;
+  const name = raw.charAt(0).toUpperCase() + raw.slice(1);
+  let crc = ~0;
+  for (const byte of new TextEncoder().encode(name)) {
+    crc ^= byte;
+    for (let k = 0; k < 8; k++) crc = crc & 1 ? (crc >>> 1) ^ 0xEDB88320 : crc >>> 1;
+  }
+  const badge = el("span", { class: "badge" }, (name[0] || "?").toUpperCase());
+  badge.style.setProperty("--h", String((~crc >>> 0) % 360));
+  const fav = el("img", { class: "badge-icon", src: "/api/favicon/" + host, alt: "", loading: "lazy" });
+  badge.append(fav);
+  wireFavicon(fav);
+  return badge;
+}
+
+const SPEC_ICONS = [[/display|screen/i, "layers"], [/chip|processor|cpu|gpu/i, "cube"], [/battery|charg/i, "timer"],
+  [/camera|lens/i, "target"], [/storage|memory|ram/i, "package"], [/weight|mass/i, "scale"], [/size|dimension/i, "ruler"],
+  [/price|cost/i, "coins"], [/\bos\b|software|system/i, "code"], [/release|launch/i, "calendar"], [/connect|bluetooth|wi-?fi|port/i, "link"]];
+const specIcon = (label) => (SPEC_ICONS.find(([re]) => re.test(label)) || [null, "info"])[1];
+
+function scoreRing(score, small) {
+  const band = score >= 8 ? "is-high" : score >= 6.5 ? "is-mid" : "is-low";
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 36 36");
+  for (const [cls, dash] of [["pd-ring-track", null], ["pd-ring-fill", score * 10]]) {
+    const c = document.createElementNS(ns, "circle");
+    for (const [k, v] of [["class", cls], ["cx", 18], ["cy", 18], ["r", 15.5]]) c.setAttribute(k, v);
+    if (dash != null) { c.setAttribute("pathLength", "100"); c.setAttribute("stroke-dasharray", dash.toFixed(1) + " 100"); }
+    svg.append(c);
+  }
+  return el("span", { class: `pd-ring${small ? " pd-ring--sm" : ""} ${band}`, "aria-hidden": "true" }, svg, el("span", { text: String(score) }));
+}
+
+const PD_ROLE = { official: "Official store", store: "Store", guide: "Price tracker", used: "Used or refurbished" };
+function offerRow(o) {
+  const meta = [o.variant, PD_ROLE[o.role] || "Store", o.stock, o.rating ? "★ " + o.rating : ""].filter(Boolean).join(" · ");
+  const link = el("a", { href: o.url, rel: "noopener noreferrer" },
+    hostBadge(o.host),
+    el("span", { class: "pd-offer-store" }, el("strong", { text: o.store }), el("small", { text: meta })),
+    o.best ? el("span", { class: "pd-tag", text: "Lowest" }) : null,
+    el("span", { class: "pd-offer-price" }, o.price_text ? document.createTextNode(o.price_text) : el("span", { class: "muted", text: "See price" })));
+  const go = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", "#i-ext");
+  go.setAttribute("class", "pd-offer-go");
+  go.append(use);
+  link.append(go);
+  return el("li", { class: "pd-offer" + (o.best ? " is-best" : ""), "data-pd-role": o.role }, link);
+}
+
+function reviewCard(r) {
+  return el("a", { class: "pd-review", href: r.url, rel: "noopener noreferrer" },
+    el("span", { class: "pd-review-head" }, hostBadge(r.host),
+      el("span", {}, el("strong", { text: r.site }), r.date ? el("small", { text: r.date }) : null),
+      r.score != null ? scoreRing(r.score, true) : null),
+    el("span", { class: "pd-review-title", text: r.title }),
+    r.excerpt ? el("span", { class: "pd-review-text", text: r.excerpt }) : null);
+}
+
+function productPanel(panel) {
+  const stage = $("[data-pd-main]", panel);
+  const frame = stage.parentElement;
+  const thumbs = $("[data-pd-thumbs]", panel);
+  const shown = () => $$(".pd-thumb", thumbs);
+  const sync = () => { thumbs.hidden = shown().length < 2; };
+  const credit = $("[data-pd-credit]", panel);
+  const loaded = (button) => {
+    frame.classList.remove("is-loading");
+    $("[data-pd-empty]", panel)?.remove();
+    // Every photo says where it came from and links there (the maker's page, a store listing, a review).
+    const { pdUrl: url, pdSource: source } = button.dataset;
+    credit.hidden = !(isHttp(url) && source);
+    if (!credit.hidden) { credit.href = url; credit.textContent = "Photo · " + source; }
+  };
+  // Full-size picture on the stage, falling back to the thumbnail; a picture that fails drops out.
+  // Only the latest request lands, so a slow first picture can't replace a later click.
+  let wanted = null;
+  const show = (button) => {
+    if (!button) return;
+    wanted = button;
+    shown().forEach((b) => b.classList.toggle("is-active", b === button));
+    const { pdFull: full, pdThumb: small } = button.dataset;
+    if (stage.dataset.src && [full, small].includes(stage.dataset.src)) return;
+    stage.classList.add("is-swapping");
+    const attempt = (src, next) => {
+      const probe = new Image();
+      probe.referrerPolicy = "no-referrer";
+      probe.onload = () => {
+        if (wanted !== button) return;
+        if (probe.naturalWidth < 80 && next) return attempt(next, null);
+        wanted = null;
+        stage.src = src;
+        stage.dataset.src = src;
+        stage.hidden = false;
+        stage.classList.remove("is-swapping");
+        loaded(button);
+      };
+      probe.onerror = () => {
+        if (wanted !== button) return;
+        if (next) return attempt(next, null);
+        wanted = null;
+        stage.classList.remove("is-swapping");
+        button.remove();
+        sync();
+        if (!stage.dataset.src) show(shown()[0]);
+      };
+      probe.src = src;
+    };
+    attempt(isHttp(full) ? full : small, isHttp(full) && full !== small ? small : null);
+  };
+  const wire = (button) => {
+    button.addEventListener("click", () => show(button));
+    $("img", button)?.addEventListener("error", () => { button.remove(); sync(); });
+  };
+  stage.dataset.src = stage.getAttribute("src") || "";
+  stage.addEventListener("error", () => {
+    shown().find((b) => [b.dataset.pdFull, b.dataset.pdThumb].includes(stage.dataset.src))?.remove();
+    stage.dataset.src = "";
+    stage.hidden = true;
+    sync();
+    show(shown()[0]);
+  });
+  shown().forEach(wire);
+  const addPicture = (small, full, url = "", source = "") => {
+    if (!isHttp(small) || shown().length >= 7 || shown().some((b) => b.dataset.pdThumb === small || (full && b.dataset.pdFull === full))) return;
+    const button = el("button", { type: "button", class: "pd-thumb", "data-pd-thumb": small, "data-pd-full": isHttp(full) ? full : small,
+      "data-pd-url": url, "data-pd-source": source, "aria-label": source ? "Photo from " + source : "Picture " + (shown().length + 1),
+      title: source || null }, img(small));
+    thumbs.append(button);
+    wire(button);
+    sync();
+    if (!stage.dataset.src && !wanted) show(button);
+  };
+
+  // Tabs: Overview / Reviews / Specs.
+  const tabs = $$("[data-pd-tab]", panel);
+  const select = (name) => {
+    tabs.forEach((t) => t.setAttribute("aria-selected", String(t.dataset.pdTab === name)));
+    $$("[data-pd-panel]", panel).forEach((p) => { p.hidden = p.dataset.pdPanel !== name; });
+  };
+  tabs.forEach((t) => t.addEventListener("click", () => select(t.dataset.pdTab)));
+  $$("[data-pd-goto]", panel).forEach((a) => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    select(a.dataset.pdGoto);
+    $(".pd-tabs", panel).scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }));
+  const offers = $("[data-pd-offers]", panel);
+  const more = $("[data-pd-more]", panel);
+  more.addEventListener("click", () => { offers.classList.remove("is-clamped"); more.hidden = true; more.dataset.opened = "1"; });
+
+  const price = (data) => {
+    const box = $("[data-pd-price]", panel);
+    if (!data.price) {
+      // Done looking: say so instead of leaving "Checking stores…" up.
+      const main = $(".pd-price-main--none strong", box);
+      if (main) main.textContent = panel.dataset.used ? "No new price found" : "No price listed";
+      return;
+    }
+    const p = data.price;
+    const best = data.offers.find((o) => o.best);
+    const sub = p.listed ? "From price trackers; no store page shows a price yet"
+      : p.stores > 1 ? `Across ${p.stores} stores` + (best ? ` · lowest at ${best.store}` : "") : "From one store's product page";
+    box.replaceChildren(
+      el("p", { class: "pd-eyebrow", text: p.listed ? "Listed price" : "Price" }),
+      el("p", { class: "pd-price-main" }, el("strong", { text: p.low_text }), p.high_text ? el("span", { class: "pd-price-to", text: "to " + p.high_text }) : null),
+      el("p", { class: "pd-price-sub" }, p.variant ? el("b", { text: p.variant }) : null, document.createTextNode((p.variant ? " · " : "") + sub)));
+  };
+  const scores = (data) => {
+    const box = $("[data-pd-scores]", panel);
+    const parts = [];
+    if (data.score) {
+      const a = el("a", { class: "pd-score", href: "#pd-reviews" }, scoreRing(data.score.value),
+        el("span", {}, el("strong", { text: "Expert score" }), el("small", { text: `${data.score.count} review${data.score.count === 1 ? "" : "s"} · out of 10` })));
+      a.addEventListener("click", (e) => { e.preventDefault(); select("reviews"); });
+      parts.push(a);
+    }
+    if (data.rating) {
+      const stars = el("span", { class: "pd-stars", "aria-hidden": "true" });
+      stars.style.setProperty("--v", data.rating.value);
+      parts.push(el("div", { class: "pd-score" }, stars, el("span", {},
+        el("strong", {}, document.createTextNode(data.rating.value + " "), el("span", { class: "muted", text: "/ 5" })),
+        el("small", { text: "Store rating" + (data.rating.votes ? " · " + data.rating.votes.toLocaleString("en-IN") + " ratings" : "") }))));
+    }
+    if (!parts.length) return;
+    box.replaceChildren(...parts);
+    box.hidden = false;
+  };
+  const chips = (holder, items, make) => {
+    const row = $(".pd-chips", holder);
+    const have = new Set($$(".pd-chip", row).map((c) => c.textContent.trim().toLowerCase()));
+    for (const item of items) {
+      const node = make(item);
+      if (!have.has(node.textContent.trim().toLowerCase())) { row.append(node); have.add(node.textContent.trim().toLowerCase()); }
+    }
+    holder.hidden = !row.children.length;
+  };
+
+  const { name, q, brand, alias, used, stale } = panel.dataset;
+  const live = getJSON(`/api/product?name=${encodeURIComponent(name)}&q=${encodeURIComponent(q)}&brand=${encodeURIComponent(brand)}&alias=${encodeURIComponent(alias)}${used ? "&used=1" : ""}${stale ? "&stale=1" : ""}`);
+  live.then((data) => {
+    if (!data || Array.isArray(data)) return;
+    const fresh = data.offers.filter((o) => o.role !== "used");
+    const current = $$(".pd-offer", offers);
+    const pricedNow = current.filter((li) => !$(".pd-offer-price .muted", li)).length;
+    if (fresh.length > current.length || fresh.filter((o) => o.price_text).length > pricedNow) {
+      offers.replaceChildren(...fresh.map(offerRow));
+      const clamp = fresh.length > 5 && panel.dataset.intent !== "price" && !more.dataset.opened;
+      offers.classList.toggle("is-clamped", clamp);
+      more.textContent = `Show all ${fresh.length} listings`;
+      more.hidden = !clamp;
+      price(data);
+    } else if (!data.price) price(data);
+    scores(data);
+    // Second-hand listings and their own price line; the search links stay as rendered.
+    const usedBox = $("[data-pd-used]", panel);
+    const usedOffers = data.offers.filter((o) => o.role === "used");
+    if (usedOffers.length) $("[data-pd-used-offers]", panel).replaceChildren(...usedOffers.map(offerRow));
+    const usedSum = $("[data-pd-used-sum]", panel);
+    if (data.used) usedSum.replaceChildren(document.createTextNode("Used from "), el("b", { text: data.used.low_text }),
+      document.createTextNode(` · ${data.used.count} listing${data.used.count === 1 ? "" : "s"}`));
+    else if (usedOffers.length) usedSum.textContent = "Second-hand and refurbished listings; prices are on each page.";
+    else if (used) usedSum.textContent = "No second-hand listings turned up in the results; try the marketplace search.";
+    usedBox.hidden = !(used || usedOffers.length);
+    const reviews = $("[data-pd-reviews]", panel);
+    if (data.reviews.length >= $$(".pd-review", reviews).length && data.reviews.length) {
+      reviews.replaceChildren(...data.reviews.map(reviewCard));
+    } else if (!data.reviews.length && !$$(".pd-review", reviews).length) {
+      $("[data-pd-reviews-empty]", panel)?.replaceChildren(document.createTextNode("No expert reviews turned up in the results."));
+    }
+    $("[data-pd-review-count]", panel).textContent = $$(".pd-review", reviews).length || "";
+    if (data.highlights.length) {
+      const box = $("[data-pd-highlights]", panel);
+      const list = $("ul", box);
+      const have = new Set($$("li", list).map((li) => li.textContent.toLowerCase()));
+      data.highlights.filter((h) => !have.has(h.toLowerCase())).slice(0, 6 - have.size).forEach((h) => list.append(el("li", { text: h })));
+      box.hidden = !list.children.length;
+      const specsTab = tabs.find((t) => t.dataset.pdTab === "specs");
+      if (specsTab?.hidden) {
+        specsTab.hidden = false;
+        $("[data-pd-panel='specs']", panel).prepend(el("p", { class: "pd-label", text: "From store listings" }), el("ul", { class: "pd-spec-list" }, ...data.highlights.map((h) => el("li", { text: h }))));
+      }
+    }
+    const variants = $("[data-pd-variants]", panel);
+    chips($("[data-pd-storage]", panel), data.variants.storage, (s) => el("span", { class: "pd-chip", text: s }));
+    chips($("[data-pd-colors]", panel), data.variants.colors, (c) => {
+      const dot = el("i");
+      dot.style.setProperty("--c", c.hex);
+      return el("span", { class: "pd-chip pd-colour" }, dot, document.createTextNode(c.name));
+    });
+    variants.hidden = $("[data-pd-storage]", panel).hidden && $("[data-pd-colors]", panel).hidden;
+    const quotes = $("[data-pd-quotes]", panel);
+    const said = data.reviews.filter((r) => r.excerpt).slice(0, 3);
+    if (said.length > $$(".pd-quote", quotes).length) {
+      quotes.replaceChildren(el("p", { class: "pd-label", text: "What reviewers say" }), ...said.map((r) => el("blockquote", { class: "pd-quote" },
+        el("p", { text: r.excerpt }),
+        el("footer", {}, hostBadge(r.host), el("a", { href: r.url, rel: "noopener noreferrer", text: r.site }), r.score_text ? el("span", { class: "muted", text: "· " + r.score_text }) : null))));
+      quotes.hidden = false;
+    }
+  });
+  // Photos from where it's sold: the maker's site, then stores, then review sites (/api/product/photos);
+  // product-page thumbnails only fill in when fewer than three turn up.
+  const pictures = getJSON(`/api/product/photos?name=${encodeURIComponent(name)}&brand=${encodeURIComponent(brand)}&alias=${encodeURIComponent(alias)}`);
+  pictures.then((items) => (Array.isArray(items) ? items : []).forEach((i) => addPicture(i.thumb, i.full, i.url, i.source)));
+  Promise.all([pictures, live]).then(([, data]) => {
+    if (shown().length < 3 && data && !Array.isArray(data)) data.offers.filter((o) => o.thumb).forEach((o) => addPicture(o.thumb, o.thumb, o.url, o.store));
+    if (!shown().length && !stage.dataset.src) frame.classList.remove("is-loading");
+  });
+  // Video reviews of this model only: titles must carry its model number (or every word of its name).
+  const videos = $("[data-pd-videos]", panel);
+  const key = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const models = name.split(/\s+/).filter((w) => /\d/.test(w)).map(key);
+  const needed = models.length ? models : name.split(/\s+/).map(key);
+  strip("videos", name + " review").then((items) => {
+    items = items.filter((i) => isHttp(i.url) && i.thumb && needed.every((w) => key(i.title).includes(w)));
+    if (items.length < 2) return;
+    $(".strip-row", videos).replaceChildren(...items.slice(0, 8).map((i) => card("videos", i)));
+    videos.hidden = false;
+  });
+}
+$$("[data-product]").forEach(productPanel);
 
 // Load the first candidate image that actually decodes; null if none do.
 function firstLoading(candidates) {
@@ -1956,7 +2304,8 @@ for (const hero of $$("[data-finance]")) {
 }
 
 // ------------------------------------------------- music players (songs/albums)
-// Nothing third-party loads until the user presses play.
+// Spotify and Apple Music players load with the page (lazily, as iframes); the YouTube video waits
+// behind its thumbnail until played.
 const PLAYER_HOSTS = ["https://www.youtube-nocookie.com/", "https://open.spotify.com/", "https://embed.music.apple.com/"];
 function mountEmbed(pane) {
   if (pane.querySelector("iframe")) return;
@@ -1972,8 +2321,19 @@ function mountEmbed(pane) {
   pane.replaceChildren(frame);
 }
 for (const pane of $$(".player-pane, .music-embed")) {
-  $(".player-facade, .music-embed-load", pane)?.addEventListener("click", () => mountEmbed(pane));
-  if (pane.dataset.kind === "spotify") mountEmbed(pane);
+  $(".player-facade", pane)?.addEventListener("click", () => mountEmbed(pane));
+  if (pane.dataset.kind === "spotify" || pane.dataset.kind === "applemusic") mountEmbed(pane);
+}
+for (const card of $$("[data-spotify-find]")) {
+  const note = $(".watch-note", card);
+  getJSON(`/api/spotify?title=${encodeURIComponent(card.dataset.spotifyFind)}&artist=${encodeURIComponent(card.dataset.spotifyArtist || "")}`).then((found) => {
+    if (!found || !isHttp(found.embed)) { note.textContent = "Not found on Spotify automatically."; return; }
+    const pane = el("div", { class: "music-embed", "data-embed": found.embed, "data-kind": "spotify" });
+    $(".music-spotify-search", card)?.remove();
+    note.replaceWith(pane);
+    $(".music-service-head", card).append(el("a", { href: found.url, text: "Open " }));
+    mountEmbed(pane);
+  });
 }
 
 for (const panel of $$("[data-lyrics-title]")) {

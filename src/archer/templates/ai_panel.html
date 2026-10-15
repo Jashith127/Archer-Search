@@ -61,6 +61,12 @@
           <h2>{% if v.q %}{{ v.q }}{% else %}What do you want to understand?{% endif %}</h2>
           <p>Archer searches, reads the sources and uses its own tools, then answers with citations you can check.</p>
           <button type="button" class="ai-button ai-button--primary" data-ai-begin{% if not v.q %} hidden{% endif %}>Research this <span aria-hidden="true">↗</span></button>
+          {% if v.hero and v.hero.kind == "product" %}
+          {# A product search: the questions people ask about something they might buy. #}
+          <div class="ai-welcome-asks">
+            {% for question in v.hero.data.questions %}<button type="button" class="ai-followup-chip" data-ai-question="{{ question }}"><span>{{ question }}</span><span class="ai-followup-arrow" aria-hidden="true">→</span></button>{% endfor %}
+          </div>
+          {% endif %}
         </div>
       </div>
       {# The composer: what the next question builds on, how deep to go, and one send/stop button. #}

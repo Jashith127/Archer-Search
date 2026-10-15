@@ -37,6 +37,8 @@ KINDS = {
     "landmark": {"Q570116", "Q33506", "Q16560", "Q23413", "Q4989906", "Q12518", "Q44539", "Q16970", "Q32815",
                  "Q839954", "Q9259", "Q12280", "Q2977", "Q1081138", "Q46169", "Q8502", "Q4022", "Q23397",
                  "Q35657", "Q10864048", "Q1107656", "Q41176", "Q483110", "Q207694", "Q811979"},
+    # Product models (smartphone, computer, console, car…); anything with a manufacturer or brand also counts.
+    "product": {"Q19723451", "Q10929058", "Q55990535", "Q3231690"},
     "place": {"Q515", "Q1549591", "Q5119", "Q1637706", "Q200250", "Q7930989", "Q123705", "Q486972", "Q3957"},
 }
 ACTOR = {"Q33999", "Q10800557", "Q10798782", "Q2405480", "Q2259451", "Q948329"}
@@ -51,7 +53,7 @@ CURRENCY_UNITS = {"Q4917": "$", "Q80524": "₹", "Q4916": "€", "Q25224": "£",
 UNIT_SUFFIX = {"Q11573": "m", "Q174728": "cm", "Q11570": "kg", "Q712226": "km²", "Q828224": "km",
                "Q7727": "min", "Q11574": "s", "Q35852": "ha", "Q232291": "mi²", "Q11579": "K",
                "Q25267": "°C", "Q42289": "°F", "Q483261": "u", "Q13147228": "g/cm³", "Q844211": "kg/m³",
-               "Q41803": "g", "Q3241121": "g/mol"}
+               "Q41803": "g", "Q3241121": "g/mol", "Q174789": "mm"}
 _SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 
 # Badge shown above every entity panel: kind -> (icon, label). Icons live in templates/ui_icons.html.
@@ -60,7 +62,7 @@ KIND_META = {
     "music": ("music", "Music"), "country": ("flag", "Country"), "org": ("building", "Organisation"),
     "species": ("leaf", "Species"), "chemical": ("flask", "Chemical"), "disease": ("virus", "Health condition"),
     "software": ("code", "Software"), "holiday": ("sparkle", "Holiday"), "landmark": ("landmark", "Landmark"),
-    "place": ("pin", "Place"), "thing": ("info", "Topic"), "character": ("user", "Fictional character"),
+    "place": ("pin", "Place"), "product": ("package", "Product"), "thing": ("info", "Topic"), "character": ("user", "Fictional character"),
 }
 SUBKIND_LABEL = {"athlete": "Athlete", "politician": "Politician", "executive": "Business leader", "writer": "Writer"}
 TILE_ICONS = {
@@ -82,6 +84,7 @@ TILE_ICONS = {
     "Observed in": "globe", "Type": "tag", "Location": "pin", "Built": "hammer", "Architect": "pen",
     "Heritage": "award", "Visitors / year": "users", "Since": "calendar",
     "Appears in": "tv", "Created by": "pen", "Played by": "user",
+    "Brand": "tag", "Operating system": "code", "Processor": "cube", "Weight": "scale", "Launch price": "coins",
 }
 
 
@@ -407,6 +410,8 @@ def _kind(entity: dict) -> str:
                         ("film", ("P57", "P2047")), ("book", ("P50",)), ("species", ("P225",))):
         if sum(p in claims for p in props) >= (2 if kind in ("country", "film") else 1):
             return kind
+    if "P176" in claims or "P1716" in claims:
+        return "product"
     if _first(entity, "P625"):
         return "place"
     return "thing"
@@ -430,11 +435,12 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
                  "P495", "P740", "P264", "P527", "P112", "P169", "P159", "P17", "P6", "P141", "P171",
                  "P27", "P175", "P31", "P54", "P102", "P39", "P413", "P69", "P641", "P800", "P108", "P36",
                  "P38", "P37", "P35", "P1995", "P780", "P2176", "P1060", "P828", "P84", "P131", "P1435",
-                 "P178", "P275", "P277", "P400", "P306", "P3966", "P837", "P140", "P1269", "P30", "P1441", "P170"]
+                 "P178", "P275", "P277", "P400", "P306", "P3966", "P837", "P140", "P1269", "P30", "P1441", "P170",
+                 "P176", "P1716", "P155", "P156", "P1366", "P462", "P880", "P186"]
     refs = {i for p in ref_props for i in _ids(entity, p)}
     refs |= {i for p in ("P54", "P39", "P108", "P6", "P35") for i in _current_ids(entity, p)}
     for p in ("P2048", "P2047", "P2142", "P2130", "P2046", "P2044", "P1082", "P1128", "P2139", "P2218",
-              "P2067", "P2101", "P2102", "P2054", "P1174"):
+              "P2067", "P2101", "P2102", "P2054", "P1174", "P2049", "P2610", "P2284", "P2928"):
         if (v := _first(entity, p)) and isinstance(v, dict) and "unit" in v:
             refs.add(v["unit"].rsplit("/", 1)[-1])
     label_ents = await _wbget(client, sorted(r for r in refs if r.startswith("Q")), "labels")
@@ -472,6 +478,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
     works_role = None
 
     subkind = ""
+    product = None
     if kind == "person":
         born_txt, _, born = _fmt_time(_first(entity, "P569"))
         died_txt, _, died = _fmt_time(_first(entity, "P570"))
@@ -640,6 +647,25 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         tile("Heritage", names("P1435", 1))
         tile("Visitors / year", amount("P1174"))
         fact("Country", names("P17", 1))
+    elif kind == "product":
+        rel_txt, rel_y, _ = _fmt_time(_first(entity, "P577") or _first(entity, "P571"))
+        brand = names("P1716", 1) or names("P176", 1)
+        tile("Brand", brand)
+        tile("Released", str(rel_y or ""), rel_txt)
+        tile("Operating system", names("P306", 1))
+        tile("Processor", names("P880", 1))
+        tile("Weight", amount("P2067"))
+        tile("Launch price", amount("P2284"))
+        fact("Manufacturer", names("P176", 2))
+        fact("Memory", amount("P2928"))
+        fact("Material", names("P186", 3))
+        dims = [amount(p) for p in ("P2048", "P2049", "P2610")]
+        if all(dims):
+            fact("Dimensions", " × ".join(dims))
+        # The product panel (sources/products.py) draws these itself.
+        product = {"brand": brand, "manufacturer": names("P176", 1), "released": rel_txt, "year": rel_y,
+                   "previous": names("P155", 1), "next": names("P156", 1) or names("P1366", 1),
+                   "colors": name_list("P462", 10), "category": names("P31", 1)}
     else:
         inc_txt, inc_y, _ = _fmt_time(_first(entity, "P571"))
         tile("Since", str(inc_y or ""), inc_txt)
@@ -702,6 +728,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         "tags": tags,
         "player": player,
         "watch": watch,
+        "product": product,
         "qid": qid,
         "title": page["title"],
         "description": page.get("description") or entity.get("descriptions", {}).get("en", {}).get("value", ""),
