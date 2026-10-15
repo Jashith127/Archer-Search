@@ -207,7 +207,7 @@ Archer renders SearXNG's JSON in its own dark UI. The layout follows Google's la
 | Film | Wikidata film types | `dune part two` | Poster, where to watch (service logos), tiles (released, runtime, director, genre); budget, box office in panel; a full-width **Cast & crew** section below (key crew chips, every cast member with photo and character) | Wikipedia, Wikidata; TMDB credits when keyed |
 | TV series | Wikidata TV types | `the bear tv series` | Poster, tiles (years aired, seasons, episodes, network); **Cast & crew** section with episode counts when TMDB is keyed | Wikipedia, Wikidata; TMDB credits when keyed |
 | Book | Wikidata literary work | `atomic habits` | Cover, tiles (author, published, pages, genre) | Wikipedia, Wikidata |
-| Music | Band, album or song | `coldplay` | Collage, tiles (formed, genre, label, members), Albums row | Wikipedia, Wikidata |
+| Music | Band, album or song | `coldplay` | Collage, tiles (formed, genre, label, members), Albums row. Songs and albums: video (or artwork) with its tiles in one row beneath it on the left; Spotify, Apple Music and lyrics on the right, the lyrics stretching to end level with the left side | Wikipedia, Wikidata |
 | Company / organisation | Business/organisation types | `infosys` | Tiles (founded, CEO, HQ, employees, revenue), founders | Wikipedia, Wikidata |
 | Place | Place types or coordinates | `bengaluru` | Collage, top story, tiles (country, population, area) + live weather tile | Wikipedia, Wikidata, Open-Meteo |
 | Species | Wikidata taxon | `snow leopard` | Tiles (scientific name, conservation status, parent taxon) | Wikipedia, Wikidata |
