@@ -220,7 +220,8 @@ def test_music_has_separate_video_spotify_and_lyrics_cards(client):
     app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     wiki._entity_cache._data.clear()
     html = client.get("/search", params={"q": "Example Song"}).text
-    assert "player--video" in html and "music-service--spotify" in html
+    assert "player--video" in html and "music-embed--spotify" in html
+    assert "music-service--spotify" not in html
     assert "music-lyrics" in html and "Example+Song+lyrics" in html
     assert "<iframe" not in html
 

@@ -2328,10 +2328,9 @@ for (const card of $$("[data-spotify-find]")) {
   const note = $(".watch-note", card);
   getJSON(`/api/spotify?title=${encodeURIComponent(card.dataset.spotifyFind)}&artist=${encodeURIComponent(card.dataset.spotifyArtist || "")}`).then((found) => {
     if (!found || !isHttp(found.embed)) { note.textContent = "Not found on Spotify automatically."; return; }
-    const pane = el("div", { class: "music-embed", "data-embed": found.embed, "data-kind": "spotify" });
-    $(".music-spotify-search", card)?.remove();
-    note.replaceWith(pane);
-    $(".music-service-head", card).append(el("a", { href: found.url, text: "Open " }));
+    // The player replaces the whole card; it carries its own Spotify branding and link.
+    const pane = el("div", { class: "music-embed music-embed--spotify", "data-embed": found.embed, "data-kind": "spotify" });
+    card.replaceWith(pane);
     mountEmbed(pane);
   });
 }

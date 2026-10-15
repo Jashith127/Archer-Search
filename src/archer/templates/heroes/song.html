@@ -15,10 +15,10 @@
     <div class="music-artwork collage"><div class="collage-main collage-placeholder"><svg><use href="#u-music"/></svg></div></div>
     {% endif %}
     <div class="music-side">
-      <section class="music-service music-service--spotify"><div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-spotify"/></svg>Spotify</span></div>
-        {% if s.spotify_id %}<div class="music-embed" data-embed="https://open.spotify.com/embed/track/{{ s.spotify_id }}" data-kind="spotify"></div>
-        {% else %}<p class="watch-note">Find this recording on Spotify.</p><a class="music-spotify-search" href="{{ s.spotify_search }}">Search on Spotify <svg class="tab-ext"><use href="#i-ext"/></svg></a>{% endif %}
-      </section>
+      {% if s.spotify_id %}<div class="music-embed music-embed--spotify" data-embed="https://open.spotify.com/embed/track/{{ s.spotify_id }}" data-kind="spotify"></div>
+      {% else %}<section class="music-service music-service--spotify"><div class="music-service-head"><span class="music-service-brand"><svg><use href="#b-spotify"/></svg>Spotify</span></div>
+        <p class="watch-note">Find this recording on Spotify.</p><a class="music-spotify-search" href="{{ s.spotify_search }}">Search on Spotify <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+      </section>{% endif %}
       <section class="music-lyrics" data-lyrics-title="{{ s.title }}" data-lyrics-artist="{{ s.artist }}">
         <span class="about-label"><svg><use href="#u-music"/></svg>Lyrics</span>
         <p class="music-lyrics-status">Finding a matching version…</p>
