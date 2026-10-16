@@ -23,6 +23,7 @@ const shot = async (page, name) => { if (shots) await page.screenshot({ path: pa
   assert.ok(await page.locator('.recall-item').count() >= 1, 'recall shows pages found before');
   const mine = await page.locator('.related--mine .chip').allInnerTexts();
   assert.ok(mine.some(t => /RTX 4050 laptop/.test(t)), `earlier searches: ${mine}`);
+  assert.equal(await page.locator('.related--mine .pxmeter').count(), mine.length, 'each earlier search shows how close it is');
   assert.ok(!mine.some(t => /carbonara/.test(t)), 'unrelated history stays out');
   // Site habit is a light nudge since the history evaluation; the tag says why a site is favoured.
   assert.equal(await page.locator('[data-result]', { hasText: 'Rtings' }).locator('.result-tag', { hasText: 'You often open this site' }).count(), 1);
@@ -71,7 +72,10 @@ const shot = async (page, name) => { if (shots) await page.screenshot({ path: pa
   await page.locator('[data-site="rtings.com"] [data-site-set="lower"]').click();
   await page.waitForFunction(() => document.querySelector('[data-site="rtings.com"] [data-site-set="lower"]').getAttribute('aria-pressed') === 'true');
   await page.goto(`${BASE}/history?q=${encodeURIComponent('screen sharpness')}`);
-  assert.match(await page.locator('h1').innerText(), /matching/);
+  assert.match(await page.locator('h1').innerText(), /Searches like/);
+  await page.goto(`${BASE}/history?q=${encodeURIComponent('gaming monitor resolution')}`);
+  assert.ok(await page.locator('.h-list--matches .pxmeter').count() >= 2, 'matches carry a closeness meter');
+  assert.equal(await page.locator('.h-via').count(), 1, 'a match through an opened page says so');
   await shot(page, 'history-search.png');
 
   // Home shows recent searches.

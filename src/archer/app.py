@@ -514,14 +514,19 @@ async def history_page(request: Request, q: str = Query("", max_length=300), bef
     """Your searches by day, each with the results you opened; searchable by meaning."""
     store: History = history_store(request)
     personal: Personalizer = personalizer(request)
+    matches = await personal.match_history(q) if q.strip() else []
     if q.strip():
-        entries = store.entries(ids=await personal.search_history(q))
+        # A search by meaning lists the closest first, each marked with how it matched; days would
+        # scatter that order.
+        by_id = {e["id"]: e for e in store.entries(ids=[m["id"] for m in matches])}
+        entries = [by_id[m["id"]] | {"match": m} for m in matches if m["id"] in by_id]
     else:
         entries = store.entries(before=before, limit=60)
     days: list[tuple[str, list]] = []
     for entry in entries:
         entry["time"] = datetime.fromtimestamp(entry["last_at"]).strftime("%H:%M")
-        label = _day_label(entry["last_at"])
+        entry["day"] = _day_label(entry["last_at"])
+        label = "Closest first" if q.strip() else entry["day"]
         if not days or days[-1][0] != label:
             days.append((label, []))
         days[-1][1].append(entry)
@@ -529,7 +534,7 @@ async def history_page(request: Request, q: str = Query("", max_length=300), bef
     ai = ai_service(request)
     session = ai.session(request.cookies.get("archer_session"))
     response = templates.TemplateResponse(request, "history.html", {
-        "q": q, "days": days, "stats": store.stats(), "csrf": session.csrf,
+        "q": q, "days": days, "matched": len(entries), "stats": store.stats(), "csrf": session.csrf,
         "more": entries[-1]["last_at"] if len(entries) == 60 and not q.strip() else None,
         "topics": [] if q.strip() or before else await personal.topics(),
         "top_sites": [] if q.strip() or before else [h | {"pref": site_pref(h["host"], prefs)} for h in store.top_hosts()],

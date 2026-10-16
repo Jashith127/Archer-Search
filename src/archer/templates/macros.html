@@ -12,6 +12,23 @@
 </p>
 {%- endmacro %}
 
+{# How close a history match is: five cells of the pixel mark's matrix, lit 1–5
+   (personalize.closeness). `how` says what matched: the words, the meaning, or a page opened from it. #}
+{% macro closeness(dots, how="meaning") -%}
+{% set text = "Same words" if how == "words" else "Linked by a page you opened" if how == "opened" else {5: "Same words", 4: "Very close in meaning", 3: "Close in meaning", 2: "Related", 1: "Loosely related"}[dots] %}
+<span class="pxmeter" role="img" aria-label="{{ text }}" title="{{ text }}" style="--lit: {{ dots }}">
+  {%- for i in range(5) %}<i{% if i < dots %} class="on"{% endif %}></i>{% endfor -%}
+</span>
+{%- endmacro %}
+
+{# The local embedding model behind history matching (embed.status()): a status dot and its name. #}
+{% macro model_pill(model) -%}
+{% set lexical = model.name == "lexical" %}
+<span class="model-pill model-pill--{{ 'lexical' if lexical else model.state }}" title="{{ model.detail or ('Matching by words; set a model in Settings to match by meaning' if lexical else 'Runs on this computer; your searches never leave it') }}">
+  <i aria-hidden="true"></i>{% if lexical or model.state == "failed" %}Word matching{% else %}By meaning · {{ model.label }}{% endif %}{% if model.state == "loading" %} · loading{% endif %}
+</span>
+{%- endmacro %}
+
 {% macro link_chip(l) -%}
 {% if l.kind == "x" %}
 {# X's mark is the label; no text needed. #}
@@ -44,9 +61,9 @@
     {% if show_engines or r.visited or r.personal %}
     <div class="result-meta">
       {% if r.visited %}<span class="result-tag result-tag--visited" title="You opened this before"><svg aria-hidden="true"><use href="#u-clock"/></svg>Visited {{ r.visited|ago }}</span>{% endif %}
-      {% if r.personal == "raised" %}<span class="result-tag" title="You raised this site">Raised site</span>
-      {% elif r.personal == "lowered" %}<span class="result-tag" title="You lowered this site">Lowered site</span>
-      {% elif r.personal == "often" %}<span class="result-tag" title="You often open this site for searches like this">You often open this site</span>{% endif %}
+      {% if r.personal == "raised" %}<span class="result-tag result-tag--raised" title="You raised this site">Raised site</span>
+      {% elif r.personal == "lowered" %}<span class="result-tag result-tag--lowered" title="You lowered this site">Lowered site</span>
+      {% elif r.personal == "often" %}<span class="result-tag result-tag--often" title="You often open this site for searches like this">You often open this site</span>{% endif %}
       {% if show_engines %}<span class="result-engines" title="Engines that returned this result. More engines = higher rank.">{{ r.engines|join(" · ") }}</span>{% endif %}
       {% if menu %}
       <details class="result-menu" data-site-menu="{{ r.host }}">
