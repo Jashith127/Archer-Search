@@ -55,6 +55,9 @@ W_EMBED, W_LEXICAL = 0.7, 0.3
 # A past search's meaning includes the searches around it (within SESSION seconds): "haiku" next to
 # Claude searches is a model, not a poem. Its vector is blended with its neighbours' (CONTEXT_MIX).
 SESSION, CONTEXT_MIX = 1800, 0.5
+# Blending in neighbours pulls scores slightly toward the middle, so the cutoff moves down with it:
+# at 0.96 of the calibrated cutoff the labelled pairs gained on precision and recall together.
+CONTEXT_CUTOFF = 0.96
 # Switches for the evaluation script's ablations; all on in normal use.
 RULES = {"context": True, "prefix": True, "acronym": True, "site": True, "names": True}
 CALIBRATION = (
@@ -109,8 +112,14 @@ def utility(q: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=50000)
 def compact(q: str) -> str:
     return re.sub(r"[^a-z0-9]", "", q.casefold())
+
+
+@lru_cache(maxsize=50000)
+def word_count(q: str) -> int:
+    return len(words(q))
 
 
 def fragment(q: str) -> bool:
@@ -282,7 +291,7 @@ class Personalizer:
         utility searches and fragments are left out, spelling variants always match, and a one-word
         search needs a stronger match."""
         model, qvec = await self._query(q)
-        thr = await self.threshold(model)
+        thr = await self.threshold(model) * (CONTEXT_CUTOFF if RULES["context"] and model != LEXICAL.name else 1.0)
         qn = norm(q)
         past = {e["norm"]: e for e in self.history.queries()
                 if e["norm"] != qn and not fragment(e["q"]) and not utility(e["q"])}
@@ -294,20 +303,23 @@ class Personalizer:
         keys = list(qvecs)
         matrix = np.stack([qvecs[k] for k in keys])
         raw = matrix @ qvec
-        if RULES["context"]:
+        if RULES["context"] and model != LEXICAL.name:  # word matching's cutoff was fitted without it
             raw = (1 - CONTEXT_MIX) * raw + CONTEXT_MIX * (self._context_matrix(model, keys, qvecs) @ qvec)
-        short = len(words(q)) <= 1
+        short = word_count(q) <= 1
+        cq = compact(q)
+        initials = RULES["acronym"] and 2 <= len(cq) <= 5
         scores = {}
         for k, s in zip(keys, raw.tolist()):
             text = past[k]["q"]
-            if spelled_alike(q, text):
-                s = max(s, 1.0 if compact(q) == compact(text) else thr + 0.1)
-            elif RULES["acronym"] and (acronym(q, text) or acronym(text, q)):
+            cp = compact(text)
+            # The string rules only run where they can apply; most past searches stop at a length check.
+            if abs(len(cp) - len(cq)) <= 2 and spelled_alike(q, text):
+                s = max(s, 1.0 if cq == cp else thr + 0.1)
+            elif (initials and acronym(q, text)) or (RULES["acronym"] and 2 <= len(cp) <= 5 and acronym(text, q)):
                 s = max(s, thr + 0.1)
-            elif RULES["prefix"] and started(q, text):
+            elif RULES["prefix"] and len(cp) > len(cq) >= 4 and started(q, text):
                 s = max(s, thr + 0.05)
-            elif short or len(words(text)) <= 1:
-                cq, cp = compact(q), compact(text)
+            elif short or word_count(text) <= 1:
                 if not (cq in cp or cp in cq):
                     s -= 0.1  # one shared word decides too much in a one-word search
             scores[k] = s
@@ -315,9 +327,18 @@ class Personalizer:
 
     def _context_matrix(self, model: str, keys: list[str], qvecs: dict[str, np.ndarray]) -> np.ndarray:
         """Each past search's vector blended with the searches made around it, cached until history changes."""
-        stamp = (model, self.history.version, self.history.stats()["searches"], len(keys))
-        if self._contexts and self._contexts[0] == stamp:
-            return self._contexts[1]
+        # Rebuilt after deletions, or once 25 searches have been added since: a session's context
+        # changes slowly, and rebuilding on every search doubled its cost.
+        count = self.history.stats()["searches"]
+        if self._contexts:
+            (m, version, built, keyset), matrix = self._contexts
+            if m == model and version == self.history.version and count - built < 25:
+                if keyset == tuple(keys):
+                    return matrix
+                # Searches added since the last rebuild use their own vector until the next one.
+                pos = {k: i for i, k in enumerate(keyset)}
+                return np.stack([matrix[pos[k]] if k in pos else qvecs[k] / (np.linalg.norm(qvecs[k]) or 1) for k in keys])
+        stamp = (model, self.history.version, count, tuple(keys))
         neighbours = self.history.sessions(SESSION)
         rows = []
         for k in keys:
