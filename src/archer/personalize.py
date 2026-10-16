@@ -79,6 +79,15 @@ def threshold(model: str) -> float:
     return RELATED.get(model.split(":")[0], DEFAULT_RELATED)
 
 
+def closeness(score: float, cutoff: float) -> int:
+    """How close a match is, as 1–5 lit dots for the pages: 1 just clears the cutoff, 5 is the
+    same words. Display only; ranking uses the raw score."""
+    if score >= 0.999:
+        return 5
+    span = max(1e-6, 1 - cutoff)
+    return int(np.clip(1 + round(3 * (score - cutoff) / span * 1.4), 1, 4))
+
+
 def calibrated(vecs: np.ndarray) -> float:
     """The "related" cutoff for a model, from its vectors of the CALIBRATION searches."""
     sims = (vecs @ vecs.T)[np.triu_indices(len(vecs), 1)]
@@ -216,8 +225,8 @@ def _decay(at: float, now: float) -> float:
 @dataclass
 class Personal:
     results: list = field(default_factory=list)
-    related: list[dict] = field(default_factory=list)   # {"q", "last"}
-    recall: list[dict] = field(default_factory=list)    # {"url", "title", "host", "last", "q"}
+    related: list[dict] = field(default_factory=list)   # {"q", "last", "dots", "how"}
+    recall: list[dict] = field(default_factory=list)    # {"url", "title", "host", "last", "q", "dots", "n"}
     hidden: list[str] = field(default_factory=list)     # hosts of results removed by a block
     model: str = ""
 
@@ -404,11 +413,14 @@ class Personalizer:
         related = sorted(((s * (0.85 + 0.15 * _decay(past[k]["last"], now)), k) for k, s in sims.items() if s >= thr), reverse=True)
         q_words = set(words(q))
         picked = [k for _, k in related if set(words(past[k]["q"])) != q_words and k not in dismissed][:5]
+        linked = set()
         if mine and kept:
             for k in self.history.queries_that_opened([r.url for r in kept]):
                 if k in past and k not in picked and k not in dismissed and len(picked) < 6:
                     picked.append(k)
-        out.related = [{"q": past[k]["q"], "last": past[k]["last"]} for k in picked]
+                    linked.add(k)
+        out.related = [{"q": past[k]["q"], "last": past[k]["last"], "dots": closeness(sims.get(k, 0.0), thr),
+                        "how": "opened" if k in linked else "meaning"} for k in picked]
 
         # Visited pages, and site affinity from what was opened after similar searches.
         visits = self.history.visits([r.url for r in kept])
@@ -466,7 +478,8 @@ class Personalizer:
             if visited:
                 top = max(visited, key=lambda p: (p["n"], -len(p["url"]), p["last"]))
                 if top["title"] and not _JUNK_TITLE.match(top["title"].strip()):
-                    out.recall.append({"url": top["url"], "title": top["title"], "host": top["host"], "last": top["last"], "q": top["q"] or ""})
+                    out.recall.append({"url": top["url"], "title": top["title"], "host": top["host"], "last": top["last"],
+                                       "q": top["q"] or "", "dots": 5, "n": top["n"]})
         if pages:
             pmodel, pvecs = await self._vectors("page", {p["url"]: f"{p['title']}. {p['snippet']}" for p in pages})
             picks = []
@@ -481,14 +494,15 @@ class Personalizer:
                     continue
                 if not p["title"] or _JUNK_TITLE.match(p["title"].strip()):
                     continue
-                picks.append((best * (0.8 + 0.2 * _decay(p["last"], now)), p))
+                picks.append((best * (0.8 + 0.2 * _decay(p["last"], now)), best, p))
             picks.sort(key=lambda t: t[0], reverse=True)
             sites: set[str] = {r["host"] for r in out.recall}
-            for _, p in picks:
+            for _, best, p in picks:
                 if p["host"] in sites:
                     continue
                 sites.add(p["host"])
-                out.recall.append({"url": p["url"], "title": p["title"] or p["host"], "host": p["host"], "last": p["last"], "q": p["q"] or ""})
+                out.recall.append({"url": p["url"], "title": p["title"] or p["host"], "host": p["host"], "last": p["last"],
+                                   "q": p["q"] or "", "dots": closeness(best, thr), "n": p["n"]})
                 if len(out.recall) == 3:
                     break
         return out
@@ -496,6 +510,11 @@ class Personalizer:
     # ------------------------------------------------------------ history page
     async def search_history(self, q: str, limit: int = 60) -> list[int]:
         """Search ids whose query, or a page opened from it, matches `q` by meaning or by words."""
+        return [m["id"] for m in await self.match_history(q, limit)]
+
+    async def match_history(self, q: str, limit: int = 60) -> list[dict]:
+        """Like `search_history`, closest first, each with how it matched for the history page:
+        `{"id", "dots" (1–5), "how": "words" | "meaning" | "page", "page": title when via a page}`."""
         q = q.strip()
         if not q:
             return []
@@ -505,13 +524,14 @@ class Personalizer:
         model, qvec = await self._query(q)
         thr = await self.threshold(model) * 0.85
         qm, qvecs = await self._vectors("q", {e["norm"]: e["q"] for e in entries})
-        scores: dict[str, float] = {}
+        scores: dict[str, tuple[float, str, str]] = {}
         needle = norm(q)
         for e in entries:
             s = float(qvecs[e["norm"]] @ qvec) if qm == model and e["norm"] in qvecs else 0.0
+            how = "meaning"
             if needle in e["norm"] or spelled_alike(q, e["q"]):
-                s = max(s, 1.0)
-            scores[e["norm"]] = s
+                s, how = max(s, 1.0), "words"
+            scores[e["norm"]] = (s, how, "")
         pages = self.history.pages()
         if pages:
             pm, pvecs = await self._vectors("page", {p["url"]: f"{p['title']}. {p['snippet']}" for p in pages})
@@ -522,15 +542,20 @@ class Personalizer:
                 if needle in (p["title"] or "").casefold():
                     s = max(s, 0.95)
                 key = norm(p["q"])
-                scores[key] = max(scores.get(key, 0.0), s)
-        ranked = sorted((s, k) for k, s in scores.items() if s >= thr)
-        norms = [k for _, k in reversed(ranked)][:limit]
+                if s > scores.get(key, (0.0,))[0]:
+                    scores[key] = (s, "page", p["title"] or p["host"])
+        ranked = sorted(((v[0], k) for k, v in scores.items() if v[0] >= thr), reverse=True)
+        norms = [k for _, k in ranked][:limit]
         if not norms:
             return []
         marks = ",".join("?" * len(norms))
         rows = self.history._q(f"SELECT id, norm FROM searches WHERE norm IN ({marks}) ORDER BY last_at DESC", tuple(norms))
         order = {k: i for i, k in enumerate(norms)}
-        return [r["id"] for r in sorted(rows, key=lambda r: order[r["norm"]])][:limit]
+        out = []
+        for r in sorted(rows, key=lambda r: order[r["norm"]])[:limit]:
+            s, how, page = scores[r["norm"]]
+            out.append({"id": r["id"], "dots": closeness(min(s, 1.0), thr), "how": how, "page": page})
+        return out
 
     async def topics(self, limit: int = 8) -> list[dict]:
         """History grouped by meaning: greedy clustering on query vectors, freshest first."""

@@ -1,7 +1,10 @@
 {# Pages opened before for searches like this one (personalize.py), above the web results. #}
-{% from "macros.html" import site_badge %}
+{% from "macros.html" import site_badge, closeness %}
 <section class="recall" aria-labelledby="recall-title" data-unrelate-q="{{ v.q }}">
-  <h2 class="section-title" id="recall-title"><svg aria-hidden="true"><use href="#u-clock"/></svg>You found these before</h2>
+  <div class="recall-head">
+    <h2 class="section-title" id="recall-title"><svg aria-hidden="true"><use href="#u-clock"/></svg>You found these before</h2>
+    <a class="recall-all" href="/history?q={{ v.q|qs }}">Your history<svg aria-hidden="true"><use href="#u-chevron"/></svg></a>
+  </div>
   <div class="recall-list">
     {% for page in personal.recall %}
     <div class="recall-row">
@@ -9,8 +12,9 @@
       {{ site_badge(page.host) }}
       <span class="recall-text">
         <span class="recall-title">{{ page.title }}</span>
-        <span class="recall-meta">{{ page.host }} · opened {{ page.last|ago }}{% if page.q %} · from “{{ page.q|truncate(48, True, "…") }}”{% endif %}</span>
+        <span class="recall-meta"><span>{{ page.host }}</span><span>opened {{ page.last|ago }}{% if page.n and page.n > 1 %} · {{ page.n }}×{% endif %}</span>{% if page.q %}<span class="recall-from">from “{{ page.q|truncate(48, True, "…") }}”</span>{% endif %}</span>
       </span>
+      {% if page.dots %}{{ closeness(page.dots) }}{% endif %}
     </a>
     <button type="button" class="recall-dismiss" data-unrelate="{{ page.url }}" aria-label="Not related to this search" title="Not related to this search"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>

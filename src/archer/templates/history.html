@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% from "macros.html" import site_badge %}
+{% from "macros.html" import site_badge, closeness, model_pill, hero_badge %}
 {% from "pixel_mark.html" import pixel_mark %}
-{% block title %}History · Archer{% endblock %}
+{% block title %}{% if q %}{{ q }} · {% endif %}History · Archer{% endblock %}
 {% block body_class %}serp history-body{% endblock %}
 {% block body %}
 {% set PREF_LABEL = {1: "Raised", -1: "Lowered", -2: "Blocked"} %}
@@ -13,26 +13,46 @@
       <input name="q" value="{{ q }}" autocomplete="off" spellcheck="false" aria-label="Search your history" placeholder="Search your history by meaning, e.g. “screen for my laptop”">
       <button type="submit" class="searchbar-go"><svg aria-hidden="true"><use href="#i-search"/></svg>Search</button>
     </form>
-    <a class="top-settings" href="/app#data" aria-label="Privacy settings" title="Privacy settings"><svg aria-hidden="true"><use href="#u-shield"/></svg></a>
+    <a class="top-settings top-history is-current" href="/history" aria-label="History" title="History" aria-current="page"><svg aria-hidden="true"><use href="#u-clock"/></svg></a>
+    <a class="top-settings" href="/app#data" aria-label="Privacy settings" title="Privacy settings"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></svg></a>
   </div>
+  <nav class="wrap tabs" aria-label="History">
+    <div class="tabs-list">
+      <a class="tab{% if not q %} is-active{% endif %}" href="/history"><svg class="tab-icon" aria-hidden="true"><use href="#u-list"/></svg>All searches</a>
+      {% if q %}<a class="tab is-active" href="/history?q={{ q|qs }}"><svg class="tab-icon" aria-hidden="true"><use href="#u-target"/></svg>Matches</a>{% endif %}
+      {% if topics %}<a class="tab" href="#topics"><svg class="tab-icon" aria-hidden="true"><use href="#u-layers"/></svg>Topics</a>{% endif %}
+      {% if top_sites or prefs %}<a class="tab" href="#sites"><svg class="tab-icon" aria-hidden="true"><use href="#u-globe"/></svg>Sites</a>{% endif %}
+    </div>
+    {{ model_pill(model) }}
+  </nav>
 </header>
 
-<main class="wrap page history" data-history-page data-csrf="{{ csrf }}">
+<main class="wrap page" data-history-page data-csrf="{{ csrf }}">
+ <div class="history">
   <div class="h-head">
-    <div>
-      <h1>{% if q %}History matching “{{ q }}”{% else %}History{% endif %}</h1>
-      <p class="h-sub">
-        {{ stats.searches }} search{{ "es" if stats.searches != 1 }} · {{ stats.clicks }} opened result{{ "s" if stats.clicks != 1 }}{% if stats.since %} · since {{ stats.since|ago }}{% endif %}
-        · stored only on this computer · matching with
-        <span title="{{ model.detail or '' }}">{{ model.label }}{% if model.state == "loading" %} (loading){% elif model.state == "failed" %} (unavailable, using word matching){% endif %}</span>
-      </p>
+    <div class="h-head-main">
+      {{ hero_badge("shield", "History", "Only on this computer") }}
+      {% if q %}
+      <h1 class="h-title">Searches like <span class="h-title-q">“{{ q }}”</span></h1>
+      {% if matched %}<p class="h-sub">{{ matched }} match{{ "es" if matched != 1 }}, closest first. {% if model.name == "lexical" or model.state == "failed" %}Matched on words.{% else %}Matched by meaning, so different wording still counts.{% endif %}</p>{% endif %}
+      {% else %}
+      <h1 class="h-title">Your searches</h1>
+      <dl class="h-stats">
+        <div><dt>Searches</dt><dd>{{ stats.searches }}</dd></div>
+        <div><dt>Opened</dt><dd>{{ stats.clicks }}</dd></div>
+        {% if topics %}<div><dt>Topics</dt><dd>{{ topics|length }}</dd></div>{% endif %}
+        {% if stats.since %}<div><dt>Since</dt><dd class="h-stats-text">{{ stats.since|ago }}</dd></div>{% endif %}
+      </dl>
+      {% endif %}
     </div>
     <div class="h-actions">
-      <button type="button" class="h-button" data-history-toggle="{{ 'false' if enabled else 'true' }}">{{ "Pause history" if enabled else "Resume history" }}</button>
+      <button type="button" class="h-button" data-history-toggle="{{ 'false' if enabled else 'true' }}">
+        <span class="h-rec{% if not enabled %} is-paused{% endif %}" aria-hidden="true"></span>{{ "Pause history" if enabled else "Resume history" }}
+      </button>
       <span class="h-clear">
-        <span class="c-select"><select data-history-range aria-label="Time range to clear">
+        <select class="h-select" data-history-range aria-label="Time range to clear">
           <option value="hour">Last hour</option><option value="day">Last 24 hours</option><option value="week">Last 7 days</option><option value="all">All time</option>
-        </select></span>
+        </select>
         <button type="button" class="h-button h-button--danger" data-history-clear>Clear</button>
       </span>
     </div>
@@ -46,16 +66,17 @@
   {% endif %}
 
   {% if topics %}
-  <section class="h-section" aria-labelledby="h-topics">
-    <h2 class="section-title" id="h-topics"><svg aria-hidden="true"><use href="#u-layers"/></svg>Your topics</h2>
+  <section class="h-section" id="topics" aria-labelledby="h-topics">
+    <h2 class="section-title" id="h-topics"><svg aria-hidden="true"><use href="#u-layers"/></svg>Your topics<span class="section-note">grouped by meaning</span></h2>
     <div class="h-topics">
       {% for t in topics %}
       <article class="h-topic">
-        <p class="h-topic-label">{{ t.label }}</p>
-        <p class="h-topic-meta">{{ t.size }} searches · last {{ t.last|ago }}</p>
-        <div class="chips chips--small">
-          {% for item in t.queries %}<a class="chip" href="/search?q={{ item|qs }}">{{ item }}</a>{% endfor %}
-        </div>
+        <a class="h-topic-label" href="/history?q={{ t.label|qs }}" title="Everything in your history like this">{{ t.label }}</a>
+        <p class="h-topic-meta">{{ t.size }} searches · {{ t.last|ago }}</p>
+        <ul class="h-topic-list">
+          {% for item in t.queries[:4] %}<li><a href="/search?q={{ item|qs }}"><svg aria-hidden="true"><use href="#i-search"/></svg><span>{{ item }}</span></a></li>{% endfor %}
+        </ul>
+        {% if t.size > 4 %}<a class="h-topic-more" href="/history?q={{ t.label|qs }}">+{{ t.size - 4 }} more</a>{% endif %}
       </article>
       {% endfor %}
     </div>
@@ -64,23 +85,29 @@
 
   {% for label, entries in days %}
   <section class="h-day" aria-label="{{ label }}">
-    <h2 class="h-day-title">{{ label }}</h2>
-    <ol class="h-list">
+    <h2 class="section-title h-day-title">{% if q %}<svg aria-hidden="true"><use href="#u-target"/></svg>{% endif %}{{ label }}</h2>
+    <ol class="h-list{% if q %} h-list--matches{% endif %}">
       {% for e in entries %}
       <li class="h-entry" data-entry="{{ e.id }}">
         <div class="h-row">
+          {% if e.match %}
+          {{ closeness(e.match.dots, e.match.how) }}
+          {% else %}
           <span class="h-time">{{ e.time }}</span>
+          {% endif %}
           <svg class="h-kind" aria-label="{{ 'AI Mode' if e.mode == 'ai' else 'Search' }}"><use href="{{ '#u-sparkle' if e.mode == 'ai' else '#i-search' }}"/></svg>
           <a class="h-query" href="{{ '/ai' if e.mode == 'ai' else '/search' }}?q={{ e.q|qs }}{% if e.tab != 'all' %}&tab={{ e.tab }}{% endif %}{% if e.about %}&about={{ e.about|qs }}{% endif %}">{{ e.q }}</a>
           {% if e.tab != "all" %}<span class="h-pill">{{ e.tab|capitalize }}</span>{% endif %}
           {% if e.about %}<span class="h-pill" title="Meaning you picked">{{ e.about }}</span>{% endif %}
           {% if e.count > 1 %}<span class="h-count" title="Searched {{ e.count }} times">×{{ e.count }}</span>{% endif %}
+          {% if e.match and e.match.how == "page" %}<span class="h-via" title="A page you opened from this search: {{ e.match.page }}">via a page you opened</span>{% endif %}
+          {% if e.match %}<span class="h-when">{{ e.day }} · {{ e.time }}</span>{% endif %}
           <button type="button" class="h-remove" data-remove-search="{{ e.id }}" aria-label="Remove “{{ e.q }}” from history" title="Remove"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
         </div>
         {% if e.clicks %}
         <ul class="h-clicks">
           {% for c in e.clicks %}
-          <li class="h-click" data-click="{{ c.id }}">
+          <li class="h-click{% if e.match and e.match.how == 'page' and (c.title or c.host) == e.match.page %} is-match{% endif %}" data-click="{{ c.id }}">
             {{ site_badge(c.host) }}
             <a href="{{ c.url }}">{{ c.title or c.url }}</a>
             <span class="h-host">{{ c.host }}</span>
@@ -94,13 +121,20 @@
     </ol>
   </section>
   {% else %}
-  <div class="empty">
-    {% if q %}<p>Nothing in your history matches <b>{{ q }}</b>.</p><p class="muted"><a href="/history">Show all history</a></p>
-    {% else %}<p>No history yet.</p><p class="muted">{{ "Searches you make and results you open will appear here." if enabled else "History is paused." }}</p>{% endif %}
+  <div class="h-empty">
+    {{ pixel_mark(40, "h-empty-mark") }}
+    {% if q %}
+    <p class="h-empty-title">Nothing in your history is close to “{{ q }}”.</p>
+    <p class="h-empty-text">{% if model.name == "lexical" or model.state == "failed" %}Archer is matching words, so try the words you searched with, or <a href="/app#data">turn on matching by meaning</a>.{% else %}Archer matched by meaning and found nothing near it. Try describing it another way.{% endif %}</p>
+    <p class="h-empty-actions"><a class="h-button" href="/history">Show all history</a> <a class="h-button" href="/search?q={{ q|qs }}">Search the web instead</a></p>
+    {% else %}
+    <p class="h-empty-title">No history yet.</p>
+    <p class="h-empty-text">{{ "Searches you make and results you open will appear here, and Archer will start recognising what you come back to." if enabled else "History is paused." }}</p>
+    {% endif %}
   </div>
   {% endfor %}
 
-  {% if more %}<p class="h-more"><a class="h-button" href="/history?before={{ more }}">Older</a></p>{% endif %}
+  {% if more %}<p class="h-more"><a class="h-button" href="/history?before={{ more }}">Older searches</a></p>{% endif %}
 
   {% if top_sites or prefs %}
   <section class="h-section" id="sites" aria-labelledby="h-sites">
@@ -132,5 +166,6 @@
     </ul>
   </section>
   {% endif %}
+ </div>
 </main>
 {% endblock %}

@@ -12,7 +12,7 @@ from archer.app import app
 from archer.config import settings
 from archer.embed import LEXICAL, words
 from archer.history import History
-from archer.personalize import Personalizer, site_pref
+from archer.personalize import Personalizer, closeness, site_pref
 from archer.searxng import Result, SearXNG
 
 from test_app import BASE, fake, offline, searx_handler
@@ -178,6 +178,17 @@ def test_history_search_by_meaning_and_words(store):
     assert run(p.search_history("display for my screen")) == [a]
     assert set(run(p.search_history("pasta"))) == {b, c}  # by meaning, and by an opened page's title
     assert run(p.search_history("unrelated")) == [c]
+    # The history page shows how each matched: the words, the meaning, or a page opened from it.
+    how = {m["id"]: m["how"] for m in run(p.match_history("pasta"))}
+    assert how == {b: "meaning", c: "page"}
+    assert run(p.match_history("unrelated"))[0] | {"dots": 5} == {"id": c, "dots": 5, "how": "words", "page": ""}
+
+
+def test_closeness_dots():
+    assert closeness(1.0, 0.5) == 5                  # same words
+    assert closeness(0.5, 0.5) == 1                  # just clears the cutoff
+    assert 1 < closeness(0.75, 0.5) < 5
+    assert closeness(0.99, 0.5) == 4                 # close in meaning never reads as the same words
 
 
 def test_topics_group_history(store):
@@ -264,7 +275,7 @@ def test_history_page_search(client):
     client.get("/search", params={"q": "zendaya"})
     client.get("/search", params={"q": "weather tomorrow"})
     html = client.get("/history", params={"q": "zendaya"}).text
-    assert "History matching" in html and "/search?q=zendaya" in html and "weather+tomorrow" not in html
+    assert "Searches like" in html and "pxmeter" in html and "/search?q=zendaya" in html and "weather+tomorrow" not in html
 
 
 def test_chosen_meaning_is_remembered(client, monkeypatch):
