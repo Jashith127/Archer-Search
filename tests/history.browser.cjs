@@ -24,9 +24,17 @@ const shot = async (page, name) => { if (shots) await page.screenshot({ path: pa
   const mine = await page.locator('.related--mine .chip').allInnerTexts();
   assert.ok(mine.some(t => /RTX 4050 laptop/.test(t)), `earlier searches: ${mine}`);
   assert.ok(!mine.some(t => /carbonara/.test(t)), 'unrelated history stays out');
-  const hosts = await page.locator('[data-result] .result-host').allInnerTexts();
-  assert.ok(hosts.indexOf('Rtings') < hosts.length - 1, `rtings rises from last: ${hosts}`);
+  // Site habit is a light nudge since the history evaluation; the tag says why a site is favoured.
+  assert.equal(await page.locator('[data-result]', { hasText: 'Rtings' }).locator('.result-tag', { hasText: 'You often open this site' }).count(), 1);
   await shot(page, 'results.png');
+
+  // "Not related" removes an earlier search at once and remembers it.
+  const chips = await page.locator('.related--mine .chip-pair').count();
+  await page.locator('.related--mine .chip-pair').first().hover();
+  const unrelated = page.waitForResponse(r => r.url().endsWith('/api/history/unrelated') && r.status() === 200);
+  await page.locator('.related--mine .chip-dismiss').first().click();
+  await unrelated;
+  assert.equal(await page.locator('.related--mine .chip-pair').count(), chips - 1);
 
   // Opening a result records it (keepalive POST), without leaving this test's page.
   const recorded = page.waitForRequest(r => r.url().endsWith('/api/history/click') && r.method() === 'POST');

@@ -7,11 +7,11 @@
   </div>
 </section>
 {% if personal and personal.related %}
-<section class="related related--mine">
+<section class="related related--mine" data-unrelate-q="{{ v.q }}">
   <h2 class="section-title"><svg aria-hidden="true"><use href="#u-clock"/></svg>Your earlier searches like this</h2>
   <div class="chips">
     {% for item in personal.related %}
-    <a class="chip chip--history" href="/search?q={{ item.q|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}" title="Searched {{ item.last|ago }}">{{ item.q }}<span class="chip-note">{{ item.last|ago }}</span></a>
+    <span class="chip-pair"><a class="chip chip--history" href="/search?q={{ item.q|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}" title="Searched {{ item.last|ago }}">{{ item.q }}<span class="chip-note">{{ item.last|ago }}</span></a><button type="button" class="chip-dismiss" data-unrelate="{{ item.q }}" aria-label="“{{ item.q }}” is not related" title="Not related"><svg aria-hidden="true"><use href="#i-x"/></svg></button></span>
     {% endfor %}
   </div>
 </section>

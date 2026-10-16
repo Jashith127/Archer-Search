@@ -169,7 +169,7 @@ def near_misses(queries: list[str]) -> list[dict]:
 
 
 # ------------------------------------------------------------- runs
-async def evaluate(searches: list[dict], model: str, labels: Path | None = None) -> dict:
+async def evaluate(searches: list[dict], model: str, labels: Path | None = None, without: tuple[str, ...] = ()) -> dict:
     import tempfile
     import time as clock
     import numpy as np
@@ -177,16 +177,18 @@ async def evaluate(searches: list[dict], model: str, labels: Path | None = None)
     from archer.history import History, norm
 
     emb = embeddings_for(model)
+    for rule in without:
+        P.RULES[rule] = False
     ambient = ambient_hosts(searches) - {"youtube.com"}
     web = [s for s in searches if s["kind"] != "nav"]
     unique = list({norm(s["q"]): s["q"].strip() for s in web if s["q"].strip()}.values())
-    report: dict = {"model": emb.active().name, "searches": len(web), "distinct": len(unique)}
+    report: dict = {"model": emb.active().name, "without": list(without), "searches": len(web), "distinct": len(unique)}
 
     # 1. Matching against the whole history: variants, new topics, near-misses.
     store = History(Path(tempfile.mkdtemp()) / "eval.sqlite3")
     pers = P.Personalizer(store, emb)
-    for q in unique:
-        store.record_search(q, now=1e9)
+    for s in web:  # real times: a search's neighbours in time are part of its meaning
+        store.record_search(s["q"], now=s["t"])
     cache: dict[str, tuple] = {}
 
     async def scores(q):
@@ -211,7 +213,8 @@ async def evaluate(searches: list[dict], model: str, labels: Path | None = None)
             false.append({"search": q, "matched": max(hits, key=sc.get)})
     report["new_topics"] = {"runs": len(NOVEL), "falsely_matched": round(len(false) / len(NOVEL), 3), "examples": false}
     near = near_misses(unique)
-    report["near_misses"] = {"runs": len(near), "kept_out_of_recall": round(sum(P.other_model(n["b"], n["a"]) for n in near) / max(len(near), 1), 3)}
+    known = pers.known_word()
+    report["near_misses"] = {"runs": len(near), "kept_out_of_recall": round(sum(P.different_thing(n["b"], n["a"], known) for n in near) / max(len(near), 1), 3)}
     topics = await pers.topics(limit=500)
     report["topics"] = {"groups": len(topics), "searches_grouped": sum(t["size"] for t in topics),
                         "largest": [{"label": t["label"], "size": t["size"], "examples": t["queries"][:5]} for t in topics[:15]]}
@@ -219,9 +222,11 @@ async def evaluate(searches: list[dict], model: str, labels: Path | None = None)
     # 2. Hand labels, if given: a JSON list of {"a", "b", "y"} with y 2 = same need, 1 = related, 0 = unrelated.
     if labels:
         rows = json.loads(labels.read_text(encoding="utf-8"))
+        have = {e["norm"] for e in store.queries()}
         for r in rows:
             for q in (r["a"], r["b"]):
-                store.record_search(q, now=1e9)
+                if norm(q) not in have:
+                    store.record_search(q, now=1.0)  # outside every session
         cache.clear()
         judged = []
         for r in rows:
@@ -277,9 +282,11 @@ def main() -> None:
     ap.add_argument("export", type=Path, help="JSON from scripts/export_history.py")
     ap.add_argument("--model", default="potion-base-8M", help="lexical, potion-base-8M, potion-retrieval-32M, ollama, or a Model2Vec folder")
     ap.add_argument("--labels", type=Path, help="optional hand-labelled pairs (see evaluate())")
+    ap.add_argument("--without", default="", help="comma-separated matching rules to switch off (see personalize.RULES)")
     ap.add_argument("--out", type=Path, default=Path("archer-eval.json"))
     args = ap.parse_args()
-    report = asyncio.run(evaluate(load(args.export), args.model, args.labels))
+    without = tuple(r for r in args.without.split(",") if r)
+    report = asyncio.run(evaluate(load(args.export), args.model, args.labels, without))
     args.out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k not in ("topics",)}, ensure_ascii=False, indent=1)[:4000])
     print(f"Full report in {args.out.resolve()}")

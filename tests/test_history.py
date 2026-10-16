@@ -355,3 +355,60 @@ def test_results_you_opened_before_link_their_searches(store):
     p = Personalizer(store, Concepts())
     out = run(p.personalize("primer", [result("https://primer.style/", "Primer")]))
     assert [r["q"] for r in out.related] == ["github design system"]  # no shared words; your click links them
+
+
+def test_half_typed_searches_and_initials_find_the_full_search(store):
+    store.record_search("ascii art generator")
+    store.record_search("delhi watch company")
+    p = Personalizer(store, Concepts())
+    assert [r["q"] for r in run(p.personalize("ascii art gen", [])).related] == ["ascii art generator"]
+    assert [r["q"] for r in run(p.personalize("dwc", [])).related] == ["delhi watch company"]
+
+
+def test_a_search_naming_a_site_you_use_recalls_it_first(store):
+    sid = store.record_search("ui references for apps")
+    store.record_click(sid, "https://mobbin.com/", "Mobbin: UI and UX design references")
+    store.record_click(sid, "https://mobbin.com/pricing", "Pricing")
+    p = Personalizer(store, Concepts())
+    recall = run(p.personalize("mobbin login", [])).recall
+    assert recall and recall[0]["url"] == "https://mobbin.com/"
+
+
+def test_recall_skips_another_product_of_the_same_brand(store):
+    sid = store.record_search("kia sonet price")
+    store.record_click(sid, "https://cars.example.com/kia-sonet", "Kia Sonet price in India")
+    emb = Concepts()
+    emb.known_word = lambda w: w in {"kia", "price", "india", "car", "review"}  # model names are not words
+    p = Personalizer(store, emb)
+    emb.active = lambda: emb
+    assert run(p.personalize("kia seltos price", [])).recall == []
+    assert run(p.personalize("kia sonet price", [])).recall  # the same product still is
+
+
+def test_searches_around_a_search_shape_its_meaning(store):
+    t = time.time() - 3600
+    store.record_search("dune", now=t)  # no concept words of its own...
+    store.record_search("1440p monitor pixel density", now=t + 60)  # ...but searched among monitor searches
+    store.record_search("display resolution", now=t + 120)
+    p = Personalizer(store, Concepts())
+    from archer import personalize as P
+    with_context = run(p._past_scores("screen resolution"))[4]["dune"]
+    P.RULES["context"] = False
+    try:
+        without = run(Personalizer(store, Concepts())._past_scores("screen resolution"))[4]["dune"]
+    finally:
+        P.RULES["context"] = True
+    assert with_context > without + 0.2
+
+
+def test_not_related_is_remembered_both_ways(client):
+    store = app.state.history if hasattr(app.state, "history") else None
+    client.get("/search", params={"q": "zendaya euphoria"})
+    client.get("/search", params={"q": "zendaya movies"})
+    token = csrf(client)
+    headers = {**SAME, "X-Archer-CSRF": token}
+    assert client.post("/api/history/unrelated", json={"q": "zendaya movies", "other": "zendaya euphoria"}).status_code == 403
+    assert client.post("/api/history/unrelated", json={"q": "zendaya movies", "other": "zendaya euphoria"}, headers=headers).json() == {"ok": True}
+    assert "zendaya movies" in app.state.history.unrelated_to("zendaya euphoria")
+    html = client.get("/search", params={"q": "zendaya movies"}).text
+    assert 'data-unrelate="zendaya euphoria"' not in html

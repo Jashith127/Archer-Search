@@ -126,6 +126,12 @@ class StaticEmbedder(Embedder):
                 log.warning("embedding model %s unavailable (%s); using lexical matching", self.name, self.failed)
             return self.model is not None
 
+    def known_word(self, word: str) -> bool:
+        """Whether the model's vocabulary has this as a whole word: "studio" yes, "seltos" no."""
+        if not hasattr(self, "_vocab"):
+            self._vocab = set(self.model.tokenizer.get_vocab())
+        return any(k in self._vocab for k in (word, "\u2581" + word, "\u0120" + word))
+
     def encode(self, texts: list[str]) -> np.ndarray:
         vecs = self.model.encode([t[:MAX_CHARS] for t in texts], use_multiprocessing=False)
         vecs = np.asarray(vecs, dtype=np.float32)

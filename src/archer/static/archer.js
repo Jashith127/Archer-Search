@@ -1049,6 +1049,21 @@ document.addEventListener("click", (e) => {
   for (const open of $$("details.result-menu[open]")) if (!open.contains(e.target)) open.open = false;
 });
 
+// "Not related": a wrong match is removed now and never paired with this search again.
+for (const section of $$("[data-unrelate-q]")) {
+  section.addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-unrelate]");
+    if (!button) return;
+    e.preventDefault();
+    button.disabled = true;
+    try {
+      await historyPost("/api/history/unrelated", { q: section.dataset.unrelateQ, other: button.dataset.unrelate });
+      button.closest(".chip-pair, .recall-row")?.remove();
+      if (!$(".chip-pair, .recall-row", section)) section.remove();
+    } catch (_) { button.disabled = false; }
+  });
+}
+
 // History page: remove entries, clear a range, pause, and set site preferences.
 const historyPage = $("[data-history-page]");
 if (historyPage) {

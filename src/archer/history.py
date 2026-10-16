@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS vectors (
     PRIMARY KEY (kind, key, model));
 CREATE TABLE IF NOT EXISTS sites (host TEXT PRIMARY KEY, pref INTEGER NOT NULL, at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS meanings (norm TEXT PRIMARY KEY, about TEXT NOT NULL, at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS unrelated (norm TEXT NOT NULL, other TEXT NOT NULL, at REAL NOT NULL, PRIMARY KEY (norm, other));
 """
 
 
@@ -181,7 +182,7 @@ class History:
         """Clear everything, or only what happened after `since`. Site preferences stay; they are settings."""
         with self._lock:
             if since is None:
-                for table in ("clicks", "searches", "meanings"):
+                for table in ("clicks", "searches", "meanings", "unrelated"):
                     self.db.execute(f"DELETE FROM {table}")
                 self.db.execute("DELETE FROM vectors WHERE kind IN ('q','page')")
                 self.db.execute("VACUUM")
@@ -236,6 +237,19 @@ class History:
         rows = self._q(f"SELECT url, MAX(at) AS last, COUNT(*) AS n FROM clicks WHERE url IN ({marks}) GROUP BY url", tuple(urls))
         return {r["url"]: dict(r) for r in rows}
 
+    def sessions(self, window: float) -> dict[str, set[str]]:
+        """For each past search (by norm), the other searches made within `window` seconds of it."""
+        rows = self._q("SELECT norm, at FROM searches ORDER BY at")
+        near: dict[str, set[str]] = {}
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                if b["at"] - a["at"] > window:
+                    break
+                if a["norm"] != b["norm"]:
+                    near.setdefault(a["norm"], set()).add(b["norm"])
+                    near.setdefault(b["norm"], set()).add(a["norm"])
+        return near
+
     def queries_that_opened(self, urls: list[str]) -> list[str]:
         """Norms of past searches from which any of these exact pages was opened, most recent first."""
         if not urls:
@@ -284,6 +298,18 @@ class History:
 
     def remember_meaning(self, q: str, about: str) -> None:
         self._x("INSERT OR REPLACE INTO meanings(norm, about, at) VALUES (?,?,?)", (norm(q), about[:200], time.time()))
+
+    # ---------------------------------------------------------- corrections
+    def mark_unrelated(self, q: str, other: str) -> None:
+        """You said `other` (a past search, or a page's URL) has nothing to do with `q`. Both directions."""
+        a, b = norm(q), other if other.startswith(("http://", "https://")) else norm(other)
+        with self._lock:
+            self.db.execute("INSERT OR REPLACE INTO unrelated(norm, other, at) VALUES (?,?,?)", (a, b, time.time()))
+            if not b.startswith("http"):
+                self.db.execute("INSERT OR REPLACE INTO unrelated(norm, other, at) VALUES (?,?,?)", (b, a, time.time()))
+
+    def unrelated_to(self, q: str) -> set[str]:
+        return {r["other"] for r in self._q("SELECT other FROM unrelated WHERE norm=?", (norm(q),))}
 
 
 def _like(text: str) -> str:

@@ -62,6 +62,11 @@ class Clear(Input):
     range: Literal["hour", "day", "week", "all"]
 
 
+class Unrelate(Input):
+    q: str = Field(min_length=1, max_length=300)
+    other: str = Field(min_length=1, max_length=2000)
+
+
 class Site(Input):
     host: str = Field(min_length=3, max_length=253, pattern=r"^[A-Za-z0-9.-]+$")
     pref: Literal["raise", "lower", "block"] | None = None
@@ -108,6 +113,14 @@ async def clear(request: Request, body: Clear):
     since = None if body.range == "all" else time.time() - {"hour": 3600, "day": 86400, "week": 7 * 86400}[body.range]
     await asyncio.to_thread(history(request).clear, since)
     return JSONResponse({"cleared": body.range, "stats": history(request).stats()})
+
+
+@router.post("/unrelated")
+async def unrelated(request: Request, body: Unrelate):
+    """"Not related": this past search or page never shows for this search again."""
+    guard(request, ai_service(request))
+    history(request).mark_unrelated(body.q, body.other)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/site")

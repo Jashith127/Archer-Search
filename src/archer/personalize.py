@@ -52,6 +52,11 @@ RELATED = {"lexical": 0.45}
 SIGMAS = 7.0
 DEFAULT_RELATED = 0.45  # if calibration itself fails
 W_EMBED, W_LEXICAL = 0.7, 0.3
+# A past search's meaning includes the searches around it (within SESSION seconds): "haiku" next to
+# Claude searches is a model, not a poem. Its vector is blended with its neighbours' (CONTEXT_MIX).
+SESSION, CONTEXT_MIX = 1800, 0.5
+# Switches for the evaluation script's ablations; all on in normal use.
+RULES = {"context": True, "prefix": True, "acronym": True, "site": True, "names": True}
 CALIBRATION = (
     "how to bake sourdough bread", "python list comprehension syntax", "weather in tokyo tomorrow",
     "best budget running shoes", "who won the 2018 world cup", "symptoms of vitamin d deficiency",
@@ -118,25 +123,69 @@ def spelled_alike(a: str, b: str) -> bool:
     ca, cb = compact(a), compact(b)
     if ca == cb:
         return True
-    return min(len(ca), len(cb)) >= 5 and abs(len(ca) - len(cb)) <= 2 and SequenceMatcher(None, ca, cb).ratio() >= 0.85
+    if min(len(ca), len(cb)) < 5 or abs(len(ca) - len(cb)) > 2:
+        return False
+    m = SequenceMatcher(None, ca, cb)  # the cheap upper bounds first: most pairs stop here
+    return m.real_quick_ratio() >= 0.85 and m.quick_ratio() >= 0.85 and m.ratio() >= 0.85
 
 
-_MODEL_TOKEN = re.compile(r"\b(?=\w*\d)\w+\b")
+def started(q: str, past: str) -> bool:
+    """q is the first part of past, as when a search went off half-typed ("ascii gener")."""
+    cq, cp = compact(q), compact(past)
+    return len(cq) >= 4 and len(cp) > len(cq) and cp.startswith(cq) and len(cq) >= 0.4 * len(cp)
 
 
-def model_tokens(text: str) -> set[str]:
-    """Version and model numbers ("16", "4050", "255f", "2021")."""
-    return {t for t in _MODEL_TOKEN.findall(text.casefold()) if len(t) <= 12}
+def acronym(q: str, past: str) -> bool:
+    """q is past's initials: "dwc" for "delhi watch company"."""
+    cq = compact(q)
+    ws = [w for w in re.findall(r"[a-z0-9]+", past.casefold()) if w not in ("the", "of", "and", "a")]
+    return 2 <= len(cq) <= 5 and len(ws) == len(cq) and q.strip().isalnum() and "".join(w[0] for w in ws) == cq
+
+
+_TOKEN = re.compile(r"[a-z0-9]+(?:[.\-][a-z0-9]+)*")
+_FILLER = {"the", "a", "an", "of", "in", "for", "vs", "and", "to", "on", "with", "best", "new", "how", "what", "is"}
+
+
+def _shape(token: str) -> str:
+    return re.sub(r"\d", "0", re.sub(r"[a-z]", "a", token))
+
+
+def different_thing(query: str, text: str, known_word=None) -> bool:
+    """True when text is about a different model, version or product of the same kind as the query:
+    4060 for 4050, 2024 for 2021, g3 for c4, or another product name beside the same brand
+    ("seltos" / "sonet"). Embeddings score these as near-identical, so pages about the other one
+    must not be recalled. `known_word` (from the embedding model's vocabulary) tells product names
+    from ordinary words; without it only numbers are compared."""
+    mine, theirs = set(_TOKEN.findall(query.casefold())) - _FILLER, set(_TOKEN.findall(text.casefold())) - _FILLER
+    if not mine & theirs:
+        return False
+    only_mine, only_theirs = mine - theirs, theirs - mine
+    nums_m = {t for t in only_mine if re.search(r"\d", t)}
+    nums_t = {t for t in only_theirs if re.search(r"\d", t)}
+    if any(_shape(a) == _shape(b) for a in nums_m for b in nums_t):
+        return True
+    if known_word is None:
+        return False
+    names_m = [w for w in only_mine if w.isalpha() and len(w) >= 3 and known_word(w) is False]
+    names_t = [w for w in only_theirs if w.isalpha() and len(w) >= 3 and known_word(w) is False]
+    if not names_m or not names_t:
+        return False
+    alike = lambda a, b: a.startswith(b) or b.startswith(a) or SequenceMatcher(None, a, b).ratio() >= 0.7
+    # A misspelling looks like an unknown name too ("bangalorwe"): only distinct names count.
+    return not any(alike(a, b) for a in names_m for b in only_theirs) and not any(alike(b, a) for b in names_t for a in only_mine)
 
 
 def other_model(query: str, text: str) -> bool:
-    """True when text names a different model or version of the same shape than the query: 4060 for
-    4050, 15 for 16, 2024 for 2021. Embeddings score these as near-identical."""
-    mine, theirs = model_tokens(query), model_tokens(text)
-    if not mine or not theirs or mine & theirs:
-        return False
-    shape = lambda t: re.sub(r"\d", "0", t)
-    return bool({shape(t) for t in mine} & {shape(t) for t in theirs})
+    """Numbers-only form of different_thing, kept for callers without a vocabulary."""
+    return different_thing(query, text)
+
+
+def site_label(host: str) -> str:
+    """The name a site's address spells: platform.deepseek.com -> deepseek, mobbin.com -> mobbin."""
+    labels = host.removeprefix("www.").split(".")
+    while len(labels) > 1 and labels[-1] in ("com", "org", "net", "co", "in", "io", "ai", "app", "dev", "uk", "me", "tv", "gg", "so", "xyz"):
+        labels.pop()
+    return labels[-1] if labels else ""
 
 
 def site_pref(host: str, prefs: dict[str, int]) -> int:
@@ -172,6 +221,7 @@ class Personalizer:
         # History vectors by (kind, model), loaded from SQLite once and kept until something is deleted.
         self._stored: dict[tuple[str, str], tuple[int, dict[str, np.ndarray]]] = {}
         self._thresholds: dict[str, float] = {}
+        self._contexts: tuple | None = None
 
     async def threshold(self, model: str) -> float:
         if model in RELATED:
@@ -242,18 +292,48 @@ class Personalizer:
         if qmodel != model or not qvecs:
             return model, qvec, thr, past, {}
         keys = list(qvecs)
-        raw = np.stack([qvecs[k] for k in keys]) @ qvec
+        matrix = np.stack([qvecs[k] for k in keys])
+        raw = matrix @ qvec
+        if RULES["context"]:
+            raw = (1 - CONTEXT_MIX) * raw + CONTEXT_MIX * (self._context_matrix(model, keys, qvecs) @ qvec)
         short = len(words(q)) <= 1
         scores = {}
         for k, s in zip(keys, raw.tolist()):
-            if spelled_alike(q, past[k]["q"]):
-                s = max(s, 1.0 if compact(q) == compact(past[k]["q"]) else thr + 0.1)
-            elif short or len(words(past[k]["q"])) <= 1:
-                cq, cp = compact(q), compact(past[k]["q"])
+            text = past[k]["q"]
+            if spelled_alike(q, text):
+                s = max(s, 1.0 if compact(q) == compact(text) else thr + 0.1)
+            elif RULES["acronym"] and (acronym(q, text) or acronym(text, q)):
+                s = max(s, thr + 0.1)
+            elif RULES["prefix"] and started(q, text):
+                s = max(s, thr + 0.05)
+            elif short or len(words(text)) <= 1:
+                cq, cp = compact(q), compact(text)
                 if not (cq in cp or cp in cq):
                     s -= 0.1  # one shared word decides too much in a one-word search
             scores[k] = s
         return model, qvec, thr, past, scores
+
+    def _context_matrix(self, model: str, keys: list[str], qvecs: dict[str, np.ndarray]) -> np.ndarray:
+        """Each past search's vector blended with the searches made around it, cached until history changes."""
+        stamp = (model, self.history.version, self.history.stats()["searches"], len(keys))
+        if self._contexts and self._contexts[0] == stamp:
+            return self._contexts[1]
+        neighbours = self.history.sessions(SESSION)
+        rows = []
+        for k in keys:
+            near = [qvecs[n] for n in neighbours.get(k, ()) if n in qvecs]
+            v = qvecs[k]
+            if near:
+                m = np.mean(near, axis=0)
+                v = v + m / (np.linalg.norm(m) or 1)
+            rows.append(v / (np.linalg.norm(v) or 1))
+        matrix = np.stack(rows).astype(np.float32)
+        self._contexts = (stamp, matrix)
+        return matrix
+
+    def known_word(self):
+        """The embedding model's vocabulary test (word -> True/False), or None without one."""
+        return getattr(self.emb.active(), "known_word", None) if RULES["names"] else None
 
     async def _docs_for(self, model: str, results: list) -> np.ndarray:
         texts, keys, out = [], [], [None] * len(results)
@@ -294,6 +374,7 @@ class Personalizer:
         model, qvec, thr, past, sims = await self._past_scores(q)
         out.model = model
         qn = norm(q)
+        dismissed = self.history.unrelated_to(q)  # your own corrections beat every score
         mine = not (utility(q) or fragment(q))
 
         # Related: earlier searches that mean the same, freshest first among equals, then searches
@@ -301,10 +382,10 @@ class Personalizer:
         # the words don't: an abbreviation, a product's other name).
         related = sorted(((s * (0.85 + 0.15 * _decay(past[k]["last"], now)), k) for k, s in sims.items() if s >= thr), reverse=True)
         q_words = set(words(q))
-        picked = [k for _, k in related if set(words(past[k]["q"])) != q_words][:5]
+        picked = [k for _, k in related if set(words(past[k]["q"])) != q_words and k not in dismissed][:5]
         if mine and kept:
             for k in self.history.queries_that_opened([r.url for r in kept]):
-                if k in past and k not in picked and len(picked) < 6:
+                if k in past and k not in picked and k not in dismissed and len(picked) < 6:
                     picked.append(k)
         out.related = [{"q": past[k]["q"], "last": past[k]["last"]} for k in picked]
 
@@ -353,7 +434,18 @@ class Personalizer:
         # site (three pages of one site crowded out the page you wanted), and never a page for a
         # different model or version than the one searched ("iphone 15 pro" for "iphone 16 pro").
         on_page = {r.url for r in kept}
-        pages = [p for p in self.history.pages() if p["url"] not in on_page] if mine else []
+        pages = [p for p in self.history.pages() if p["url"] not in on_page and p["url"] not in dismissed
+                 and norm(p["q"] or "") not in dismissed] if mine else []
+        known = self.known_word()
+        if pages and RULES["site"]:
+            # A search that names a site you use ("mobbin", "deepseek api") is often a way back to it:
+            # its most visited page leads the box, whatever the words around it.
+            named = {w for w in re.findall(r"[a-z0-9]+", q.casefold()) if len(w) >= 4} | {compact(q)}
+            visited = [p for p in pages if site_label(p["host"]) in named]
+            if visited:
+                top = max(visited, key=lambda p: (p["n"], -len(p["url"]), p["last"]))
+                if top["title"] and not _JUNK_TITLE.match(top["title"].strip()):
+                    out.recall.append({"url": top["url"], "title": top["title"], "host": top["host"], "last": top["last"], "q": top["q"] or ""})
         if pages:
             pmodel, pvecs = await self._vectors("page", {p["url"]: f"{p['title']}. {p['snippet']}" for p in pages})
             picks = []
@@ -364,13 +456,13 @@ class Personalizer:
                 best = max(s, via * 0.95)
                 if best < thr + 0.05:
                     continue
-                if pq != qn and other_model(q, f"{p['title']} {p['q'] or ''}"):
+                if pq != qn and different_thing(q, f"{p['title']} {p['q'] or ''}", known):
                     continue
                 if not p["title"] or _JUNK_TITLE.match(p["title"].strip()):
                     continue
                 picks.append((best * (0.8 + 0.2 * _decay(p["last"], now)), p))
             picks.sort(key=lambda t: t[0], reverse=True)
-            sites: set[str] = set()
+            sites: set[str] = {r["host"] for r in out.recall}
             for _, p in picks:
                 if p["host"] in sites:
                     continue

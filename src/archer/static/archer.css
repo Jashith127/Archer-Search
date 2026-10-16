@@ -2073,3 +2073,14 @@ body.has-rl.ai-fullview .ai-search { padding-top: 114px; }
   .h-time { width: auto; }
   .h-seg { margin-left: 0; }
 }
+
+.recall-row { display: flex; align-items: center; gap: 4px; }
+.recall-row .recall-item { flex: 1; min-width: 0; }
+.recall-dismiss, .chip-dismiss { flex: none; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); cursor: pointer; border-radius: 6px; opacity: 0; transition: opacity .15s; }
+.recall-dismiss { width: 28px; height: 28px; }
+.recall-dismiss svg, .chip-dismiss svg { width: 12px; height: 12px; }
+.recall-row:hover .recall-dismiss, .chip-pair:hover .chip-dismiss, .recall-dismiss:focus-visible, .chip-dismiss:focus-visible { opacity: 1; }
+.recall-dismiss:hover, .chip-dismiss:hover { background: var(--surface-3); color: var(--text); }
+.chip-pair { display: inline-flex; align-items: center; }
+.chip-dismiss { width: 22px; height: 22px; margin-left: -2px; }
+@media (hover: none) { .recall-dismiss, .chip-dismiss { opacity: 1; } }
