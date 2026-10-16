@@ -61,6 +61,10 @@ a chosen number of days (a year by default).
   same thing, fading with a 30-day half-life. The provider's order keeps the most weight so exact
   matches (model numbers, names) stay near the top. Blocked sites are removed, including from
   Discussions. Personalization reorders within a page; it never adds a request.
+- **What counts as related:** each model spreads similarity differently, so the cutoff is calibrated
+  per model on twenty deliberately unrelated searches (mean + 3.5 standard deviations, kept between
+  0.25 and 0.75). A fixed 0.5 would have hidden genuinely related searches that one static model
+  scored 0.34-0.50.
 - **Recall and related:** "You found these before" lists up to three pages opened for similar
   searches; "Your earlier searches like this" lists past searches with the same meaning in other
   words. The `/history` page searches history by meaning and groups it into topics (greedy

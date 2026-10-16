@@ -298,3 +298,15 @@ def test_static_model_loads_from_the_data_folder(tmp_path):
     assert model.load() and model.ready
     a, b, c = model.encode(["monitor", "display", "pasta"])
     assert a @ b > 0.9 and abs(a @ c) < 0.01
+
+
+def test_related_cutoff_is_calibrated_per_model():
+    """A model that spreads unrelated text widely gets a higher cutoff than one that keeps it near 0."""
+    from archer.personalize import calibrated
+    rng = np.random.default_rng(0)
+    tight = rng.normal(size=(20, 256)).astype(np.float32)
+    tight /= np.linalg.norm(tight, axis=1, keepdims=True)
+    loose = tight + 1.2  # everything shares a large common direction, as some models do
+    loose /= np.linalg.norm(loose, axis=1, keepdims=True)
+    assert calibrated(tight) == 0.25          # floor: unrelated pairs sit near 0
+    assert 0.5 < calibrated(loose) <= 0.75    # raised with the model's baseline

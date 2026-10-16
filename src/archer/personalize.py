@@ -28,10 +28,20 @@ from archer.config import settings
 from archer.embed import Embeddings, embeddings as default_embeddings, words
 from archer.history import History, host_of, norm
 
-# Cosine similarity above which two texts count as "about the same thing", per backend. Static
-# models spread unrelated text around 0.1-0.3; Ollama's larger models sit higher overall.
-RELATED = {"lexical": 0.34, "ollama": 0.62}
-DEFAULT_RELATED = 0.5
+# Cosine similarity above which two texts count as "about the same thing". Every model spreads its
+# scores differently (one puts unrelated text near 0, another near 0.4), so each is calibrated on
+# first use: CALIBRATION is twenty searches about unrelated things, and "related" means scoring
+# well above how alike those look to the model (mean + 3.5 standard deviations). Word matching is
+# fixed, since unrelated text shares no words and scores exactly 0.
+RELATED = {"lexical": 0.34}
+DEFAULT_RELATED = 0.5  # if calibration itself fails
+CALIBRATION = (
+    "how to bake sourdough bread", "python list comprehension syntax", "weather in tokyo tomorrow",
+    "best budget running shoes", "who won the 2018 world cup", "symptoms of vitamin d deficiency",
+    "cheap flights to lisbon", "how do black holes form", "replace a bike chain", "taylor swift tour dates",
+    "mortgage interest rates today", "learn guitar chords for beginners", "history of the roman empire",
+    "fix a leaking kitchen tap", "electric car battery lifespan", "meditation for anxiety",
+    "dog food for puppies", "excel vlookup formula", "how volcanoes erupt", "wedding dress styles")
 HALF_LIFE_DAYS = 30
 W_RANK, W_SEMANTIC, W_AFFINITY = 0.5, 0.2, 0.3
 PREF_BONUS = {1: 0.35, -1: -0.35}
@@ -40,6 +50,12 @@ _DOC_CACHE_MAX = 4000
 
 def threshold(model: str) -> float:
     return RELATED.get(model.split(":")[0], DEFAULT_RELATED)
+
+
+def calibrated(vecs: np.ndarray) -> float:
+    """The "related" cutoff for a model, from its vectors of the CALIBRATION searches."""
+    sims = (vecs @ vecs.T)[np.triu_indices(len(vecs), 1)]
+    return float(np.clip(sims.mean() + 3.5 * sims.std(), 0.25, 0.75))
 
 
 def site_pref(host: str, prefs: dict[str, int]) -> int:
@@ -74,6 +90,15 @@ class Personalizer:
         self._docs: OrderedDict[tuple[str, str], np.ndarray] = OrderedDict()
         # History vectors by (kind, model), loaded from SQLite once and kept until something is deleted.
         self._stored: dict[tuple[str, str], tuple[int, dict[str, np.ndarray]]] = {}
+        self._thresholds: dict[str, float] = {}
+
+    async def threshold(self, model: str) -> float:
+        if model in RELATED:
+            return RELATED[model]
+        if model not in self._thresholds:
+            used, vecs = await self.emb.encode(list(CALIBRATION))
+            self._thresholds[model] = calibrated(vecs) if used == model else threshold(model)
+        return self._thresholds[model]
 
     def _load(self, kind: str, model: str) -> dict[str, np.ndarray]:
         hit = self._stored.get((kind, model))
@@ -147,7 +172,7 @@ class Personalizer:
             return out
         model, qvec = await self._query(q)
         out.model = model
-        thr = threshold(model)
+        thr = await self.threshold(model)
         qn = norm(q)
         past = {e["norm"]: e for e in self.history.queries() if e["norm"] != qn}
         qmodel, qvecs = await self._vectors("q", {k: e["q"] for k, e in past.items()})
@@ -228,7 +253,7 @@ class Personalizer:
         if not entries:
             return []
         model, qvec = await self._query(q)
-        thr = threshold(model) * 0.85
+        thr = await self.threshold(model) * 0.85
         qm, qvecs = await self._vectors("q", {e["norm"]: e["q"] for e in entries})
         scores: dict[str, float] = {}
         needle = norm(q)
@@ -263,7 +288,7 @@ class Personalizer:
         if len(entries) < 3:
             return []
         model, vecs = await self._vectors("q", {e["norm"]: e["q"] for e in entries})
-        thr = threshold(model) * 0.9
+        thr = await self.threshold(model) * 0.9
         clusters: list[dict] = []
         for e in entries:
             v = vecs.get(e["norm"])
