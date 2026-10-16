@@ -50,7 +50,16 @@ ENGINES = [
     (re.compile(r"^(archer\.localhost|localhost|127\.0\.0\.1)$"), "q", "/search"),
     (re.compile(r"(^|\.)youtube\.com$"), "search_query", "/results"),
 ]
-SKIP_OPENED = re.compile(r"^(chrome|edge|brave|about|file|data|javascript):|accounts\.google|/signin|/login|/oauth", re.I)
+SKIP_OPENED = re.compile(r"^(chrome|chrome-extension|edge|brave|about|file|data|javascript|devtools):|accounts\.google|/signin|/login|/oauth", re.I)
+# Chromium also records site shortcuts and navigation as keyword "searches" (a GitHub repo path, an
+# X profile, a YouTube video ID) and in-mail searches: none of these are web searches.
+NOT_SEARCH_HOSTS = re.compile(r"(^|\.)(github\.com|x\.com|twitter\.com|mail\.google\.com|outlook\.(live|office)\.com|web\.whatsapp\.com)$")
+NAVIGATION = re.compile(r"^[\w.-]+(/[\w.-]+)+/?$|^https?://")
+
+
+def video_id(q: str) -> bool:
+    """A YouTube video ID ("JepcA5TOAo0"), not an 11-letter word ("Shakespeare", "TRANSFORMER")."""
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{11}", q)) and (bool(re.search(r"[\d_-]", q)) or not (q.istitle() or q.isupper() or q.islower()))
 
 
 def find_history(browser: str | None) -> Path:
@@ -113,8 +122,10 @@ def main() -> None:
         if not found and not term:
             continue
         engine, q = found if found else ((urlsplit(url).hostname or ""), term)
-        q = term or q
-        if blocked(q):
+        q = (term or q).strip()
+        if NOT_SEARCH_HOSTS.search(engine) or NAVIGATION.match(q) or video_id(q):
+            continue
+        if blocked(q) or blocked(url):
             continue
         at = when(micro)
         last = searches[-1] if searches else None

@@ -236,6 +236,15 @@ class History:
         rows = self._q(f"SELECT url, MAX(at) AS last, COUNT(*) AS n FROM clicks WHERE url IN ({marks}) GROUP BY url", tuple(urls))
         return {r["url"]: dict(r) for r in rows}
 
+    def queries_that_opened(self, urls: list[str]) -> list[str]:
+        """Norms of past searches from which any of these exact pages was opened, most recent first."""
+        if not urls:
+            return []
+        marks = ",".join("?" * len(urls))
+        rows = self._q(f"SELECT s.norm, MAX(c.at) AS last FROM clicks c JOIN searches s ON s.id=c.search_id "
+                       f"WHERE c.url IN ({marks}) GROUP BY s.norm ORDER BY last DESC LIMIT 10", tuple(urls))
+        return [r["norm"] for r in rows]
+
     def host_clicks(self) -> list[dict]:
         """(host, query norm, time) for every click that came from a search: the raw site affinity data."""
         rows = self._q("SELECT c.host, s.norm, c.at FROM clicks c JOIN searches s ON s.id=c.search_id")

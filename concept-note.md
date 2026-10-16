@@ -54,17 +54,21 @@ a chosen number of days (a year by default).
   `potion-retrieval-32M`, an Ollama embedding model, or hashed word/trigram vectors (no download,
   and the fallback while a model loads or can't be fetched) are alternatives. Vectors are cached
   per model, so switching re-embeds lazily.
-- **Ranking:** `0.5·rank + 0.2·semantic + 0.3·affinity`, plus ±0.35 for a raised or lowered site and
+- **Ranking:** `0.6·rank + 0.25·semantic + 0.15·affinity` (affinity needs two visits), plus ±0.35 for a raised or lowered site and
   a small lift for a page you opened before. *Rank* is the provider's position on a fixed curve
   (1, 0.8, 0.67, …), *semantic* is query-to-snippet similarity normalised across the page (half
   weight with word matching), *affinity* counts visits to that site after searches that mean the
   same thing, fading with a 30-day half-life. The provider's order keeps the most weight so exact
   matches (model numbers, names) stay near the top. Blocked sites are removed, including from
   Discussions. Personalization reorders within a page; it never adds a request.
-- **What counts as related:** each model spreads similarity differently, so the cutoff is calibrated
-  per model on twenty deliberately unrelated searches (mean + 3.5 standard deviations, kept between
-  0.25 and 0.75). A fixed 0.5 would have hidden genuinely related searches that one static model
-  scored 0.34-0.50.
+- **What counts as related (16 October 2026, after evaluating a real history; see
+  `docs/history-evaluation.md`):** similarity is 0.7·embedding + 0.3·word similarity, stored as one
+  concatenated vector. The cutoff is calibrated per model on twenty unrelated searches at mean + 7
+  standard deviations (3.5 showed a third unrelated matches). Calculator-style searches and fragments
+  never match; spelling variants always do; one-word searches need a stronger match; searches whose
+  opened page is in the current results are related regardless of wording. Recall shows one page per
+  site, skips junk titles, and never shows a different model or version number than the one searched.
+  Precision of shown matches went from 0.63 to 0.88, new-topic false matches from 74 % to 12 %.
 - **Recall and related:** "You found these before" lists up to three pages opened for similar
   searches; "Your earlier searches like this" lists past searches with the same meaning in other
   words. The `/history` page searches history by meaning and groups it into topics (greedy

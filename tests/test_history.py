@@ -1,6 +1,7 @@
 """Search history and personalization: storage, ranking, recall and the HTTP surface. All local, all mocked."""
 import asyncio
 import time
+import zlib
 
 import numpy as np
 import pytest
@@ -23,7 +24,8 @@ def result(url, title, content=""):
 
 
 class Concepts:
-    """A stand-in embedding model: each concept is an axis, so 'meaning' is fully predictable."""
+    """A stand-in embedding model: each concept is an axis, so 'meaning' is fully predictable. Words
+    outside the concepts add a little hashed noise, so unrelated text spreads out as with real models."""
     name = "concepts"
     ready = True
     AXES = [{"monitor", "display", "screen", "resolution", "1440p", "pixel", "density"},
@@ -37,7 +39,10 @@ class Concepts:
         out = []
         for text in texts:
             ws = set(words(text))
-            vec = np.array([len(ws & axis) for axis in self.AXES] + [0.05], dtype=np.float32)
+            noise = np.random.default_rng(zlib.crc32(" ".join(sorted(ws)).encode())).normal(size=256)
+            noise /= np.linalg.norm(noise)
+            concept = np.array([3.0 * len(ws & axis) for axis in self.AXES], dtype=np.float32)
+            vec = np.concatenate([concept, noise * 0.6]).astype(np.float32)
             out.append(vec / np.linalg.norm(vec))
         return self.name, np.stack(out)
 
@@ -308,5 +313,45 @@ def test_related_cutoff_is_calibrated_per_model():
     tight /= np.linalg.norm(tight, axis=1, keepdims=True)
     loose = tight + 1.2  # everything shares a large common direction, as some models do
     loose /= np.linalg.norm(loose, axis=1, keepdims=True)
-    assert calibrated(tight) == 0.25          # floor: unrelated pairs sit near 0
-    assert 0.5 < calibrated(loose) <= 0.75    # raised with the model's baseline
+    assert 0.3 <= calibrated(tight) < calibrated(loose) <= 0.75  # raised with the model's baseline
+    assert calibrated(loose) - calibrated(tight) > 0.1
+
+
+# ------------------------------------------------ rules from the history evaluation
+
+def test_calculator_searches_and_fragments_never_match(store):
+    for q in ("18,500 - 3500", "680 of 15000 in percentage", "z", "50000 mb in gb"):
+        store.record_search(q)
+    p = Personalizer(store, Concepts())
+    assert run(p.personalize("56000 x0.3", [])).related == []      # a sum is not an interest
+    assert run(p.personalize("zendaya", [])).related == []          # "z" was a half-typed entry
+    assert run(p.topics()) == []
+
+
+def test_spacing_and_typo_variants_match(store):
+    store.record_search("light house audit")
+    store.record_search("pixel art generator")
+    p = Personalizer(store, Concepts())
+    assert [r["q"] for r in run(p.personalize("lighthouse audit", [])).related] == ["light house audit"]
+    assert [r["q"] for r in run(p.personalize("pixelart generater", [])).related] == ["pixel art generator"]
+
+
+def test_recall_shows_one_page_per_site_and_respects_model_numbers(store):
+    sid = store.record_search("rtx 4050 laptop monitor")
+    for path in ("a", "b", "c"):
+        store.record_click(sid, f"https://www.rtings.com/{path}", "RTX 4050 laptop monitor guide")
+    sid = store.record_search("1440p monitor for gaming laptop")
+    store.record_click(sid, "https://forum.example.com/t", "1440p monitor for a gaming laptop")
+    p = Personalizer(store, Concepts())
+    recall = run(p.personalize("rtx 4050 gaming laptop screen", [])).recall
+    assert len({r["host"] for r in recall}) == len(recall) >= 2
+    # Same words, a different GPU: pages about the 4050 aren't recalled for a 4060.
+    assert all("rtings" not in r["host"] for r in run(p.personalize("rtx 4060 gaming laptop screen", [])).recall)
+
+
+def test_results_you_opened_before_link_their_searches(store):
+    sid = store.record_search("github design system")
+    store.record_click(sid, "https://primer.style/", "Primer")
+    p = Personalizer(store, Concepts())
+    out = run(p.personalize("primer", [result("https://primer.style/", "Primer")]))
+    assert [r["q"] for r in out.related] == ["github design system"]  # no shared words; your click links them
