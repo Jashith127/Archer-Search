@@ -27,15 +27,20 @@ the script above measures them.
 
 ## Results
 
-| | As first shipped | After the changes |
-|---|---|---|
-| Precision of shown matches (labelled pairs) | 0.63 | **0.88** |
-| Same-need pairs found | 0.92 | 0.86 |
-| Related pairs found | 0.87 | 0.65 |
-| New-topic searches falsely matched | 0.74 | **0.12** |
-| Variant found: typo / two typos / spaces removed / half-typed | 0.90 / 0.73 / 0.84 / 0.88 | **0.95 / 0.84 / 0.97 / 0.91** |
-| Searches showing related searches (replay) | 81 % (2.97 each) | 49 % (1.14 each) |
-| Latency per search, median / p95 | 17 / 34 ms | 28 / 55 ms |
+| | As first shipped (loose cutoff) | Embedding alone, strict cutoff (0.48) | After the changes |
+|---|---|---|---|
+| Precision of shown matches (labelled pairs) | 0.63 | 0.85 | **0.88** |
+| Same-need pairs found | 0.92 | 0.78 | 0.86 |
+| Related pairs found | 0.87 | 0.60 | 0.65 |
+| New-topic searches falsely matched | 0.74 | 0.14 | **0.12** |
+| Variant found: typo / two typos / spaces removed / half-typed | 0.97 / 0.90 / 0.97 / 0.97 | 0.90 / 0.73 / 0.84 / 0.88 | 0.95 / 0.84 / 0.97 / 0.91 |
+| Searches showing related searches (replay) | 81 % (2.97 each) | 48 % (1.05 each) | 49 % (1.14 each) |
+| Latency per search, median / p95 | 17 / 34 ms | 17 / 34 ms | 28 / 55 ms |
+
+The shipped cutoff found almost everything because it matched almost anything: three in four
+searches on topics absent from the history still "found" something. Tightening the cutoff alone
+fixes that but loses typo and spacing variants; the blend and the spelling rules recover most of
+them at the same precision.
 
 Word matching alone with its refitted cutoff (0.45) reaches 0.94 precision but finds only 0.70 of
 same-need pairs and 0.45 of related ones; the embedding is what recovers rewordings, abbreviated
