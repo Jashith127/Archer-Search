@@ -69,6 +69,11 @@ a chosen number of days (a year by default).
   opened page is in the current results are related regardless of wording. Recall shows one page per
   site, skips junk titles, and never shows a different model or version number than the one searched.
   Precision of shown matches went from 0.63 to 0.88, new-topic false matches from 74 % to 12 %.
+  A second round added: session context (a past search's vector blended with the searches made
+  within 30 minutes of it, cutoff ×0.96), half-typed and initials matching, sites named in a search
+  recalled first, other products of the same brand kept out of recall (words outside the model's
+  vocabulary count as product names), and "Not related" corrections remembered both ways.
+  Precision 0.92, same-need recall 0.90.
 - **Recall and related:** "You found these before" lists up to three pages opened for similar
   searches; "Your earlier searches like this" lists past searches with the same meaning in other
   words. The `/history` page searches history by meaning and groups it into topics (greedy
