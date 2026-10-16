@@ -66,6 +66,8 @@ class Result:
     length: str = ""
     source: str = ""
     resolution: str = ""
+    visited: float = 0.0  # when you last opened this result (history), else 0
+    personal: str = ""    # why personalization moved it: "raised", "lowered", "often"
 
 
 @dataclass

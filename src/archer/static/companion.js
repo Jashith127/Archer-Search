@@ -469,6 +469,24 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) { toast(error.message, true); }
   });
 
+  const historyClear = $("[data-history-clear-all]");
+  let historyTimer = 0;
+  historyClear?.addEventListener("click", async () => {
+    if (!historyClear.classList.contains("is-confirming")) {
+      historyClear.classList.add("is-confirming");
+      historyClear.textContent = "Clear all?";
+      historyTimer = setTimeout(() => { historyClear.classList.remove("is-confirming"); historyClear.textContent = "Clear"; }, 3500);
+      return;
+    }
+    clearTimeout(historyTimer);
+    historyClear.classList.remove("is-confirming");
+    historyClear.textContent = "Clear";
+    try {
+      await post("/api/history/clear", { range: "all" });
+      toast("Search history cleared. Site preferences are kept.");
+    } catch (error) { toast(error.message, true); }
+  });
+
   const overlay = $("[data-overlay]");
   const waitForArcher = async url => {
     const target = new URL(url, location.href);

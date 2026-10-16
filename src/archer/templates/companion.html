@@ -201,13 +201,19 @@
 
   {# --------------------------------------------------------------- data #}
   <section class="c-pane" data-pane="data" aria-labelledby="h-data" hidden>
-    {{ head("data", "Privacy & data", "Archer keeps no search history. This is everything that leaves the computer, and everything it stores.") }}
+    {{ head("data", "Privacy & data", "This is everything that leaves the computer, and everything Archer stores on it.") }}
+    {{ group_head(intro.history[0], intro.history[1]) }}
+    <div class="c-list">
+      {{ section_fields("history", intro, items) }}
+      {% call action_row("Your history", state.history.searches ~ " searches and " ~ state.history.clicks ~ " opened results · matching with " ~ state.history.model.label ~ {"loading": " (loading)", "failed": " (unavailable, using word matching)"}.get(state.history.model.state, "")) %}<a class="c-button" href="/history" target="_blank" rel="noopener">Open</a> <button type="button" class="c-button c-button--danger" data-history-clear-all>Clear</button>{% endcall %}
+    </div>
     {{ group_head("What leaves this computer") }}
     <dl class="c-list c-facts">
       <div><dt>Searches</dt><dd>Go to <span data-provider-name>{{ p.search.label }}</span>{% if p.search.fallback and p.search.id != 'duckduckgo' %}, and DuckDuckGo if it fails{% endif %}.</dd></div>
       <div><dt>Suggestions</dt><dd>Come from {{ {"searxng": "your SearXNG", "duckduckgo": "DuckDuckGo", "google": "Google", "off": "nowhere (they're off)"}[p.search.suggest] }} as you type.</dd></div>
       <div><dt>AI questions</dt><dd>Go to {{ p.ai.label }} only after you ask{% if p.ai.id == 'ollama' %}, and stay on this computer{% endif %}.</dd></div>
       <div><dt>Cards</dt><dd>Read public sources like Wikipedia, Open-Meteo and OpenStreetMap, without cookies.</dd></div>
+      <div><dt>History</dt><dd>Never leaves it. The matching model is downloaded once; your searches are never sent to make vectors{% if items.semantic_model.value == 'ollama' %} (Ollama runs locally){% endif %}.</dd></div>
     </dl>
     {{ group_head("Stored on this computer") }}
     <div class="c-list">
@@ -216,7 +222,7 @@
         <div class="c-control"><button type="button" class="c-button" data-open="folder">Open</button></div>
       </div>
       <div class="c-row c-row--action">
-        <div class="c-label"><span class="c-label-text">Data folder</span><p>The log, AI preferences, daily spending totals and cached price lists.</p><code class="c-path">{{ state.system.data_dir }}</code></div>
+        <div class="c-label"><span class="c-label-text">Data folder</span><p>The log, search history, the matching model, AI preferences, daily spending totals and cached price lists.</p><code class="c-path">{{ state.system.data_dir }}</code></div>
         <div class="c-control"><button type="button" class="c-button" data-open="data">Open</button></div>
       </div>
       <div class="c-row c-row--action">

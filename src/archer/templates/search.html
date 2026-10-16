@@ -10,6 +10,7 @@
   <div class="wrap top-inner">
     <a class="brand" href="/" aria-label="Archer home">{{ pixel_mark(32) }}</a>
     {{ search_box(v.q, v.tab) }}
+    <a class="top-settings top-history" href="/history" aria-label="History" title="History"><svg aria-hidden="true"><use href="#u-clock"/></svg></a>
     <a class="top-settings" href="/app" aria-label="Settings" title="Settings"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></svg></a>
   </div>
   <nav class="wrap tabs" aria-label="Result types">
@@ -27,7 +28,7 @@
   </nav>
 </header>
 
-<main class="wrap page">
+<main class="wrap page"{% if history_id %} data-history="{{ history_id }}"{% endif %} data-csrf="{{ ai.csrf }}">
   {% if v.response and v.response.error %}
   <div class="notice">{{ v.response.error|trim('.') }}. <a href="{{ provider_page }}">Open {{ provider_label }} directly</a> or <a href="/app#search">check your search settings</a>.</div>
   {% elif v.response and v.response.notice %}
@@ -46,6 +47,10 @@
   <div class="notice">The {{ v.query.kind }} card couldn't load because {{ v.hero_failed }} didn't respond. Try again in a minute; the web results below are unaffected.</div>
   {% endif %}
 
+  {% if v.remembered and v.hero and v.hero.kind == "entity" %}
+  <p class="correction correction--quiet">Showing {{ v.hero.data.title }}, the meaning you picked last time. Other meanings are listed in the panel.</p>
+  {% endif %}
+
   {% if v.hero %}{% include "heroes/" ~ v.hero.kind ~ ".html" %}{% endif %}
   {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
 
@@ -62,8 +67,9 @@
       </section>
       {% endif %}
 
+      {% if personal and personal.recall and v.page == 1 %}{% include "history_recall.html" %}{% endif %}
       {% for r in v.results %}
-        {{ result(r) }}
+        {{ result(r, menu=true) }}
         {% if loop.index == 1 and v.lazy.images %}{{ lazy_strip("images", v.q, "Images", "image") }}{% endif %}
         {% if loop.index == 2 and v.lazy.news %}{{ lazy_strip("news", v.q, "In the news", "news") }}{% endif %}
         {% if loop.index == 3 and v.lazy.videos %}{{ lazy_strip("videos", v.q, "Videos", "video") }}{% endif %}
@@ -91,7 +97,10 @@
     {% if v.response and v.response.unresponsive %}
     <p>Engines unavailable: {% for name, why in v.response.unresponsive %}<span title="{{ why }}">{{ name }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</p>
     {% endif %}
-    <p><a href="{{ provider_page }}">View on {{ provider_label }}</a> · <span data-ai-footer>Classic mode · no AI used</span></p>
+    {% if personal and personal.hidden %}
+    <p>{{ personal.hidden|length }} result{{ "s" if personal.hidden|length != 1 }} from blocked sites hidden ({{ personal.hidden|unique|join(", ") }}) · <a href="/history#sites">Manage sites</a></p>
+    {% endif %}
+    <p><a href="{{ provider_page }}">View on {{ provider_label }}</a> · <a href="/history">History</a> · <span data-ai-footer>Classic mode · no AI used</span></p>
   </footer>
   <canvas class="serp-field" aria-hidden="true"></canvas>
 </main>

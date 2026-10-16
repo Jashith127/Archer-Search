@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 
 import httpx
@@ -138,6 +139,20 @@ SPECS = (
     Spec("tmdb_api_key", "connections", "TMDB key", "secret", help="Free key from themoviedb.org. Enables country-specific where-to-watch listings.", placeholder="v3 key or v4 read token", test="tmdb",
          link=("Get a free key", "https://www.themoviedb.org/settings/api")),
 
+    # ---------------------------------------------------------------- history
+    Spec("history", "history", "Keep search history", "switch",
+         help="Saves your searches and the results you open in data/history.sqlite3 on this computer. Nothing is uploaded."),
+    Spec("personalize", "history", "Personalize results", "switch",
+         help="Ranks results by meaning and by the sites you open for searches like this, shows pages you found before, and puts your own past searches first in suggestions."),
+    Spec("history_days", "history", "Keep history for", "select", help="Older searches and visits are deleted when Archer starts.",
+         options=opts((("30", "30 days"), ("90", "3 months"), ("365", "1 year"), ("0", "Until I clear it")))),
+    Spec("semantic_model", "history", "Matching", "select",
+         help="How Archer tells that two searches mean the same thing. The models run on this computer; they download once from Hugging Face.",
+         options=opts((("potion-base-8M", "Small model · 30 MB (recommended)"), ("potion-retrieval-32M", "Retrieval model · 130 MB, closer matches"),
+                       ("ollama", "Ollama embedding model (local)"), ("lexical", "Word matching only · no download")))),
+    Spec("ollama_embed_model", "history", "Ollama embedding model", help="Pull it first, e.g. `ollama pull nomic-embed-text`.",
+         placeholder="nomic-embed-text", when="semantic_model=ollama"),
+
     # ----------------------------------------------------------------- startup
     Spec("startup_open", "startup", "When Archer starts with Windows", "select", help="Opening Archer from the Start menu always shows this app.",
          options=opts((("none", "Stay quietly in the tray"), ("app", "Open this companion app"), ("search", "Open Archer search")))),
@@ -156,6 +171,7 @@ SECTIONS_ORDER = (
     ("ai_advanced", "Advanced", ""),
     ("limits", "Spending limits", "Hard caps checked before every AI call."),
     ("connections", "Connections", "Optional services that make cards more precise."),
+    ("history", "History & personalization", "Kept on this computer only. Pausing stops recording; clearing removes it."),
     ("startup", "Startup", "How Archer starts with Windows."),
     ("system", "System", "How Archer runs on this computer."),
 )
@@ -331,6 +347,11 @@ def apply_runtime(app, changed: list[str]) -> None:
             "serper_api_key", "google_api_key", "google_cx", "brave_api_key", "home_country", "search_fallback"} & set(changed) and getattr(state, "searx", None) is not None:
         state.searx._cache.clear()
         state.searx._suggest_cache.clear()
+    if {"semantic_model", "personalize", "ollama_embed_model"} & set(changed) and settings.personalize:
+        from archer.embed import embeddings
+        threading.Thread(target=embeddings.warm, daemon=True).start()
+    if "history_days" in changed and getattr(state, "history", None) is not None:
+        state.history.prune(settings.history_days)
     if "contact" in changed:
         agent = re.sub(r"\(.*?;", f"({settings.contact};", sources.USER_AGENT, count=1)
         sources.USER_AGENT = agent

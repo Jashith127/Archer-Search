@@ -37,6 +37,50 @@ SearXNG or a DeepSeek key.
 - **Startup:** Start with Windows passes `--startup`, which honours a sign-in delay, a ready
   notification, what to open (tray, companion or search) and an optional SearXNG container.
 
+### History and personalization · 16 October 2026
+
+Archer now keeps a local search history and uses it to personalize results, without an LLM.
+This replaces the earlier "Archer keeps no search history" stance: history is on by default,
+lives only in `data/history.sqlite3`, can be paused, cleared by range or entry, and expires after
+a chosen number of days (a year by default).
+
+- **What is stored:** page-1 searches (a repeat within 30 minutes updates one entry; browser
+  prefetches are not recorded), the results opened from each (a same-origin `keepalive` POST as
+  you leave the page), site preferences (raise, lower, block) and meanings picked from "Other
+  meanings" chips.
+- **Embeddings:** meaning is compared with local vectors. The default is Model2Vec's
+  `potion-base-8M`, a static model (token lookup and mean) that embeds a page of snippets in about
+  a millisecond on a CPU, so no GPU, PyTorch or LLM is involved; it downloads once (30 MB).
+  `potion-retrieval-32M`, an Ollama embedding model, or hashed word/trigram vectors (no download,
+  and the fallback while a model loads or can't be fetched) are alternatives. Vectors are cached
+  per model, so switching re-embeds lazily.
+- **Ranking:** `0.6·rank + 0.25·semantic + 0.15·affinity` (affinity needs two visits), plus ±0.35 for a raised or lowered site and
+  a small lift for a page you opened before. *Rank* is the provider's position on a fixed curve
+  (1, 0.8, 0.67, …), *semantic* is query-to-snippet similarity normalised across the page (half
+  weight with word matching), *affinity* counts visits to that site after searches that mean the
+  same thing, fading with a 30-day half-life. The provider's order keeps the most weight so exact
+  matches (model numbers, names) stay near the top. Blocked sites are removed, including from
+  Discussions. Personalization reorders within a page; it never adds a request.
+- **What counts as related (16 October 2026, after evaluating a real history; see
+  `docs/history-evaluation.md`):** similarity is 0.7·embedding + 0.3·word similarity, stored as one
+  concatenated vector. The cutoff is calibrated per model on twenty unrelated searches at mean + 7
+  standard deviations (3.5 showed a third unrelated matches). Calculator-style searches and fragments
+  never match; spelling variants always do; one-word searches need a stronger match; searches whose
+  opened page is in the current results are related regardless of wording. Recall shows one page per
+  site, skips junk titles, and never shows a different model or version number than the one searched.
+  Precision of shown matches went from 0.63 to 0.88, new-topic false matches from 74 % to 12 %.
+- **Recall and related:** "You found these before" lists up to three pages opened for similar
+  searches; "Your earlier searches like this" lists past searches with the same meaning in other
+  words. The `/history` page searches history by meaning and groups it into topics (greedy
+  clustering on query vectors, labelled by shared words).
+- **Suggestions:** an empty search box lists recent searches; typing (and the address bar's
+  `/suggest`) puts matching past searches first, ranked by frequency and recency. OpenSearch's
+  format is unchanged.
+- **Meanings:** an "Other meanings" choice is reapplied the next time that name is searched, with
+  a quiet line saying so; the other meanings stay one click away.
+- **Not done:** query expansion (extra searches from related history) was left out because it
+  costs provider requests and invites off-topic results; history is never sent to an AI provider.
+
 ### Implementation status · 14 October 2026
 
 AI search is implemented in the workspace. See [AI search design](ai-search-design.md) for

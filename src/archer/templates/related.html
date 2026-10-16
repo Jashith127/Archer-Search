@@ -1,3 +1,4 @@
+{% from "macros.html" import closeness %}
 <section class="related" {% if not v.related %}data-related-q="{{ v.q }}" hidden{% endif %} data-related-tab="{{ v.tab }}">
   <h2 class="section-title">Related searches</h2>
   <div class="chips">
@@ -6,3 +7,13 @@
     {% endfor %}
   </div>
 </section>
+{% if personal and personal.related %}
+<section class="related related--mine" data-unrelate-q="{{ v.q }}">
+  <h2 class="section-title"><svg aria-hidden="true"><use href="#u-clock"/></svg>Your earlier searches like this<span class="section-note">{{ "matched by words" if personal.model.split(":")[0] == "lexical" else "matched by meaning" }}</span></h2>
+  <div class="chips">
+    {% for item in personal.related %}
+    <span class="chip-pair"><a class="chip chip--history" href="/search?q={{ item.q|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}" title="{{ 'You opened one of these results after this search' if item.how == 'opened' else 'Searched ' ~ (item.last|ago) }}">{% if item.dots %}{{ closeness(item.dots, "opened" if item.how == "opened" else "meaning") }}{% endif %}{{ item.q }}<span class="chip-note">{{ item.last|ago }}</span></a><button type="button" class="chip-dismiss" data-unrelate="{{ item.q }}" aria-label="“{{ item.q }}” is not related" title="Not related"><svg aria-hidden="true"><use href="#i-x"/></svg></button></span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
