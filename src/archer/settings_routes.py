@@ -79,7 +79,14 @@ def state(request):
             "restart_pending": service.restart_pending,
             "conversations": sum(1 for r in ai.runs.values()),
         },
+        "history": history_state(request),
     }
+
+
+def history_state(request):
+    from archer.embed import embeddings
+    from archer.history_routes import history
+    return {**history(request).stats(), "model": embeddings.status()}
 
 
 def page_context(request):

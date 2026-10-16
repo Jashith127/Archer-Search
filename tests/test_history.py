@@ -1,0 +1,300 @@
+"""Search history and personalization: storage, ranking, recall and the HTTP surface. All local, all mocked."""
+import asyncio
+import time
+
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
+
+from archer import views
+from archer.app import app
+from archer.config import settings
+from archer.embed import LEXICAL, words
+from archer.history import History
+from archer.personalize import Personalizer, site_pref
+from archer.searxng import Result, SearXNG
+
+from test_app import BASE, fake, offline, searx_handler
+
+
+def result(url, title, content=""):
+    host = url.split("/")[2].removeprefix("www.")
+    return Result(title=title, url=url, host=host, crumbs=[], content=content, engines=["duckduckgo"])
+
+
+class Concepts:
+    """A stand-in embedding model: each concept is an axis, so 'meaning' is fully predictable."""
+    name = "concepts"
+    ready = True
+    AXES = [{"monitor", "display", "screen", "resolution", "1440p", "pixel", "density"},
+            {"laptop", "rtx", "gpu", "4050", "gaming"},
+            {"pasta", "recipe", "carbonara", "cook"}]
+
+    def active(self):
+        return self
+
+    async def encode(self, texts):
+        out = []
+        for text in texts:
+            ws = set(words(text))
+            vec = np.array([len(ws & axis) for axis in self.AXES] + [0.05], dtype=np.float32)
+            out.append(vec / np.linalg.norm(vec))
+        return self.name, np.stack(out)
+
+
+@pytest.fixture
+def store(tmp_path):
+    h = History(tmp_path / "h.sqlite3")
+    yield h
+    h.close()
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+# ------------------------------------------------------------------ storage
+
+def test_repeat_search_within_window_is_one_entry(store):
+    a = store.record_search("RTX 4050 monitor", now=1000)
+    b = store.record_search("rtx  4050 MONITOR", now=1500)
+    c = store.record_search("rtx 4050 monitor", now=1000 + 4000)
+    assert a == b != c
+    assert store.search(c)["count"] == 2  # the count carries over for suggestion ranking
+    assert store.record_search("rtx 4050 monitor", tab="images", now=5100) not in (a, c)
+
+
+def test_recent_prefix_and_frecency(store):
+    now = time.time()
+    store.record_search("python asyncio tutorial", now=now - 86400 * 20)
+    for i in range(4):
+        store.record_search("python dataclasses", now=now - 86400 * 2 - i * 4000)
+    store.record_search("best pasta recipe", now=now - 60)
+    assert store.recent(3, prefix="pyth") == ["python dataclasses", "python asyncio tutorial"]
+    assert store.recent(3, prefix="dataclass") == ["python dataclasses"]  # a later word matches too
+    assert store.recent(1) == ["best pasta recipe"]
+    assert store.recent(5, prefix="100%_") == []  # LIKE wildcards are literal
+
+
+def test_clicks_belong_to_their_search_and_dedupe(store):
+    sid = store.record_search("dune movie")
+    store.record_click(sid, "https://www.imdb.com/title/tt1", "Dune (2021)")
+    store.record_click(sid, "https://www.imdb.com/title/tt1", "Dune (2021)")
+    store.record_click(9999, "https://example.com/x", "orphan")  # unknown search id is kept unlinked
+    entry = store.entries()[0]
+    assert [c["host"] for c in entry["clicks"]] == ["imdb.com"]
+    assert store.stats()["clicks"] == 2
+
+
+def test_delete_clear_and_prune(store):
+    old = store.record_search("old thing", now=time.time() - 86400 * 400)
+    sid = store.record_search("new thing")
+    store.record_click(sid, "https://a.com/1", "A")
+    store.set_site("example.com", "raise")
+    store.remember_meaning("apple", "Apple Inc.")
+    store.prune(365)
+    assert store.search(old) is None and store.search(sid)
+    store.clear(since=time.time() - 3600)
+    assert store.stats()["searches"] == 0 and store.stats()["clicks"] == 0
+    assert store.meaning("apple") == ""
+    assert store.sites() == {"example.com": 1}  # preferences are settings, not history
+    sid = store.record_search("again")
+    assert store.delete_search(sid) and store.entries() == []
+    assert store.delete_query("nothing") == 0
+
+
+def test_site_pref_covers_subdomains():
+    prefs = {"example.com": 1, "pinterest.com": -2}
+    assert site_pref("news.example.com", prefs) == 1
+    assert site_pref("in.pinterest.com", prefs) == -2
+    assert site_pref("example.org", prefs) == 0
+
+
+def test_lexical_embedder_matches_variants():
+    a, b, c = LEXICAL.encode(["gaming monitors 1440p", "1440p gaming monitor", "carbonara recipe"])
+    assert a @ b > 0.8 > 0.2 > a @ c
+
+
+# ------------------------------------------------------------ personalization
+
+def test_blocked_sites_disappear_and_raised_move_up(store):
+    store.set_site("pinterest.com", "block")
+    store.set_site("rtings.com", "raise")
+    results = [result("https://www.pinterest.com/p/1", "Monitor ideas"), result("https://a.com/1", "Monitor guide"),
+               result("https://b.com/1", "Monitor list"), result("https://www.rtings.com/monitor", "Monitor reviews")]
+    out = run(Personalizer(store, Concepts()).personalize("best monitor", results))
+    hosts = [r.host for r in out.results]
+    assert "pinterest.com" not in hosts and out.hidden == ["pinterest.com"]
+    assert hosts.index("rtings.com") < 2
+    assert next(r for r in out.results if r.host == "rtings.com").personal == "raised"
+    assert results[0].host == "pinterest.com" and not results[3].personal  # cached originals untouched
+
+
+def test_sites_opened_after_similar_searches_rise(store):
+    for q in ("27 inch monitor pixel density", "best display resolution", "1440p screen"):
+        sid = store.record_search(q)
+        store.record_click(sid, f"https://www.rtings.com/{q[:5]}", "RTINGS review")
+    results = [result(f"https://site{i}.com/x", "Monitor buying guide", "monitor display") for i in range(5)]
+    results.append(result("https://www.rtings.com/monitor/best", "Best monitors", "monitor display"))
+    out = run(Personalizer(store, Concepts()).personalize("which monitor resolution", results))
+    ranked = [r.host for r in out.results]
+    assert ranked.index("rtings.com") <= 2  # from last place
+    assert next(r for r in out.results if r.host == "rtings.com").personal == "often"
+    # An unrelated search gets no such lift.
+    other = run(Personalizer(store, Concepts()).personalize("pasta carbonara recipe", results))
+    assert other.results[0].host == "site0.com"
+
+
+def test_related_searches_and_recall_by_meaning(store):
+    sid = store.record_search("RTX 4050 laptop 1440p gaming monitor")
+    store.record_click(sid, "https://forum.example.com/t/1", "Can a 4050 drive a 1440p screen?", "gpu monitor")
+    store.record_search("best pasta recipe")
+    out = run(Personalizer(store, Concepts()).personalize("will my rtx laptop handle a high resolution screen",
+                                                          [result("https://x.com/1", "Laptop screens")]))
+    assert [r["q"] for r in out.related] == ["RTX 4050 laptop 1440p gaming monitor"]
+    assert [p["url"] for p in out.recall] == ["https://forum.example.com/t/1"]
+    assert out.recall[0]["q"] == "RTX 4050 laptop 1440p gaming monitor"
+
+
+def test_visited_results_are_tagged(store):
+    sid = store.record_search("dune")
+    store.record_click(sid, "https://en.wikipedia.org/wiki/Dune_(novel)", "Dune (novel)")
+    out = run(Personalizer(store, Concepts()).personalize("dune", [result("https://en.wikipedia.org/wiki/Dune_(novel)", "Dune")]))
+    assert out.results[0].visited > 0
+    assert out.recall == []  # already on the page
+
+
+def test_history_search_by_meaning_and_words(store):
+    a = store.record_search("27 inch monitor pixel density")
+    b = store.record_search("carbonara recipe")
+    c = store.record_search("unrelated words here")
+    store.record_click(c, "https://cook.example.com/1", "How to cook pasta")
+    p = Personalizer(store, Concepts())
+    assert run(p.search_history("display for my screen")) == [a]
+    assert set(run(p.search_history("pasta"))) == {b, c}  # by meaning, and by an opened page's title
+    assert run(p.search_history("unrelated")) == [c]
+
+
+def test_topics_group_history(store):
+    for q in ("1440p monitor", "monitor pixel density", "display resolution", "pasta recipe", "carbonara cook"):
+        store.record_search(q)
+    topics = run(Personalizer(store, Concepts()).topics())
+    sizes = sorted(t["size"] for t in topics)
+    assert sizes == [2, 3]
+
+
+# ------------------------------------------------------------------ HTTP
+
+@pytest.fixture
+def client():
+    with TestClient(app, base_url=BASE) as c:
+        app.state.searxng = fake(searx_handler)
+        app.state.searx = SearXNG(app.state.searxng)
+        app.state.ext = fake(offline)
+        yield c
+
+
+def csrf(client):
+    html = client.get("/history").text
+    return html.split('data-csrf="')[1].split('"')[0]
+
+
+SAME = {"Sec-Fetch-Site": "same-origin", "Origin": BASE}
+
+
+def test_search_is_recorded_once_and_prefetch_is_not(client):
+    client.get("/search", params={"q": "zendaya"})
+    client.get("/search", params={"q": "zendaya"})
+    client.get("/search", params={"q": "speculative"}, headers={"Sec-Purpose": "prefetch"})
+    client.get("/search", params={"q": "zendaya", "p": 2})
+    stats = app.state.history.stats()
+    assert stats["searches"] == 1
+    assert 'data-history="' in client.get("/search", params={"q": "zendaya"}).text
+
+
+def test_paused_history_records_nothing(client, monkeypatch):
+    monkeypatch.setattr(settings, "history", False)
+    html = client.get("/search", params={"q": "zendaya"}).text
+    assert app.state.history.stats()["searches"] == 0 and "data-history=" not in html
+    assert client.post("/api/history/click", json={"url": "https://a.com/x"}, headers=SAME).json() == {"recorded": False}
+
+
+def test_click_needs_same_origin(client):
+    client.get("/search", params={"q": "zendaya"})
+    sid = app.state.history.entries()[0]["id"]
+    body = {"search": sid, "url": "https://en.wikipedia.org/wiki/Zendaya", "title": "Zendaya", "position": 0}
+    assert client.post("/api/history/click", json=body, headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    assert client.post("/api/history/click", json={**body, "url": "javascript:alert(1)"}, headers=SAME).status_code == 422
+    assert client.post("/api/history/click", json=body, headers=SAME).json() == {"recorded": True}
+    assert app.state.history.entries()[0]["clicks"][0]["host"] == "en.wikipedia.org"
+    html = client.get("/search", params={"q": "zendaya"}).text
+    assert "Visited" in html
+
+
+def test_suggest_puts_past_searches_first_in_opensearch_format(client):
+    client.get("/search", params={"q": "zendaya euphoria"})
+    data = client.get("/suggest", params={"q": "zen"}).json()
+    assert data[0] == "zen" and data[1][0] == "zendaya euphoria" and "zendaya movies" in data[1]
+    recent = client.get("/api/history/recent", params={"q": "zen"}, headers={"Sec-Fetch-Site": "same-origin"}).json()
+    assert recent == {"items": ["zendaya euphoria"]}
+    assert client.get("/api/history/recent").status_code == 403
+
+
+def test_history_page_and_guarded_changes(client):
+    client.get("/search", params={"q": "zendaya"})
+    html = client.get("/history").text
+    assert "zendaya" in html and "Today" in html
+    sid = app.state.history.entries()[0]["id"]
+    assert client.post("/api/history/delete", json={"searches": [sid]}, headers=SAME).status_code == 403  # no CSRF
+    token = csrf(client)
+    headers = {**SAME, "X-Archer-CSRF": token}
+    assert client.post("/api/history/site", json={"host": "reddit.com", "pref": "block"}, headers=headers).status_code == 200
+    assert "Discussions" not in client.get("/search", params={"q": "zendaya"}).text  # reddit threads hidden
+    assert client.post("/api/history/delete", json={"searches": [sid]}, headers=headers).json()["removed"] == 1
+    assert client.post("/api/history/clear", json={"range": "all"}, headers=headers).json()["stats"]["searches"] == 0
+    assert client.post("/api/history/forget", json={"q": "zendaya"}, headers=headers).status_code == 200
+
+
+def test_history_page_search(client):
+    client.get("/search", params={"q": "zendaya"})
+    client.get("/search", params={"q": "weather tomorrow"})
+    html = client.get("/history", params={"q": "zendaya"}).text
+    assert "History matching" in html and "/search?q=zendaya" in html and "weather+tomorrow" not in html
+
+
+def test_chosen_meaning_is_remembered(client, monkeypatch):
+    seen = []
+    real = views.build
+
+    async def spy(searx, ext, q, tab, page, about=""):
+        seen.append(about)
+        return await real(searx, ext, q, tab, page, about)
+
+    monkeypatch.setattr(views, "build", spy)
+    client.get("/search", params={"q": "apple", "about": "Apple Inc."})
+    client.get("/search", params={"q": "Apple"})
+    assert seen == ["Apple Inc.", "Apple Inc."]
+    monkeypatch.setattr(settings, "personalize", False)
+    client.get("/search", params={"q": "apple"})
+    assert seen[-1] == ""
+
+
+def test_home_lists_recent_searches(client):
+    client.get("/search", params={"q": "zendaya"})
+    html = client.get("/").text
+    assert "home-recent" in html and "zendaya" in html
+
+
+def test_static_model_loads_from_the_data_folder(tmp_path):
+    """The Model2Vec path, offline: a tiny model saved where the download would put it."""
+    from model2vec import StaticModel
+    from tokenizers import Tokenizer, models, pre_tokenizers
+    from archer.embed import StaticEmbedder
+    tok = Tokenizer(models.WordLevel({"[UNK]": 0, "[PAD]": 1, "monitor": 2, "display": 3, "pasta": 4}, unk_token="[UNK]"))
+    tok.pre_tokenizer = pre_tokenizers.Whitespace()
+    vectors = np.array([[0, 0, 0], [0, 0, 0], [1, 0, 0], [0.9, 0.1, 0], [0, 0, 1]], dtype=np.float32)
+    StaticModel(vectors=vectors, tokenizer=tok, normalize=True).save_pretrained(tmp_path / "potion-base-8M")
+    model = StaticEmbedder("potion-base-8M", tmp_path)
+    assert model.load() and model.ready
+    a, b, c = model.encode(["monitor", "display", "pasta"])
+    assert a @ b > 0.9 and abs(a @ c) < 0.01

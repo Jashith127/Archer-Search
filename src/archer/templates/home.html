@@ -8,13 +8,16 @@
 
 <header class="home-top">
   <nav class="home-top-actions" aria-label="Archer">
+    <a class="home-settings home-history" href="/history" aria-label="History" title="History">
+      <svg aria-hidden="true"><use href="#u-clock"/></svg>
+    </a>
     <a class="home-settings" href="/app" aria-label="Settings" title="Settings">
       <svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
     </a>
   </nav>
 </header>
 
-<main class="home-main" data-home data-ai-ready="{{ 'true' if ai_ready else 'false' }}">
+<main class="home-main" data-csrf="{{ csrf }}" data-home data-ai-ready="{{ 'true' if ai_ready else 'false' }}">
   {{ pixel_mark(56, "home-mark") }}
   <h1 class="home-greeting"><span data-home-greeting>Hello.</span> <span class="home-greeting-ask">What are you looking for?</span></h1>
 
@@ -35,12 +38,21 @@
   {% endif %}
 
   <div class="home-try" aria-label="Try">
+    {% if recent %}
+    <div class="home-try-row home-recent" data-hint-for="search" aria-label="Recent searches">
+      {% for item in recent %}
+      <a class="home-chip" href="/search?q={{ item|qs }}"><svg aria-hidden="true"><use href="#u-clock"/></svg>{{ item|truncate(40, True, "…") }}</a>
+      {% endfor %}
+      <a class="home-chip home-chip--quiet" href="/history">All history</a>
+    </div>
+    {% else %}
     <div class="home-try-row" data-hint-for="search">
       <button type="button" class="home-chip" data-home-try="weather tomorrow"><svg aria-hidden="true"><use href="#i-cloud-sun"/></svg>weather tomorrow</button>
       <button type="button" class="home-chip" data-home-try="time in tokyo"><svg aria-hidden="true"><use href="#u-clock"/></svg>time in tokyo</button>
       <button type="button" class="home-chip" data-home-try="define serendipity"><svg aria-hidden="true"><use href="#u-book"/></svg>define serendipity</button>
       <button type="button" class="home-chip" data-home-try="18% of 2450"><svg aria-hidden="true"><use href="#u-hash"/></svg>18% of 2450</button>
     </div>
+    {% endif %}
     <div class="home-try-row" data-hint-for="ai" hidden>
       <button type="button" class="home-chip" data-home-try="How do mRNA vaccines train the immune system?"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>How do mRNA vaccines work?</button>
       <button type="button" class="home-chip" data-home-try="Plan a relaxed 3-day trip to Kyoto in autumn"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>Plan 3 days in Kyoto</button>

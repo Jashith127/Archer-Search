@@ -27,8 +27,8 @@
 {%- endif %}
 {%- endmacro %}
 
-{% macro result(r, show_engines=True) -%}
-<article class="result">
+{% macro result(r, show_engines=True, menu=False) -%}
+<article class="result" data-result>
   <div class="result-main">
     <a class="result-site" href="{{ r.url }}">
       {{ site_badge(r.host) }}
@@ -41,7 +41,27 @@
     {% if r.content or r.date %}
     <p class="result-snippet">{% if r.date and r.date|ago %}<span class="result-date">{{ r.date|ago }} — </span>{% endif %}{{ r.content|truncate(300, True, "…") }}</p>
     {% endif %}
-    {% if show_engines %}<div class="result-engines" title="Engines that returned this result. More engines = higher rank.">{{ r.engines|join(" · ") }}</div>{% endif %}
+    {% if show_engines or r.visited or r.personal %}
+    <div class="result-meta">
+      {% if r.visited %}<span class="result-tag result-tag--visited" title="You opened this before"><svg aria-hidden="true"><use href="#u-clock"/></svg>Visited {{ r.visited|ago }}</span>{% endif %}
+      {% if r.personal == "raised" %}<span class="result-tag" title="You raised this site">Raised site</span>
+      {% elif r.personal == "lowered" %}<span class="result-tag" title="You lowered this site">Lowered site</span>
+      {% elif r.personal == "often" %}<span class="result-tag" title="You often open this site for searches like this">You often open this site</span>{% endif %}
+      {% if show_engines %}<span class="result-engines" title="Engines that returned this result. More engines = higher rank.">{{ r.engines|join(" · ") }}</span>{% endif %}
+      {% if menu %}
+      <details class="result-menu" data-site-menu="{{ r.host }}">
+        <summary aria-label="Options for {{ r.host }}" title="Options for this site"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g></svg></summary>
+        <div class="result-menu-list" role="menu">
+          <p class="result-menu-head">{{ r.host }}</p>
+          <button type="button" role="menuitem" data-site-pref="raise"{% if r.personal == "raised" %} aria-pressed="true"{% endif %}>Raise this site</button>
+          <button type="button" role="menuitem" data-site-pref="lower"{% if r.personal == "lowered" %} aria-pressed="true"{% endif %}>Lower this site</button>
+          <button type="button" role="menuitem" data-site-pref="block">Block this site</button>
+          {% if r.personal in ("raised", "lowered") %}<button type="button" role="menuitem" data-site-pref="">Reset</button>{% endif %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% if r.thumbnail %}<a class="result-thumb" href="{{ r.url }}" tabindex="-1"><img src="{{ r.thumbnail }}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>{% endif %}
 </article>

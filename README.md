@@ -98,7 +98,8 @@ Open it from the Start menu, the tray, the sliders icon on the results page, or
 - **Browser:** your installed browsers (default first), each with a button that opens its
   search-engine settings, plus the values to paste.
 - **Connections:** the optional TMDB key for where-to-watch listings.
-- **Privacy & data:** the folders Archer uses, what leaves your computer, and clearing AI conversations.
+- **Privacy & data:** search history and personalization switches, how long history is kept, the
+  matching model, the folders Archer uses, what leaves your computer, and clearing AI conversations.
 
 Changes are saved to `.env` in the Archer folder, keeping its comments, and apply immediately.
 Only the port and address need a restart, which the app can do for you. Keys are never sent
@@ -106,6 +107,31 @@ back to the page: it shows whether one is set and its last four characters. **Te
 check AI keys, TMDB and SearXNG through free endpoints (model lists, configuration). Search-API
 tests run one query, and the button says so. A value set as a system environment variable
 overrides `.env` and appears read-only.
+
+## History and personalization
+
+Archer keeps a search history on your computer (`data/history.sqlite3`) and uses it to shape
+results. Nothing about it leaves the machine. Open it from the clock icon on the home or results
+page, or at `/history`.
+
+- **History page:** searches by day, each with the results you opened from it; search it by
+  meaning ("screen for my laptop" finds "27-inch monitor pixel density"); your topics, grouped
+  automatically; remove single entries or clear the last hour, day, week or everything; pause.
+- **Results:** a "You found these before" box with pages you opened for similar searches,
+  "Visited" tags, and "Your earlier searches like this" next to related searches.
+- **Ranking:** the provider's order, blended with how closely each result matches the query's
+  meaning and how often you open that site for searches like this one. Every result's ⋯ menu
+  can **raise**, **lower** or **block** its site; blocked sites disappear from results.
+- **Suggestions:** an empty search box lists recent searches; typing puts your own matching
+  searches first, in the address bar too. Each can be removed from the dropdown.
+- **Meanings:** picking an "Other meanings" chip (Apple the company, not the fruit) is remembered
+  for the next search of that name.
+
+Meaning is matched with a small embedding model that runs on the CPU: Model2Vec's
+`potion-base-8M` (30 MB, downloaded once into `data/models/`). A larger retrieval model, an
+Ollama embedding model (`nomic-embed-text`) or plain word matching (no download) can be chosen
+under **Privacy & data**. Until the model is available, Archer matches words. A plain search
+never triggers an AI call; embeddings are local.
 
 ## AI search
 

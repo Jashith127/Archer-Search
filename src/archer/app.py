@@ -4,7 +4,9 @@ from html import escape
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote_plus
+import logging
 import re
+import threading
 import zlib
 
 import httpx
@@ -26,6 +28,12 @@ from archer.ai_provider import readiness
 from archer.ai_service import AIService
 from archer.settings_routes import page_context as settings_context, router as settings_router
 from archer.config import DATA_DIR
+from archer.embed import embeddings
+from archer.history import History
+from archer.history_routes import history as history_store, personalizer, router as history_router
+from archer.personalize import Personal, Personalizer, site_pref
+
+log = logging.getLogger("archer")
 
 
 @asynccontextmanager
@@ -38,14 +46,26 @@ async def lifespan(app: FastAPI):
         app.state.searx = SearXNG(searx_http)
         app.state.ext = ext
         app.state.ai = AIService(settings, DATA_DIR)
+        app.state.history = History()
+        app.state.personal = Personalizer(app.state.history)
+        try:
+            app.state.history.prune(settings.history_days)
+            # Vectors from a model you switched away from are recomputed if you switch back.
+            app.state.history.drop_orphan_vectors(keep_models={"lexical", embeddings.configured().name})
+        except Exception as exc:  # a locked or damaged file must not stop the search engine
+            log.warning("history prune failed: %s", type(exc).__name__)
+        if settings.personalize:
+            threading.Thread(target=embeddings.warm, daemon=True).start()
         yield
         await app.state.ai.close()
+        app.state.history.close()
 
 
 app = FastAPI(title="Archer", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 app.include_router(ai_router)
 app.include_router(settings_router)
+app.include_router(history_router)
 
 _PKG = files("archer")
 _STATIC = _PKG / "static"
@@ -76,12 +96,13 @@ async def security_headers(request: Request, call_next):
 
 # ------------------------------------------------------------ template helpers
 
-def _ago(value: str) -> str:
+def _ago(value: str | float) -> str:
     if not value:
         return ""
     try:
-        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        when = (datetime.fromtimestamp(value, timezone.utc) if isinstance(value, (int, float))
+                else datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except (ValueError, OverflowError, OSError):
         return ""
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
@@ -178,9 +199,36 @@ templates.env.filters["money"] = aimodels.money
 # ------------------------------------------------------------------- pages
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request) -> HTMLResponse:
+async def home(request: Request) -> HTMLResponse:
     # Only whether a key exists; the key itself never reaches the page.
-    return templates.TemplateResponse(request, "home.html", {"ai_ready": readiness(settings)[0]})
+    recent = history_store(request).recent(limit=6) if settings.history and settings.personalize else []
+    ai = ai_service(request)
+    session = ai.session(request.cookies.get("archer_session"))
+    response = templates.TemplateResponse(request, "home.html", {"ai_ready": readiness(settings)[0], "recent": recent,
+                                                                "csrf": session.csrf})
+    ai_cookie(response, session)
+    return response
+
+
+def _prefetch(request: Request) -> bool:
+    """Chromium and Firefox mark speculative loads; a search nobody looked at isn't history."""
+    return "prefetch" in (request.headers.get("sec-purpose", "") + request.headers.get("purpose", "")).lower()
+
+
+async def _personal_view(request: Request, view: views.View) -> Personal | None:
+    """Rerank this page's results and gather history for it (blocks and site preferences apply even
+    with history paused, since they are settings)."""
+    personal = None
+    if settings.personalize and view.q.strip():
+        try:
+            personal = await personalizer(request).personalize(view.q, view.results, rerank=view.tab == "all")
+            view.results = personal.results
+            prefs = history_store(request).sites()
+            view.discussions = [d for d in view.discussions if site_pref(d.host, prefs) != -2]
+        except Exception as exc:  # personalization is a bonus; the plain page must still render
+            log.warning("personalization failed: %s", type(exc).__name__)
+            personal = None
+    return personal
 
 
 @app.get("/search")
@@ -193,9 +241,25 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
         target = settings.results_url if settings.search_provider == "searxng" else "https://duckduckgo.com/?q={q}"
         return RedirectResponse(target.format(q=quote_plus(q)), status_code=302)
     tab = tab if tab in views.TABS else "all"
-    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about.strip()[:200]) if q.strip() else views.View("", "all", 1, classify(""))
+    about = about.strip()[:200]
+    store: History = history_store(request)
+    chosen = about
+    if not about and settings.personalize and tab == "all" and p == 1 and q.strip():
+        # A meaning picked from "Other meanings" before is what this name means to you.
+        about = store.meaning(q)
+    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about) if q.strip() else views.View("", "all", 1, classify(""))
     if view.response and view.response.redirect:
         return RedirectResponse(view.response.redirect, status_code=302)
+    view.remembered = about if about and not chosen else ""
+    personal = await _personal_view(request, view)
+    history_id = None
+    if settings.history and q.strip() and p == 1 and not _prefetch(request):
+        hero = ""
+        if view.hero:
+            hero = view.hero.kind + (":" + str(view.hero.data.get("title", "")) if isinstance(view.hero.data, dict) else "")
+        history_id = store.record_search(q, tab, "ai" if full else "search", chosen, hero[:200])
+        if chosen:
+            store.remember_meaning(q, chosen)
     ai = ai_service(request)
     session = ai.session(request.cookies.get("archer_session"))
     snapshot = ai.snapshot(session, view) if tab == "all" and p == 1 else None
@@ -205,6 +269,7 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
         "provider_label": websearch.LABELS.get(provider, provider),
         "ai": ai.info(session, snapshot),
         "ai_view": full,
+        "history_id": history_id, "personal": personal,
     })
     ai_cookie(response, session)
     return response
@@ -219,6 +284,12 @@ async def ai_page(request: Request, q: str = Query("", max_length=1000)):
 @app.get("/suggest")
 async def suggest(request: Request, q: str = Query("")) -> JSONResponse:
     result = await request.app.state.searx.autocomplete(q, timeout=settings.suggest_timeout)
+    if settings.history and settings.personalize and len(result) >= 2 and isinstance(result[1], list) and q.strip():
+        # Your own past searches that start the same way come first, as Google's history suggestions do.
+        mine = history_store(request).recent(limit=3, prefix=q)
+        if mine:
+            seen = {m.casefold() for m in mine}
+            result = [result[0], (mine + [t for t in result[1] if isinstance(t, str) and t.casefold() not in seen])[:10], *result[2:]]
     return JSONResponse(result, media_type=_SUGGEST_MIME, headers={"Cache-Control": "no-store"})
 
 
@@ -422,6 +493,52 @@ async def api_weather(request: Request, lat: float, lon: float) -> JSONResponse:
         return JSONResponse({})
     return JSONResponse({"temp": data["temp"], "label": data["label"], "icon": data["icon"],
                          "time": weather.local_time(data["timezone"])})
+
+
+# ------------------------------------------------------------------- history
+
+def _day_label(at: float) -> str:
+    day = datetime.fromtimestamp(at).date()
+    today = datetime.now().date()
+    if day == today:
+        return "Today"
+    if (today - day).days == 1:
+        return "Yesterday"
+    if (today - day).days < 7:
+        return day.strftime("%A")
+    return day.strftime("%A, %d %B %Y").replace(" 0", " ")
+
+
+@app.get("/history", response_class=HTMLResponse)
+async def history_page(request: Request, q: str = Query("", max_length=300), before: float | None = None):
+    """Your searches by day, each with the results you opened; searchable by meaning."""
+    store: History = history_store(request)
+    personal: Personalizer = personalizer(request)
+    if q.strip():
+        entries = store.entries(ids=await personal.search_history(q))
+    else:
+        entries = store.entries(before=before, limit=60)
+    days: list[tuple[str, list]] = []
+    for entry in entries:
+        entry["time"] = datetime.fromtimestamp(entry["last_at"]).strftime("%H:%M")
+        label = _day_label(entry["last_at"])
+        if not days or days[-1][0] != label:
+            days.append((label, []))
+        days[-1][1].append(entry)
+    prefs = store.sites()
+    ai = ai_service(request)
+    session = ai.session(request.cookies.get("archer_session"))
+    response = templates.TemplateResponse(request, "history.html", {
+        "q": q, "days": days, "stats": store.stats(), "csrf": session.csrf,
+        "more": entries[-1]["last_at"] if len(entries) == 60 and not q.strip() else None,
+        "topics": [] if q.strip() or before else await personal.topics(),
+        "top_sites": [] if q.strip() or before else [h | {"pref": site_pref(h["host"], prefs)} for h in store.top_hosts()],
+        "prefs": sorted(prefs.items()), "enabled": settings.history, "personalize": settings.personalize,
+        "model": embeddings.status(),
+    })
+    response.headers["Cache-Control"] = "no-store"
+    ai_cookie(response, session)
+    return response
 
 
 # ------------------------------------------------------------------- setup

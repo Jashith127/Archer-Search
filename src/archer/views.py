@@ -50,6 +50,7 @@ class View:
     response: SearchResponse | None = None
     related: list[str] = field(default_factory=list)
     hero_failed: str | None = None  # source name when the hero's data source failed
+    remembered: str = ""  # a meaning chosen on an earlier search of this name, applied again
 
 
 _FAILED = object()

@@ -1001,6 +1001,97 @@ if (rateBanner) {
   });
 }
 
+// ------------------------------------------------------------- history
+// The session's CSRF token rides on the page (results, home, history); history changes need it.
+const pageCsrf = () => $("[data-csrf]")?.dataset.csrf || "";
+async function historyPost(url, body) {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Archer-CSRF": pageCsrf() },
+    body: JSON.stringify(body) });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "Archer couldn't update your history.");
+  return response.json();
+}
+
+// Opened results are remembered with the search they came from (keepalive outlives the navigation).
+const historyMain = $("main[data-history]");
+if (historyMain) {
+  const searchId = Number(historyMain.dataset.history);
+  const sent = new Set();
+  const remember = (e) => {
+    if (e.type === "auxclick" && e.button !== 1) return;
+    const link = e.target.closest("a[href]");
+    const item = link?.closest("[data-result], .discussion, [data-recall], .news-item");
+    if (!item || !isHttp(link.href) || sent.has(link.href)) return;
+    sent.add(link.href);
+    const all = $$("[data-result], .news-item", historyMain);
+    const title = $(".result-title, .discussion-title, .recall-title", item)?.textContent || link.textContent;
+    const snippet = $(".result-snippet, .discussion-snippet", item)?.textContent || "";
+    fetch("/api/history/click", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ search: searchId || null, url: link.href.slice(0, 2000), title: title.trim().slice(0, 300),
+        snippet: snippet.trim().slice(0, 500), position: Math.max(0, all.indexOf(item)) }) }).catch(() => {});
+  };
+  historyMain.addEventListener("click", remember);
+  historyMain.addEventListener("auxclick", remember);
+}
+
+// Raise, lower or block a site from a result's menu; the page reloads with the new ranking.
+for (const menu of $$("[data-site-menu]")) {
+  menu.addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-site-pref]");
+    if (!button) return;
+    button.disabled = true;
+    try {
+      await historyPost("/api/history/site", { host: menu.dataset.siteMenu, pref: button.dataset.sitePref || null });
+      location.reload();
+    } catch (error) { button.disabled = false; button.textContent = error.message; }
+  });
+}
+document.addEventListener("click", (e) => {
+  for (const open of $$("details.result-menu[open]")) if (!open.contains(e.target)) open.open = false;
+});
+
+// History page: remove entries, clear a range, pause, and set site preferences.
+const historyPage = $("[data-history-page]");
+if (historyPage) {
+  historyPage.addEventListener("click", async (e) => {
+    const removeSearch = e.target.closest("[data-remove-search]");
+    const removeClick = e.target.closest("[data-remove-click]");
+    const siteSet = e.target.closest("[data-site-set]");
+    try {
+      if (removeSearch) {
+        await historyPost("/api/history/delete", { searches: [Number(removeSearch.dataset.removeSearch)] });
+        const entry = removeSearch.closest(".h-entry"), list = entry.parentElement;
+        entry.remove();
+        if (!list.children.length) list.closest(".h-day")?.remove();
+      } else if (removeClick) {
+        await historyPost("/api/history/delete", { clicks: [Number(removeClick.dataset.removeClick)] });
+        removeClick.closest(".h-click").remove();
+      } else if (siteSet) {
+        const row = siteSet.closest("[data-site]");
+        await historyPost("/api/history/site", { host: row.dataset.site, pref: siteSet.dataset.siteSet || null });
+        $$("[data-site-set]", row).forEach((b) => b.setAttribute("aria-pressed", String(b === siteSet)));
+      }
+    } catch (error) { alert(error.message); }
+  });
+  const clearButton = $("[data-history-clear]", historyPage);
+  let confirming = 0;
+  clearButton?.addEventListener("click", async () => {
+    const range = $("[data-history-range]", historyPage).value;
+    if (!confirming) {
+      clearButton.textContent = range === "all" ? "Clear everything?" : "Confirm clear";
+      confirming = setTimeout(() => { confirming = 0; clearButton.textContent = "Clear"; }, 3500);
+      return;
+    }
+    clearTimeout(confirming);
+    try { await historyPost("/api/history/clear", { range }); location.reload(); }
+    catch (error) { clearButton.textContent = "Clear"; confirming = 0; alert(error.message); }
+  });
+  const toggle = $("[data-history-toggle]", historyPage);
+  toggle?.addEventListener("click", async () => {
+    try { await historyPost("/api/settings", { values: { history: toggle.dataset.historyToggle } }); location.reload(); }
+    catch (error) { alert(error.message); }
+  });
+}
+
 const cache = new Map();
 function getJSON(url) {
   if (!cache.has(url)) cache.set(url, fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []));
@@ -1055,30 +1146,58 @@ for (const [index, wrapper] of $$("[data-searchbox]").entries()) {
   const schedule = () => {
     close();
     draft = input.value;
-    if (composing || !eligible(draft) || document.activeElement !== input) return;
+    // An empty box shows your recent searches; typing shows suggestions with your own matches first.
+    const empty = !draft.trim();
+    if (composing || (!empty && !eligible(draft)) || document.activeElement !== input) return;
     const requested = draft, ticket = generation;
     timer = setTimeout(async () => {
       controller = new AbortController();
       try {
-        const response = await fetch(`/suggest?q=${encodeURIComponent(requested)}`, { signal: controller.signal, cache: "no-store" });
-        if (!response.ok) return;
-        const data = await response.json();
+        const mine = fetch(`/api/history/recent?q=${encodeURIComponent(requested)}`, { signal: controller.signal, cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : {})).then((d) => (Array.isArray(d.items) ? d.items : [])).catch(() => []);
+        let data = [requested, []];
+        if (!empty) {
+          const response = await fetch(`/suggest?q=${encodeURIComponent(requested)}`, { signal: controller.signal, cache: "no-store" });
+          if (response.ok) data = await response.json();
+        }
+        const history = await mine;
         if (ticket !== generation || composing || document.activeElement !== input || input.value !== requested) return;
         if (!Array.isArray(data) || data[0] !== requested || !Array.isArray(data[1])) return;
-        terms = [...new Set(data[1].filter((s) => typeof s === "string" && s.trim() && s.length <= Number(wrapper.dataset.suggestMax)))].slice(0, 8);
+        const past = new Set(history.map((s) => String(s).toLocaleLowerCase()));
+        terms = [...new Set([...history, ...data[1]].filter((s) => typeof s === "string" && s.trim() && s.length <= Number(wrapper.dataset.suggestMax)))].slice(0, 8);
         if (!terms.length) return;
         list.replaceChildren(...terms.map((term, i) => {
           const row = el("div", { id: `${list.id}-${i}`, class: "suggestion", role: "option", "aria-selected": "false" });
+          const isPast = past.has(term.toLocaleLowerCase());
           const label = el("span", { class: "suggestion-text" });
           const match = term.toLocaleLowerCase().indexOf(requested.trim().toLocaleLowerCase());
           if (match < 0) label.textContent = term;
           else label.append(document.createTextNode(term.slice(0, match)),
             el("strong", { text: term.slice(match, match + requested.trim().length) }),
             document.createTextNode(term.slice(match + requested.trim().length)));
-          const searchIcon = icon("search");
+          const searchIcon = icon(isPast ? "clock" : "search");
           searchIcon.setAttribute("aria-hidden", "true");
-          $("use", searchIcon).setAttribute("href", "#i-search");
+          if (!isPast) $("use", searchIcon).setAttribute("href", "#i-search");
           row.append(searchIcon, label);
+          if (isPast) {
+            row.classList.add("suggestion--past");
+            const remove = el("button", { type: "button", class: "suggestion-remove", "aria-label": `Remove “${term}” from history`, title: "Remove from history" });
+            const x = icon("x");
+            $("use", x).setAttribute("href", "#i-x");
+            remove.append(x);
+            remove.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              try { await historyPost("/api/history/forget", { q: term }); } catch (_) { return; }
+              const at = terms.indexOf(term);
+              if (at >= 0) terms.splice(at, 1);
+              row.remove();
+              [...list.children].forEach((r, n) => { r.id = `${list.id}-${n}`; });
+              active = -1;
+              if (!terms.length) close();
+              input.focus();
+            });
+            row.append(remove);
+          }
           row.addEventListener("click", () => { if (!list.hidden) choose(term); });
           return row;
         }));
@@ -1111,7 +1230,7 @@ for (const [index, wrapper] of $$("[data-searchbox]").entries()) {
     if (e.pointerType === "mouse") e.preventDefault();
     else {
       const row = e.target.closest(".suggestion");
-      touchStart = row ? { x: e.clientX, y: e.clientY, value: terms[[...list.children].indexOf(row)], moved: false } : null;
+      touchStart = row && !e.target.closest(".suggestion-remove") ? { x: e.clientX, y: e.clientY, value: terms[[...list.children].indexOf(row)], moved: false } : null;
     }
   });
   list.addEventListener("pointermove", (e) => {
@@ -1136,8 +1255,11 @@ for (const [index, wrapper] of $$("[data-searchbox]").entries()) {
   clear.addEventListener("click", () => { close(); input.value = ""; draft = ""; updateClear(); input.focus(); });
   addEventListener("pageshow", () => { close(); updateClear(); });
   updateClear();
-  // Home's autofocus can occur before this deferred script installs listeners.
-  if (document.activeElement === input) schedule();
+  // Home's autofocus can occur before this deferred script installs listeners. An empty autofocused
+  // box stays closed (home already lists recent searches); a click or arrow key opens them.
+  if (document.activeElement === input && input.value.trim()) schedule();
+  input.addEventListener("pointerdown", () => { if (document.activeElement === input && list.hidden && !input.value.trim()) setTimeout(schedule, 0); });
+  input.addEventListener("keydown", (e) => { if (e.key === "ArrowDown" && list.hidden && !input.value.trim()) schedule(); });
 }
 
 // While the next page loads (new search or a tab switch), the pixel mark speeds up and a dot

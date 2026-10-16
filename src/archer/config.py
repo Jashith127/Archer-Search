@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     ai_input_price: float | None = Field(None, ge=0)
     ai_output_price: float | None = Field(None, ge=0)
 
+    # Search history, kept only in data/history.sqlite3 on this computer.
+    history: bool = True
+    # Days of history to keep; 0 keeps everything until you clear it.
+    history_days: int = Field(365, ge=0, le=3650)
+    # Use history and site preferences to rank results, recall visited pages and suggest past searches.
+    personalize: bool = True
+    # How meaning is matched: a small local embedding model, a local Ollama model, or word matching only.
+    semantic_model: Literal["potion-base-8M", "potion-retrieval-32M", "ollama", "lexical"] = "potion-base-8M"
+    ollama_embed_model: str = Field("nomic-embed-text", max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]*$")
+
     # What the launcher does when it starts Archer: stay in the tray, open the companion app, or open search.
     startup_open: Literal["none", "app", "search"] = "none"
     # Seconds to wait after Windows sign-in before starting, so Archer doesn't compete with sign-in.

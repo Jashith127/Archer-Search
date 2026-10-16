@@ -12,7 +12,7 @@ from pathlib import Path
 import uvicorn
 
 import archer.app
-from archer import companion
+from archer import companion, embed, history
 from archer.app import app
 from archer.config import Settings, settings
 from archer.settings_service import SettingsService
@@ -22,6 +22,8 @@ env = folder / ".env"
 env.write_text("# Throwaway settings for the companion fixture\n", encoding="utf-8")
 companion.STATE_FILE = folder / "companion.json"
 archer.app.DATA_DIR = folder  # the AI service keeps preferences and spending here
+history.DB_PATH = folder / "history.sqlite3"
+embed.embeddings.folder = folder / "models"
 if sys.platform == "win32":
     from archer import autostart
     startup = {"on": False}

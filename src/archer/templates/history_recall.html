@@ -1,0 +1,16 @@
+{# Pages opened before for searches like this one (personalize.py), above the web results. #}
+{% from "macros.html" import site_badge %}
+<section class="recall" aria-labelledby="recall-title">
+  <h2 class="section-title" id="recall-title"><svg aria-hidden="true"><use href="#u-clock"/></svg>You found these before</h2>
+  <div class="recall-list">
+    {% for page in personal.recall %}
+    <a class="recall-item" href="{{ page.url }}" data-recall>
+      {{ site_badge(page.host) }}
+      <span class="recall-text">
+        <span class="recall-title">{{ page.title }}</span>
+        <span class="recall-meta">{{ page.host }} · opened {{ page.last|ago }}{% if page.q %} · from “{{ page.q|truncate(48, True, "…") }}”{% endif %}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
