@@ -75,3 +75,34 @@ matching 0.86, embedding 0.95, blend 0.95.
   Archer records actual result clicks, which avoids this.
 - One person's history, one stand-in model. Re-run on potion and on other histories before
   trusting the exact cutoffs.
+
+## Second round: from failures to fixes
+
+Each remaining failure was treated as a problem to solve, prototyped against the same data and kept
+only if the numbers improved. Ablations switch each rule off (`--without context,prefix,acronym,site,names`).
+
+| | First round | Second round | Word matching only |
+|---|---|---|---|
+| Precision of shown matches | 0.88 | **0.92** | 0.94 |
+| Same-need pairs found | 0.86 | **0.90** | 0.73 |
+| Related pairs found | 0.65 | **0.69** | 0.47 |
+| New-topic searches falsely matched | 0.12 | **0.10** | 0.025 |
+| Half-typed variant found | 0.91 | **0.97** | 0.97 |
+| Replay: reopened page / site in recall | 0.22 / 0.39 | **0.27 / 0.43** | 0.23 / 0.36 |
+| Latency median / p95 | 28 / 55 ms | 30 / 68 ms | |
+
+| Problem | Idea | Evidence |
+|---|---|---|
+| Words with two senses; topic-level relations missed | A past search means what the searches around it meant: its vector is blended 50/50 with its 30-minute session's | At a fixed cutoff: precision +0.05, new-topic false matches -0.04; with the cutoff refitted (×0.96), precision and recall both rose |
+| Half-typed searches | A search that is the start of a past one matches it | Half-typed found 0.88 → 0.97 |
+| Initials | "dwc" matches the three words it abbreviates | Unit tests; rare in this history |
+| Searching as navigation | A search naming a site you use recalls that site's most visited page first | Recall shown 0.30 → 0.34 of searches, reopened page 0.23 → 0.27 |
+| Look-alike products without numbers | A word the embedding model's vocabulary doesn't know, beside the same brand, is a product name; recall skips the other product | Hand near-misses kept out 15 → 23 of 30; spelling variants exempt |
+| Version numbers beside shared tokens | Compare only the tokens that differ ("f1 2021" / "f1 2024") | Included above |
+| Errors no rule fixes | "Not related" on every earlier-search chip and recalled page, remembered both ways | Removes a wrong pair permanently; cleared with history |
+| Slower matching | Cached text features, length checks before string rules, context rebuilt every 25 searches | ~150 → ~40 ms per search under load |
+
+Still open: one-word sense collisions on topics with no history (a poem form vs an AI model of
+the same name) — session context needs a session; the "Not related" button is the backstop. Word
+matching is now as robust to typing variants as the embedding (the spelling rules apply to both);
+the embedding's value is rewording: 0.90 vs 0.73 of same-need pairs, 0.69 vs 0.47 of related ones.
