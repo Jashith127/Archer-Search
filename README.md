@@ -115,8 +115,9 @@ results. Nothing about it leaves the machine. Open it from the clock icon on the
 page, or at `/history`.
 
 - **History page:** searches by day, each with the results you opened from it; search it by
-  meaning ("screen for my laptop" finds "27-inch monitor pixel density"); your topics, grouped
-  automatically; remove single entries or clear the last hour, day, week or everything; pause.
+  meaning ("screen for my laptop" finds "27-inch monitor pixel density"), with matches listed
+  closest first and a five-dot meter for how close each is; your topics, grouped automatically;
+  remove single entries or clear the last hour, day, week or everything; pause.
 - **Results:** a "You found these before" box with pages you opened for similar searches,
   "Visited" tags, and "Your earlier searches like this" next to related searches.
 - **Ranking:** the provider's order, blended with how closely each result matches the query's
@@ -126,6 +127,12 @@ page, or at `/history`.
   searches first, in the address bar too. Each can be removed from the dropdown.
 - **Meanings:** picking an "Other meanings" chip (Apple the company, not the fruit) is remembered
   for the next search of that name.
+
+![The history page: searches by day, topics grouped by meaning, and site preferences](docs/screenshots/history/history.png)
+
+![Searching history by meaning: matches closest first, each with a closeness meter](docs/screenshots/history/history-match.png)
+
+![Results with "You found these before" and "Your earlier searches like this"](docs/screenshots/history/results.png)
 
 Meaning is matched with a small embedding model that runs on the CPU: Model2Vec's
 `potion-base-8M` (30 MB, downloaded once into `data/models/`). A larger retrieval model, an
