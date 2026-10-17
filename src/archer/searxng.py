@@ -26,6 +26,9 @@ SUGGEST_MIN = 2
 SUGGEST_MAX_LENGTH = 300
 SUGGEST_LIMIT = 8
 SUGGEST_TTL = 60
+# SearXNG waits for its slowest engine (up to each engine's own timeout, several seconds for some).
+# Engines that haven't answered by then are left out and listed as unresponsive.
+TIME_LIMIT = 2.5
 
 
 def suggestion_terms(values: object, q: str) -> list[str]:
@@ -129,6 +132,27 @@ def fallback_order(primary: str) -> list[str]:
     return [primary] + [name for name, ok in ready.items() if ok and name != primary]
 
 
+def _endpoint(path: str) -> str:
+    """SearXNG's address as it is now, not as it was when the client was made: a native SearXNG that
+    moved port at startup re-points settings while the app may still be creating its clients."""
+    return settings.searxng_url.rstrip("/") + path
+
+
+def _local_down() -> bool:
+    """SearXNG is meant to run on this PC but nothing listens on its port. Windows takes about two
+    seconds to refuse a connection to a closed port, which every search and suggestion would wait out
+    before falling back; a bind probe answers at once."""
+    parts = urlsplit(settings.searxng_url)
+    if parts.hostname not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError:
+        return False
+    from archer.searxng_local import port_free
+    return port_free(port)
+
+
 def _http_url(value: str | None) -> str:
     return value if value and value.startswith(("http://", "https://")) else ""
 
@@ -158,8 +182,9 @@ def _to_result(raw: dict) -> Result | None:
 
 
 class Search:
-    def __init__(self, client: httpx.AsyncClient):
+    def __init__(self, client: httpx.AsyncClient, probe_local: bool = False):
         self._client = client
+        self._probe_local = probe_local  # skip a local SearXNG that isn't listening (see _local_down)
         self._cache: dict[tuple, tuple[float, SearchResponse]] = {}
         self._search_pending: dict[tuple, asyncio.Task] = {}
         self._suggest_cache: dict[str, tuple[float, list]] = {}
@@ -234,13 +259,15 @@ class Search:
         return out
 
     async def _searxng(self, q: str, category: str, page: int) -> SearchResponse:
-        params = {"q": q, "format": "json", "categories": category, "pageno": page}
+        if self._probe_local and _local_down():
+            return SearchResponse(error="SearXNG isn't running")
+        params = {"q": q, "format": "json", "categories": category, "pageno": page, "timeout_limit": TIME_LIMIT}
         if settings.safesearch is not None:
             params["safesearch"] = settings.safesearch
         if settings.search_language:
             params["language"] = settings.search_language
         try:
-            resp = await self._client.get("/search", params=params, timeout=12)
+            resp = await self._client.get(_endpoint("/search"), params=params, timeout=12)
         except httpx.HTTPError as exc:
             return SearchResponse(error=f"SearXNG unreachable ({type(exc).__name__})")
         if resp.is_redirect:  # external bangs (!!g) make SearXNG redirect
@@ -283,9 +310,11 @@ class Search:
     async def _autocomplete(self, q: str, timeout: float, source: str = "searxng", key: str = "") -> list:
         from archer import websearch
         try:
-            if source == "searxng":
+            if source == "searxng" and self._probe_local and _local_down():
+                data = await websearch.suggest(self._client, "duckduckgo", q, timeout)
+            elif source == "searxng":
                 try:
-                    resp = await self._client.get("/autocompleter", params={"q": q}, timeout=timeout)
+                    resp = await self._client.get(_endpoint("/autocompleter"), params={"q": q}, timeout=timeout)
                     resp.raise_for_status()
                     data = resp.json()
                 except (httpx.HTTPError, ValueError):

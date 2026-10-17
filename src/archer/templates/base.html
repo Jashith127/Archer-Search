@@ -16,5 +16,8 @@
 {% include "ui_icons.html" %}
 {% include "brand_icons.html" %}
 {% block body %}{% endblock %}
+{# A streamed page (the results page) sends the rest of the body, and closes it, in a second part. #}
+{% if not open_ended %}
 </body>
 </html>
+{% endif %}

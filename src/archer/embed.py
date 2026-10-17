@@ -27,6 +27,7 @@ from pathlib import Path
 import httpx
 import numpy as np
 
+from archer import tls
 from archer.config import DATA_DIR, settings
 
 log = logging.getLogger("archer")
@@ -154,7 +155,7 @@ class OllamaEmbedder(Embedder):
 
     async def aencode(self, texts: list[str]) -> np.ndarray:
         parts = []
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, verify=tls.context()) as client:
             for start in range(0, len(texts), 128):  # a long history's first run goes in batches
                 resp = await client.post(f"{self.base}/api/embed", json={"model": self.model, "input": [t[:MAX_CHARS] for t in texts[start:start + 128]]})
                 resp.raise_for_status()

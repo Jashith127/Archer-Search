@@ -149,6 +149,36 @@ def _site_name(host: str) -> str:
     return labels[-1] if labels else ""
 
 
+def _ranked_titles(core: str, results: list[Result]) -> list[str]:
+    ranked = []
+    for r in results[:10]:
+        title = wiki.article_title(r.url)
+        if title and wiki.matches(core, title) and title not in ranked:
+            ranked.append(title)
+    return ranked
+
+
+def _brand_site_first(core: str, results: list[Result]) -> bool:
+    top = results[0] if results else None
+    return bool(top and not wiki.article_title(top.url) and _site_name(top.host) == re.sub(r"[^a-z0-9]", "", core.lower()))
+
+
+_prefetches: set[asyncio.Task] = set()
+
+
+def _prefetch_meaning(ext: httpx.AsyncClient, query: Query, results: list[Result]) -> None:
+    """Start the lookup _settle_meaning will most likely make (the web's first Wikipedia article on
+    this name) while the panel's own lookup is still running; wiki.lookup shares it when asked."""
+    core = query.entity_candidate
+    if not core or _brand_site_first(core, results):
+        return  # a brand's own site decides first; its company may make this lookup unnecessary
+    ranked = _ranked_titles(core, results)
+    if ranked:
+        task = asyncio.ensure_future(_safe(wiki.lookup(ext, ranked[0]), "wikipedia"))
+        _prefetches.add(task)
+        task.add_done_callback(_prefetches.discard)
+
+
 async def _settle_meaning(ext: httpx.AsyncClient, query: Query, hero: Hero | None, results: list[Result],
                           about: str = "") -> Hero | None:
     """Pick the meaning people searching this usually want, and list the others.
@@ -163,15 +193,11 @@ async def _settle_meaning(ext: httpx.AsyncClient, query: Query, hero: Hero | Non
     if hero and not current:
         return hero  # an AI model card or similar: not a Wikipedia meaning
     core, hint = query.entity_candidate, query.entity_hint
-    ranked = []  # Wikipedia articles about this name, in the web's order
-    for r in results[:10]:
-        title = wiki.article_title(r.url)
-        if title and wiki.matches(core, title) and title not in ranked:
-            ranked.append(title)
+    ranked = _ranked_titles(core, results)  # Wikipedia articles about this name, in the web's order
     picks = []
     if not about:
-        top = results[0] if results else None
-        if top and not wiki.article_title(top.url) and _site_name(top.host) == re.sub(r"[^a-z0-9]", "", core.lower()):
+        if _brand_site_first(core, results):
+            top = results[0]
             site = await _safe(wiki.title_for_site(ext, top.url, core), "wikidata site")
             if site and site is not _FAILED:
                 picks.append(site)
@@ -318,7 +344,15 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
 
     search_task = searx.search(query.text, TABS[tab], page)
     if hero_task:
-        response, hero = await asyncio.gather(search_task, hero_task)
+        hero_future = asyncio.ensure_future(hero_task)
+        try:
+            response = await search_task
+        except BaseException:
+            hero_future.cancel()
+            raise
+        if not hero_future.done() and not about and query.kind in ("general", "question"):
+            _prefetch_meaning(ext, query, response.results)
+        hero = await hero_future
         if hero is _FAILED:
             # Say so instead of silently dropping the card (entity panels are optional, so stay quiet).
             if query.kind in SOURCES:

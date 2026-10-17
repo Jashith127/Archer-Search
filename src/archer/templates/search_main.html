@@ -1,0 +1,84 @@
+{#- Second part of the results page (see search.html): everything that needs the search's answer. -#}
+{% from "macros.html" import result, lazy_strip %}
+{% include "ratelimit_banner.html" %}
+<main class="wrap page"{% if history_id %} data-history="{{ history_id }}"{% endif %} data-csrf="{{ ai.csrf }}">
+  {% if redirect|web_url %}
+  <div class="notice">This search continues on another site: <a href="{{ redirect|web_url }}">open it</a>.</div>
+  {% endif %}
+  {% if v.response and v.response.error %}
+  <div class="notice">{{ v.response.error|trim('.') }}. <a href="{{ provider_page }}">Open {{ provider_label }} directly</a> or <a href="/app#search">check your search settings</a>.</div>
+  {% elif v.response and v.response.notice %}
+  <div class="notice notice--soft">{{ v.response.notice }} <a href="/app#search">Search settings</a></div>
+  {% endif %}
+
+  {% if v.response and v.response.corrections %}
+  <p class="correction">Did you mean <a href="/search?q={{ v.response.corrections[0]|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}">{{ v.response.corrections[0] }}</a>?</p>
+  {% endif %}
+
+  {% if v.hero and v.hero.kind == "entity" and v.hero.data.corrected and not (v.response and v.response.corrections) %}
+  <p class="correction">Did you mean <a href="/search?q={{ v.hero.data.title|qs }}">{{ v.hero.data.title }}</a>? Showing its info panel for “{{ v.q }}”.</p>
+  {% endif %}
+
+  {% if v.hero_failed %}
+  <div class="notice">The {{ v.query.kind }} card couldn't load because {{ v.hero_failed }} didn't respond. Try again in a minute; the web results below are unaffected.</div>
+  {% endif %}
+
+  {% if v.remembered and v.hero and v.hero.kind == "entity" %}
+  <p class="correction correction--quiet">Showing {{ v.hero.data.title }}, the meaning you picked last time. Other meanings are listed in the panel.</p>
+  {% endif %}
+
+  {% if v.hero %}{% include "heroes/" ~ ("game" if v.hero.kind == "entity" and v.hero.data.kind == "game" else v.hero.kind) ~ ".html" %}{% endif %}
+  {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
+
+  {% if v.tab == "all" and v.lazy.cast %}{% include "screen_cast.html" %}{% endif %}
+  {% if v.tab == "all" and v.lazy.filmography %}{% include "screen_filmography.html" %}{% endif %}
+
+  {% if v.tab == "all" %}
+  <div class="layout layout--single">
+    <div class="results">
+      {% if v.lazy.works %}
+      <section class="works" data-works-qid="{{ v.lazy.works.qid }}" data-works-role="{{ v.lazy.works.role }}">
+        <h2 class="section-title">{{ {"cast": "Movies and shows", "author": "Books", "performer": "Albums"}[v.lazy.works.role] }}</h2>
+        <div class="works-row"><div class="work skeleton"></div><div class="work skeleton"></div><div class="work skeleton"></div></div>
+      </section>
+      {% endif %}
+
+      {% if personal and personal.recall and v.page == 1 %}{% include "history_recall.html" %}{% endif %}
+      {% for r in v.results %}
+        {{ result(r, menu=true) }}
+        {% if loop.index == 1 and v.lazy.images %}{{ lazy_strip("images", v.q, "Images", "image") }}{% endif %}
+        {% if loop.index == 2 and v.lazy.news %}{{ lazy_strip("news", v.q, "In the news", "news") }}{% endif %}
+        {% if loop.index == 3 and v.lazy.videos %}{{ lazy_strip("videos", v.q, "Videos", "video") }}{% endif %}
+        {% if loop.index == 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
+      {% else %}
+        {% if not (v.response and v.response.error) %}
+        <div class="empty">
+          <p>No web results came back for <b>{{ v.q }}</b>.</p>
+          <p class="muted">{{ provider_label }} may be rate-limiting Archer. Try <a href="{{ provider_page }}">{{ provider_label }} directly</a> or prefix <code>!g</code>.</p>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if v.results|length < 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
+
+      {% include "related.html" %}
+      {% include "pager.html" %}
+    </div>
+  </div>
+  {% else %}
+    {% include "tab_" ~ v.tab ~ ".html" %}
+    {% include "related.html" %}
+  {% endif %}
+
+  <footer class="status">
+    {% if v.response and v.response.unresponsive %}
+    <p>Engines unavailable: {% for name, why in v.response.unresponsive %}<span title="{{ why }}">{{ name }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+    {% if personal and personal.hidden %}
+    <p>{{ personal.hidden|length }} result{{ "s" if personal.hidden|length != 1 }} from blocked sites hidden ({{ personal.hidden|unique|join(", ") }}) · <a href="/history#sites">Manage sites</a></p>
+    {% endif %}
+    <p><a href="{{ provider_page }}">View on {{ provider_label }}</a> · <a href="/history">History</a> · <span data-ai-footer>Classic mode · no AI used</span></p>
+  </footer>
+  <canvas class="serp-field" aria-hidden="true"></canvas>
+</main>
+</body>
+</html>

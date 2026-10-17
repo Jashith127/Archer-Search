@@ -12,11 +12,11 @@ import zlib
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from archer import __version__, views, websearch
+from archer import __version__, tls, views, websearch
 from archer.fetcher import lead_image
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
@@ -38,12 +38,13 @@ log = logging.getLogger("archer")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    searx_http = httpx.AsyncClient(base_url=settings.searxng_url, timeout=settings.suggest_timeout,
+    # One shared TLS context: building one per client costs ~0.4 s each at startup.
+    searx_http = httpx.AsyncClient(base_url=settings.searxng_url, timeout=settings.suggest_timeout, verify=tls.context(),
                                    headers={"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"})
-    ext = httpx.AsyncClient(timeout=5, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
+    ext = httpx.AsyncClient(timeout=5, headers={"User-Agent": USER_AGENT}, follow_redirects=True, verify=tls.context())
     async with searx_http, ext:
         app.state.searxng = searx_http
-        app.state.searx = SearXNG(searx_http)
+        app.state.searx = SearXNG(searx_http, probe_local=True)
         app.state.ext = ext
         app.state.ai = AIService(settings, DATA_DIR)
         app.state.history = History()
@@ -56,9 +57,21 @@ async def lifespan(app: FastAPI):
             log.warning("history prune failed: %s", type(exc).__name__)
         if settings.personalize:
             threading.Thread(target=embeddings.warm, daemon=True).start()
+        threading.Thread(target=_warm_templates, daemon=True).start()
         yield
         await app.state.ai.close()
         app.state.history.close()
+
+
+def _warm_templates() -> None:
+    """Compile the pages' templates off the request path; the first search otherwise compiles ~30."""
+    names = ["search.html", "search_main.html", "home.html", "history.html", "companion.html", "welcome.html"]
+    names += [name for name in templates.env.list_templates() if name.startswith("heroes/")]
+    for name in names:
+        try:
+            templates.get_template(name)
+        except Exception:  # noqa: BLE001 - a template that fails here fails visibly on its own request
+            pass
 
 
 app = FastAPI(title="Archer", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -239,14 +252,30 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
         return RedirectResponse(target.format(q=quote_plus(q)), status_code=302)
     tab = tab if tab in views.TABS else "all"
     about = about.strip()[:200]
+    ai = ai_service(request)
+    session = ai.session(request.cookies.get("archer_session"))
+    # The page streams: its header and a placeholder go out at once, the results when they're ready
+    # (search.html, then search_main.html), so the browser shows the page as soon as Enter is pressed.
+    response = StreamingResponse(_search_page(request, q, tab, p, full, about, ai, session),
+                                 media_type="text/html; charset=utf-8")
+    ai_cookie(response, session)
+    return response
+
+
+async def _search_page(request: Request, q: str, tab: str, p: int, full: bool, about: str, ai: AIService, session):
+    yield templates.get_template("search.html").render(
+        {"request": request, "q": " ".join(q.split()) if q.strip() else q, "tab": tab, "ai_view": full, "open_ended": True})
+    yield templates.get_template("search_main.html").render(
+        {"request": request, **await _search_context(request, q, tab, p, full, about, ai, session)})
+
+
+async def _search_context(request: Request, q: str, tab: str, p: int, full: bool, about: str, ai: AIService, session) -> dict:
     store: History = history_store(request)
     chosen = about
     if not about and settings.personalize and tab == "all" and p == 1 and q.strip():
         # A meaning picked from "Other meanings" before is what this name means to you.
         about = store.meaning(q)
     view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about) if q.strip() else views.View("", "all", 1, classify(""))
-    if view.response and view.response.redirect:
-        return RedirectResponse(view.response.redirect, status_code=302)
     view.remembered = about if about and not chosen else ""
     personal = await _personal_view(request, view)
     history_id = None
@@ -257,19 +286,17 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
         history_id = store.record_search(q, tab, "ai" if full else "search", chosen, hero[:200])
         if chosen:
             store.remember_meaning(q, chosen)
-    ai = ai_service(request)
-    session = ai.session(request.cookies.get("archer_session"))
     snapshot = ai.snapshot(session, view) if tab == "all" and p == 1 else None
     provider = view.response.provider if view.response else settings.search_provider
-    response = templates.TemplateResponse(request, "search.html", {
+    return {
         "v": view, "provider_page": websearch.page_url(provider, q, views.TABS[tab]),
         "provider_label": websearch.LABELS.get(provider, provider),
         "ai": ai.info(session, snapshot),
         "ai_view": full,
         "history_id": history_id, "personal": personal,
-    })
-    ai_cookie(response, session)
-    return response
+        # Headers are sent before the search runs, so a redirect from the provider becomes a link.
+        "redirect": view.response.redirect if view.response else None,
+    }
 
 
 @app.get("/ai")

@@ -2,7 +2,7 @@
 or SearXNG is started natively on this PC when it isn't in Docker at all."""
 import pytest
 
-from archer import companion, searxng_local
+from archer import companion, config, searxng_local
 from archer.config import Settings, settings
 
 
@@ -85,11 +85,20 @@ def test_stop_docker_stops_docker_desktop(monkeypatch):
 # ------------------------------------------------- where SearXNG runs (settings.searxng_runtime)
 
 
-def test_a_container_from_before_searxng_runtime_keeps_using_docker():
+def test_a_container_from_before_searxng_runtime_keeps_using_docker(monkeypatch):
+    monkeypatch.setattr(config, "native_searxng_installed", lambda: False)
     assert Settings(_env_file=None).searxng_runtime == "external"
     assert Settings(_env_file=None, searxng_container="searxng").searxng_runtime == "docker"
     # Once the runtime is chosen, the old container name doesn't override it.
     assert Settings(_env_file=None, searxng_container="searxng", searxng_runtime="native").searxng_runtime == "native"
+
+
+def test_a_native_install_is_the_default(monkeypatch):
+    monkeypatch.setattr(config, "native_searxng_installed", lambda: True)
+    assert Settings(_env_file=None).searxng_runtime == "native"
+    # A choice in .env, or an older Docker setup, still wins.
+    assert Settings(_env_file=None, searxng_runtime="external").searxng_runtime == "external"
+    assert Settings(_env_file=None, searxng_container="searxng").searxng_runtime == "docker"
 
 
 @pytest.fixture

@@ -1007,6 +1007,8 @@ if (rateBanner) {
   let dismissed = "";
   try { dismissed = localStorage.getItem("archer-rl-dismissed") || ""; } catch { /* storage blocked: always show */ }
   if (dismissed !== rateBanner.dataset.rlKey) {
+    // The results page streams it in after the header (its text needs the search); it belongs on top.
+    document.body.prepend(rateBanner);
     rateBanner.hidden = false;
     document.body.classList.add("has-rl");
   }

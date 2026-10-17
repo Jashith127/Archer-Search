@@ -15,6 +15,8 @@ import re
 
 import httpx
 
+from archer import tls
+
 
 class AIError(Exception):
     pass
@@ -163,7 +165,7 @@ class Provider:
     async def _with_client(self, timeout, work):
         if self.client:
             return await work(self.client)
-        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False, verify=tls.context()) as client:
             return await work(client)
 
     # ------------------------------------------------------------- planning

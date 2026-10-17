@@ -1,5 +1,6 @@
 """Entity panels from Wikipedia (match, description, image) and Wikidata (typed facts)."""
 
+import asyncio
 import re
 import time
 from datetime import date
@@ -16,6 +17,8 @@ WDQS = "https://query.wikidata.org/sparql"
 
 _entity_cache = TTLCache(ttl=86400)
 _works_cache = TTLCache(ttl=86400)
+_pending: dict[str, asyncio.Task] = {}  # lookups in flight, shared by everyone asking for the same name
+_country_iso: dict[str, str] = {}  # country QID -> ISO code, for the flag on "Country" tiles
 
 # P31 (instance of) -> panel kind
 KINDS = {
@@ -385,9 +388,11 @@ async def _wbget(client: httpx.AsyncClient, ids: list[str], props: str) -> dict:
     if not ids:
         return {}
     out: dict = {}
-    for i in range(0, len(ids), 50):
-        data = await _get(client, WD_API, action="wbgetentities", ids="|".join(ids[i:i + 50]),
-                          props=props, languages="en|mul", format="json")
+    # 50 ids per request (the API's limit); a film's cast and crew can need several, asked together.
+    batches = await asyncio.gather(*(_get(client, WD_API, action="wbgetentities", ids="|".join(ids[i:i + 50]),
+                                          props=props, languages="en|mul", format="json")
+                                     for i in range(0, len(ids), 50)))
+    for data in batches:
         for key, ent in data.get("entities", {}).items():
             out[key] = ent
             if redirect := ent.get("redirects"):  # merged items come back under their new id
@@ -485,16 +490,53 @@ def _game_stores(entity: dict, platforms: list[str], title: str) -> list[dict]:
 
 # ------------------------------------------------------------ panel build
 
+async def _entity_by_title(client: httpx.AsyncClient, title: str) -> dict:
+    """The Wikidata item of the English article with this exact title, asked alongside the Wikipedia
+    lookup so a direct hit costs one round trip instead of two. Only a guess: lookup() checks it is
+    the same item the page names, and asks by id when it isn't."""
+    try:
+        data = await _get(client, WD_API, action="wbgetentities", sites="enwiki", titles=title, normalize=1,
+                          props="claims|descriptions|labels", languages="en|mul", format="json")
+        return next((ent for ent in data.get("entities", {}).values() if isinstance(ent, dict) and "id" in ent), {})
+    except Exception:  # noqa: BLE001 - the lookup by id below covers any failure here
+        return {}
+
+
+async def _iso_code(client: httpx.AsyncClient, qid: str) -> str:
+    if qid not in _country_iso:
+        try:
+            claims = await _get(client, WD_API, action="wbgetclaims", entity=qid, property="P297", format="json")
+        except (httpx.HTTPError, ValueError):
+            return ""  # just no flag on the tile
+        _country_iso[qid] = next((c["mainsnak"]["datavalue"]["value"] for c in claims.get("claims", {}).get("P297", [])
+                                  if c.get("mainsnak", {}).get("snaktype") == "value"), "")
+    return _country_iso[qid]
+
+
+async def _nothing() -> str:
+    return ""
+
+
 async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = False) -> dict | None:
     key = candidate.lower()
     if not fresh and (hit := _entity_cache.get(key)) is not None:
         return hit or None
-    page, corrected = await _find_page(client, candidate)
+    task = _pending.get(key)
+    if fresh or task is None or task.get_loop() is not asyncio.get_running_loop():
+        task = asyncio.ensure_future(_lookup(client, candidate, key))
+        _pending[key] = task
+        task.add_done_callback(lambda done: _pending.pop(key, None) if _pending.get(key) is done else None)
+    # Shielded: a page that stops waiting must not cancel a lookup another search shares.
+    return await asyncio.shield(task)
+
+
+async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict | None:
+    (page, corrected), guess = await asyncio.gather(_find_page(client, candidate), _entity_by_title(client, candidate))
     if not page:
         _entity_cache.put(key, {})
         return None
     qid = page["pageprops"]["wikibase_item"]
-    entity = (await _wbget(client, [qid], "claims|descriptions|labels")).get(qid, {})
+    entity = guess if guess.get("id") == qid else (await _wbget(client, [qid], "claims|descriptions|labels")).get(qid, {})
     kind = _kind(entity)
 
     ref_props = ["P19", "P20", "P106", "P26", "P22", "P25", "P57", "P161", "P136", "P449", "P50", "P123",
@@ -512,7 +554,10 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
               "P2067", "P2101", "P2102", "P2054", "P1174", "P2049", "P2610", "P2284", "P2928"):
         if (v := _first(entity, p)) and isinstance(v, dict) and "unit" in v:
             refs.add(v["unit"].rsplit("/", 1)[-1])
-    label_ents = await _wbget(client, sorted(r for r in refs if r.startswith("Q")), "labels")
+    # The country's ISO code (for a flag on its tile) comes alongside the labels, not after them.
+    country_ids = _ids(entity, "P17", 1) or _ids(entity, "P495", 1)
+    label_ents, iso = await asyncio.gather(_wbget(client, sorted(r for r in refs if r.startswith("Q")), "labels"),
+                                           _iso_code(client, country_ids[0]) if country_ids else _nothing())
     labels = {k: _label(v, k) for k, v in label_ents.items()}
 
     def names(prop: str, limit: int = 3) -> str:
@@ -806,11 +851,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         else:
             flag = flag_url(string("P297"))
     country_tile = next((t for t in tiles[:5] if t["label"] in ("Country", "Observed in")), None)
-    country_ids = _ids(entity, "P17", 1) or _ids(entity, "P495", 1)
     if country_tile and country_ids:
-        claims = await _get(client, WD_API, action="wbgetclaims", entity=country_ids[0], property="P297", format="json")
-        iso = next((c["mainsnak"]["datavalue"]["value"] for c in claims.get("claims", {}).get("P297", [])
-                    if c.get("mainsnak", {}).get("snaktype") == "value"), "")
         country_tile["flag"] = flag_url(iso)
 
     player = _music_player(entity, kind) if kind == "music" else None

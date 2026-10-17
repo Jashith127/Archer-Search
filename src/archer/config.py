@@ -1,3 +1,5 @@
+import json
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -7,6 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
 ENV_FILE = ROOT / ".env"
+
+
+def native_searxng_installed() -> bool:
+    """A finished native SearXNG install on this PC (searxng_local.installed(), read without importing
+    that module and httpx: config loads before the launcher binds its port)."""
+    root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Archer" / "searxng"
+    try:
+        current = json.loads((root / "state.json").read_text(encoding="utf-8")).get("current")
+    except (OSError, ValueError, AttributeError):
+        return False
+    return isinstance(current, str) and bool(current) and (root / "releases" / current / "release.json").is_file()
 
 
 class Settings(BaseSettings):
@@ -101,10 +114,15 @@ class Settings(BaseSettings):
     startup_notify: bool = False
 
     @model_validator(mode="after")
-    def _runtime_from_container(self):
-        # Installs from before searxng_runtime only named a container; keep starting it with Docker.
-        if self.searxng_container and "searxng_runtime" not in self.model_fields_set:
-            self.searxng_runtime = "docker"
+    def _runtime_from_install(self):
+        if "searxng_runtime" not in self.model_fields_set:
+            if self.searxng_container:
+                # Installs from before searxng_runtime only named a container; keep starting it with Docker.
+                self.searxng_runtime = "docker"
+            elif native_searxng_installed():
+                # SearXNG is installed on this PC: run it, rather than query a :8888 nobody listens on.
+                # Starting it points searxng_url at the port it uses (companion._start_native).
+                self.searxng_runtime = "native"
         return self
 
     @property

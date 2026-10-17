@@ -13,6 +13,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from archer import tls
 from archer.evidence import public_url
 from archer.sources import TTLCache, USER_AGENT
 
@@ -101,7 +102,7 @@ async def fetch_html(url: str, limit: int, *, head: bool = False) -> tuple[str, 
     """(text, content type, final URL) of a public page. `head` keeps the first `limit` bytes
     instead of failing on a longer page, for reading only the <head>."""
     original = url
-    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=5) as client:
+    async with httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=5, verify=tls.context()) as client:
         for _ in range(4):
             p = urlsplit(url)
             port = p.port or (443 if p.scheme == "https" else 80)

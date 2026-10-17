@@ -22,10 +22,12 @@ import time
 import urllib.request
 import webbrowser
 from pathlib import Path
-
-import uvicorn
+from typing import TYPE_CHECKING
 
 from archer.config import DATA_DIR, settings
+
+if TYPE_CHECKING:
+    import uvicorn  # imported in main(), after the port is bound: it takes most of a second
 
 
 def _port_free() -> bool:
@@ -38,6 +40,22 @@ def _port_free() -> bool:
             return False
 
 
+def _listen() -> socket.socket | None:
+    """Archer's listening socket, bound before the app imports (about two seconds). The window can
+    open at once: its request waits in the socket's queue until the server answers it."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if sys.platform != "win32":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as uvicorn does
+        sock.bind((settings.host, settings.port))
+        sock.listen(2048)
+    except OSError:
+        sock.close()
+        return None
+    sock.set_inheritable(True)
+    return sock
+
+
 def _already_running() -> bool:
     if _port_free():
         return False
@@ -48,7 +66,7 @@ def _already_running() -> bool:
         return False
 
 
-def _wait_started(server: uvicorn.Server, thread: threading.Thread) -> bool:
+def _wait_started(server: "uvicorn.Server", thread: threading.Thread) -> bool:
     while thread.is_alive():
         if server.started:
             return True
@@ -99,8 +117,8 @@ def _manages_native_searxng() -> bool:
     return settings.search_provider == "searxng" and settings.searxng_runtime == "native"
 
 
-def _run_tray(server: uvicorn.Server, thread: threading.Thread, restart: threading.Event,
-              view: str | None, notify: bool, docker_boot: threading.Thread | None = None) -> bool:
+def _run_tray(server: "uvicorn.Server", thread: threading.Thread, restart: threading.Event,
+              notify: bool, docker_boot: threading.Thread | None = None) -> bool:
     """Show the tray icon at once, while the server is still importing; returns False if it never started."""
     import pystray
 
@@ -162,8 +180,6 @@ def _run_tray(server: uvicorn.Server, thread: threading.Thread, restart: threadi
         from archer.app import app
         # The companion app can restart Archer too, to apply a new port or address.
         app.state.restart = restart_app
-        if view:
-            _show(view)
         if notify:
             try:
                 tray.notify("Archer is running. Search from your address bar.", "Archer")
@@ -214,6 +230,17 @@ def main() -> None:
 
     if args.startup and settings.startup_delay:
         time.sleep(settings.startup_delay)
+    sock = _listen()
+    if sock is None:
+        _fail()
+    from archer import tls
+    # Loads the CA bundle (~0.4 s) alongside the app's imports instead of after them.
+    threading.Thread(target=tls.context, daemon=True).start()
+    # Open the window now, while the server starts: the browser takes about as long to launch,
+    # and its first request waits in the socket's queue until the app answers it.
+    view = _first_view(args)
+    if view:
+        _show(view)
     if sys.platform == "win32":
         from archer import autostart
         try:
@@ -233,17 +260,15 @@ def main() -> None:
         # In the background for the same reason: the first search can fall back meanwhile.
         threading.Thread(target=companion.searxng_start, daemon=True).start()
 
+    import uvicorn
     # Search URLs contain private queries; do not write them into the tray app's log.
     server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port, access_log=False))
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
     thread.start()
-    view = _first_view(args)
 
     if args.no_tray:
         if not _wait_started(server, thread):
             _fail()
-        if view:
-            _show(view)
         try:
             while thread.is_alive():  # short joins so Ctrl+C reaches us on Windows
                 thread.join(0.5)
@@ -252,7 +277,7 @@ def main() -> None:
         companion.searxng_shutdown()
     else:
         restart = threading.Event()
-        if not _run_tray(server, thread, restart, view, notify=args.startup and settings.startup_notify,
+        if not _run_tray(server, thread, restart, notify=args.startup and settings.startup_notify,
                          docker_boot=docker_boot):
             _fail()
         thread.join(timeout=5)

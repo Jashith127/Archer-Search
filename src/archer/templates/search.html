@@ -1,23 +1,25 @@
+{#- The results page arrives in two parts. This first part goes out the moment a search is asked:
+    the header with its search box, and a placeholder that holds the results' place while the search
+    runs (pure CSS: archer.js only runs once the page is complete). The second part,
+    search_main.html, brings the results; its <main> hides the placeholder (.serp-wait in archer.css). -#}
 {% extends "base.html" %}
-{% from "macros.html" import result, lazy_strip %}
 {% from "pixel_mark.html" import pixel_mark %}
 {% from "search_box.html" import search_box %}
-{% block title %}{{ v.q }} · Archer{% endblock %}
-{% block body_class %}serp tab-{{ v.tab }}{% if ai_view %} ai-fullview{% endif %}{% endblock %}
+{% block title %}{{ q }} · Archer{% endblock %}
+{% block body_class %}serp tab-{{ tab }}{% if ai_view %} ai-fullview{% endif %}{% endblock %}
 {% block body %}
-{% include "ratelimit_banner.html" %}
 <header class="top">
   <div class="wrap top-inner">
     <a class="brand" href="/" aria-label="Archer home">{{ pixel_mark(32) }}</a>
-    {{ search_box(v.q, v.tab) }}
+    {{ search_box(q, tab) }}
     <a class="top-settings" href="/app" aria-label="Settings" title="Settings"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></svg></a>
   </div>
   <nav class="wrap tabs" aria-label="Result types">
     <div class="tabs-list">
       {% for key, label, ic in [("all", "All", "i-globe"), ("images", "Images", "i-image"), ("news", "News", "i-news"), ("videos", "Videos", "i-video")] %}
-      <a class="tab{% if v.tab == key %} is-active{% endif %}" href="/search?q={{ v.q|qs }}{% if key != 'all' %}&tab={{ key }}{% endif %}"><svg class="tab-icon" aria-hidden="true"><use href="#{{ ic }}"/></svg>{{ label }}</a>
+      <a class="tab{% if tab == key %} is-active{% endif %}" href="/search?q={{ q|qs }}{% if key != 'all' %}&tab={{ key }}{% endif %}"><svg class="tab-icon" aria-hidden="true"><use href="#{{ ic }}"/></svg>{{ label }}</a>
       {% endfor %}
-      <a class="tab" href="https://www.openstreetmap.org/search?query={{ v.q|qs }}"><svg class="tab-icon" aria-hidden="true"><use href="#u-map"/></svg>Maps <svg class="tab-ext"><use href="#i-ext"/></svg></a>
+      <a class="tab" href="https://www.openstreetmap.org/search?query={{ q|qs }}"><svg class="tab-icon" aria-hidden="true"><use href="#u-map"/></svg>Maps <svg class="tab-ext"><use href="#i-ext"/></svg></a>
     </div>
     <div class="modes" role="group" aria-label="AI level">
       <button type="button" class="mode is-active" data-ai-mode="classic" aria-pressed="true" title="Links and cards"><svg aria-hidden="true"><use href="#u-list"/></svg>Classic</button>
@@ -27,80 +29,24 @@
   </nav>
 </header>
 
-<main class="wrap page"{% if history_id %} data-history="{{ history_id }}"{% endif %} data-csrf="{{ ai.csrf }}">
-  {% if v.response and v.response.error %}
-  <div class="notice">{{ v.response.error|trim('.') }}. <a href="{{ provider_page }}">Open {{ provider_label }} directly</a> or <a href="/app#search">check your search settings</a>.</div>
-  {% elif v.response and v.response.notice %}
-  <div class="notice notice--soft">{{ v.response.notice }} <a href="/app#search">Search settings</a></div>
-  {% endif %}
-
-  {% if v.response and v.response.corrections %}
-  <p class="correction">Did you mean <a href="/search?q={{ v.response.corrections[0]|qs }}{% if v.tab != 'all' %}&tab={{ v.tab }}{% endif %}">{{ v.response.corrections[0] }}</a>?</p>
-  {% endif %}
-
-  {% if v.hero and v.hero.kind == "entity" and v.hero.data.corrected and not (v.response and v.response.corrections) %}
-  <p class="correction">Did you mean <a href="/search?q={{ v.hero.data.title|qs }}">{{ v.hero.data.title }}</a>? Showing its info panel for “{{ v.q }}”.</p>
-  {% endif %}
-
-  {% if v.hero_failed %}
-  <div class="notice">The {{ v.query.kind }} card couldn't load because {{ v.hero_failed }} didn't respond. Try again in a minute; the web results below are unaffected.</div>
-  {% endif %}
-
-  {% if v.remembered and v.hero and v.hero.kind == "entity" %}
-  <p class="correction correction--quiet">Showing {{ v.hero.data.title }}, the meaning you picked last time. Other meanings are listed in the panel.</p>
-  {% endif %}
-
-  {% if v.hero %}{% include "heroes/" ~ ("game" if v.hero.kind == "entity" and v.hero.data.kind == "game" else v.hero.kind) ~ ".html" %}{% endif %}
-  {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
-
-  {% if v.tab == "all" and v.lazy.cast %}{% include "screen_cast.html" %}{% endif %}
-  {% if v.tab == "all" and v.lazy.filmography %}{% include "screen_filmography.html" %}{% endif %}
-
-  {% if v.tab == "all" %}
-  <div class="layout layout--single">
-    <div class="results">
-      {% if v.lazy.works %}
-      <section class="works" data-works-qid="{{ v.lazy.works.qid }}" data-works-role="{{ v.lazy.works.role }}">
-        <h2 class="section-title">{{ {"cast": "Movies and shows", "author": "Books", "performer": "Albums"}[v.lazy.works.role] }}</h2>
-        <div class="works-row"><div class="work skeleton"></div><div class="work skeleton"></div><div class="work skeleton"></div></div>
-      </section>
-      {% endif %}
-
-      {% if personal and personal.recall and v.page == 1 %}{% include "history_recall.html" %}{% endif %}
-      {% for r in v.results %}
-        {{ result(r, menu=true) }}
-        {% if loop.index == 1 and v.lazy.images %}{{ lazy_strip("images", v.q, "Images", "image") }}{% endif %}
-        {% if loop.index == 2 and v.lazy.news %}{{ lazy_strip("news", v.q, "In the news", "news") }}{% endif %}
-        {% if loop.index == 3 and v.lazy.videos %}{{ lazy_strip("videos", v.q, "Videos", "video") }}{% endif %}
-        {% if loop.index == 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
-      {% else %}
-        {% if not (v.response and v.response.error) %}
-        <div class="empty">
-          <p>No web results came back for <b>{{ v.q }}</b>.</p>
-          <p class="muted">{{ provider_label }} may be rate-limiting Archer. Try <a href="{{ provider_page }}">{{ provider_label }} directly</a> or prefix <code>!g</code>.</p>
-        </div>
-        {% endif %}
-      {% endfor %}
-      {% if v.results|length < 4 and v.discussions %}{% include "discussions.html" %}{% endif %}
-
-      {% include "related.html" %}
-      {% include "pager.html" %}
-    </div>
-  </div>
+<div class="wrap serp-wait" role="status" aria-label="Searching">
+  <p class="serp-wait-status">
+    <span class="serp-wait-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="serp-wait-msg"><span>Searching the web</span><span>Still searching · some engines are slow to answer</span><span>Taking longer than usual</span></span>
+  </p>
+  {% if tab == "images" %}
+  <div class="serp-wait-tiles" aria-hidden="true">{% for _ in range(12) %}<div class="skeleton" style="--n:{{ loop.index0 }}"></div>{% endfor %}</div>
   {% else %}
-    {% include "tab_" ~ v.tab ~ ".html" %}
-    {% include "related.html" %}
+  <div class="serp-wait-list" aria-hidden="true">
+    {% for width in [62, 48, 70, 55, 66] %}
+    <div class="serp-wait-row" style="--n:{{ loop.index0 }}; --w:{{ width }}%">
+      <div class="serp-wait-site"><span class="skeleton serp-wait-badge"></span><span class="skeleton serp-wait-host"></span></div>
+      <span class="skeleton serp-wait-title"></span>
+      <span class="skeleton serp-wait-line"></span>
+      <span class="skeleton serp-wait-line serp-wait-line--short"></span>
+    </div>
+    {% endfor %}
+  </div>
   {% endif %}
-
-  <footer class="status">
-    {% if v.response and v.response.unresponsive %}
-    <p>Engines unavailable: {% for name, why in v.response.unresponsive %}<span title="{{ why }}">{{ name }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-    {% endif %}
-    {% if personal and personal.hidden %}
-    <p>{{ personal.hidden|length }} result{{ "s" if personal.hidden|length != 1 }} from blocked sites hidden ({{ personal.hidden|unique|join(", ") }}) · <a href="/history#sites">Manage sites</a></p>
-    {% endif %}
-    <p><a href="{{ provider_page }}">View on {{ provider_label }}</a> · <a href="/history">History</a> · <span data-ai-footer>Classic mode · no AI used</span></p>
-  </footer>
-  <canvas class="serp-field" aria-hidden="true"></canvas>
-</main>
+</div>
 {% endblock %}
