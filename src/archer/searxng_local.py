@@ -134,6 +134,12 @@ def port() -> int:
     return value if isinstance(value, int) and value in PORTS else PORTS[0]
 
 
+def set_port(value: int) -> None:
+    state = load_state()
+    state["port"] = value
+    save_state(state)
+
+
 def url() -> str:
     return f"http://127.0.0.1:{port()}"
 

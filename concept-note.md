@@ -37,6 +37,30 @@ SearXNG or a DeepSeek key.
 - **Startup:** Start with Windows passes `--startup`, which honours a sign-in delay, a ready
   notification, what to open (tray, companion or search) and an optional SearXNG container.
 
+### SearXNG without Docker · 17 October 2026
+
+Docker Desktop was the heaviest part of Archer. Measured on this PC with the same settings.yml
+and one query:
+
+- Docker Desktop: ~2.9 GB (2.2 GB VM and 0.7 GB of Windows helpers).
+- An Alpine WSL distro with docker-ce: ~1.4 GB.
+- The same distro running SearXNG from source: ~1.15 GB.
+- SearXNG run natively on Windows: **~135–150 MB** with no VM.
+
+Archer now runs SearXNG itself (`searxng_local.py`, `searxng_runtime=native`):
+
+- It installs a pinned SearXNG commit, checked against a sha256, into its own uv venv under
+  `%LOCALAPPDATA%\Archer\searxng`, with two small shims (a `pwd` stub and the selector event loop).
+- It runs `python -m granian` on loopback inside a kill-on-close Job Object, and keeps the server
+  log in memory only, because engine warnings contain query URLs.
+- Upstream doesn't support Windows, so the pin moves only after a real install and start, and
+  updates will smoke-test and roll back.
+- Docker stays available (`searxng_runtime=docker`; an existing `searxng_container` migrates to
+  it), and so does any other instance (`external`).
+- The tray has a "SearXNG running" toggle.
+- Still to come: the companion pane, installer step, and update/rollback (see the plan in the
+  session notes).
+
 ### History and personalization · 16 October 2026
 
 Archer now keeps a local search history and uses it to personalize results, without an LLM.

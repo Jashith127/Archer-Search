@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_cx: str = Field("", max_length=100)
     brave_api_key: str = Field("", validation_alias=AliasChoices("ARCHER_BRAVE_API_KEY", "BRAVE_API_KEY"))
-    # Local SearXNG (Docker). Archer calls it server-side for results and suggestions...
+    # Where SearXNG runs: "native" on this PC, installed and run by Archer (searxng_local.py, no Docker);
+    # "docker", a container Archer starts (searxng_container); or "external", an instance Archer only queries.
+    searxng_runtime: Literal["external", "native", "docker"] = "external"
+    # Local SearXNG. Archer calls it server-side for results and suggestions...
     searxng_url: str = "http://127.0.0.1:8888"
     # ...and sends !bang searches to its page.
     results_url: str = "http://localhost:8888/search?q={q}"
@@ -93,6 +96,13 @@ class Settings(BaseSettings):
     startup_delay: int = Field(0, ge=0, le=300)
     # A tray notification once Archer is ready after starting with Windows.
     startup_notify: bool = False
+
+    @model_validator(mode="after")
+    def _runtime_from_container(self):
+        # Installs from before searxng_runtime only named a container; keep starting it with Docker.
+        if self.searxng_container and "searxng_runtime" not in self.model_fields_set:
+            self.searxng_runtime = "docker"
+        return self
 
     @property
     def base_url(self) -> str:

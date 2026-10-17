@@ -1,4 +1,4 @@
-"""The companion app's local state and Windows helpers: first-run setup, browsers, Docker.
+"""The companion app's local state and Windows helpers: first-run setup, browsers, Docker, SearXNG.
 
 Nothing here touches search history. `data/companion.json` records only whether setup finished.
 """
@@ -10,7 +10,9 @@ import sys
 import time
 from pathlib import Path
 
-from archer.config import DATA_DIR
+import httpx
+
+from archer.config import DATA_DIR, settings
 
 STATE_FILE = DATA_DIR / "companion.json"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -161,3 +163,80 @@ def start_container(name: str, wait: float = 240) -> bool:
                 return False
             time.sleep(3)
     return _docker("start", name, timeout=90)
+
+
+# ------------------------------------------------------------------- searxng
+# One place that knows where SearXNG runs (settings.searxng_runtime), for startup and the tray.
+
+def searxng_managed() -> bool:
+    """Archer starts and stops SearXNG itself: the provider is SearXNG and it runs here or in Docker."""
+    if settings.search_provider != "searxng":
+        return False
+    if settings.searxng_runtime == "native":
+        return True
+    return settings.searxng_runtime == "docker" and bool(settings.searxng_container)
+
+
+def searxng_start() -> bool:
+    if not searxng_managed():
+        return False
+    if settings.searxng_runtime == "docker":
+        return start_container(settings.searxng_container)
+    return _start_native()
+
+
+def searxng_stop() -> None:
+    if not searxng_managed():
+        return
+    if settings.searxng_runtime == "docker":
+        _docker("stop", settings.searxng_container, timeout=60)
+        return
+    from archer import searxng_local
+    searxng_local.stop()
+
+
+def searxng_running() -> bool:
+    if not searxng_managed():
+        return False
+    if settings.searxng_runtime == "native":
+        from archer import searxng_local
+        return searxng_local.running()
+    # Asking SearXNG is quicker than asking Docker, whose CLI stalls while its engine starts.
+    try:
+        return httpx.get(settings.searxng_url.rstrip("/") + "/healthz", timeout=0.5).status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
+def searxng_shutdown() -> None:
+    """When Archer exits: the native server goes with it (its job would end it anyway); a Docker
+    container is left as it was, as before."""
+    if searxng_managed() and settings.searxng_runtime == "native":
+        searxng_stop()
+
+
+def _start_native() -> bool:
+    from archer import searxng_local
+    if not searxng_local.installed():
+        return False
+    if not searxng_local.running() and not searxng_local.port_free(searxng_local.port()):
+        # Another program took the port since the install (often a Docker SearXNG on 8888); move.
+        try:
+            searxng_local.set_port(searxng_local.free_port())
+        except searxng_local.SetupError:
+            return False
+    if settings.searxng_url.rstrip("/") != searxng_local.url():
+        _point_at(searxng_local.url())
+    return searxng_local.start()
+
+
+def _point_at(url: str) -> None:
+    """Save the native server's address in .env and push it into the running app's clients."""
+    from archer.app import app
+    from archer.settings_service import SettingsService, apply_runtime
+    service = getattr(app.state, "settings_service", None)
+    if service is None:
+        service = app.state.settings_service = SettingsService()
+    result = service.apply({"searxng_url": url,
+                            "results_url": url.replace("127.0.0.1", "localhost") + "/search?q={q}"})
+    apply_runtime(app, result["changed"])
