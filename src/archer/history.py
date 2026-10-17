@@ -72,6 +72,8 @@ class History:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA foreign_keys=ON")
+            # Removed searches are overwritten, not just unlinked, so they can't be read back from the file.
+            db.execute("PRAGMA secure_delete=ON")
             db.executescript(_SCHEMA)
             self._db = db
         return self._db
@@ -167,6 +169,12 @@ class History:
         self.version += 1
         return self._x("DELETE FROM searches WHERE id=?", (search_id,)).rowcount > 0
 
+    def scrub(self) -> None:
+        """Fold the write-ahead log back into the database and truncate it, so removed rows don't
+        linger in `history.sqlite3-wal` after a delete or clear."""
+        with self._lock:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def delete_query(self, q: str) -> int:
         """Forget every search for this text (the suggestion list's remove button)."""
         self.version += 1
@@ -179,18 +187,23 @@ class History:
         return self._x("DELETE FROM clicks WHERE id=?", (click_id,)).rowcount > 0
 
     def clear(self, since: float | None = None) -> None:
-        """Clear everything, or only what happened after `since`. Site preferences stay; they are settings."""
+        """Clear everything, or everything touched after `since`. A search repeated in that time goes
+        entirely, even if it was first made earlier. Site preferences stay; they are settings."""
         with self._lock:
             if since is None:
                 for table in ("clicks", "searches", "meanings", "unrelated"):
                     self.db.execute(f"DELETE FROM {table}")
                 self.db.execute("DELETE FROM vectors WHERE kind IN ('q','page')")
-                self.db.execute("VACUUM")
             else:
                 self.db.execute("DELETE FROM clicks WHERE at>=?", (since,))
-                self.db.execute("DELETE FROM searches WHERE at>=?", (since,))
+                self.db.execute("DELETE FROM searches WHERE last_at>=?", (since,))
                 self.db.execute("DELETE FROM meanings WHERE at>=?", (since,))
+                self.db.execute("DELETE FROM unrelated WHERE at>=?", (since,))
         self.drop_orphan_vectors()
+        with self._lock:
+            if since is None:
+                self.db.execute("VACUUM")
+        self.scrub()
 
     def prune(self, days: int) -> None:
         if days <= 0:

@@ -21,8 +21,8 @@ from archer.fetcher import lead_image
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
-from archer.searxng import SearXNG, SUGGEST_MIN, SUGGEST_MAX_LENGTH, active_limits
-from archer.sources import USER_AGENT, TTLCache, aimodels, credits, lyrics, products, watch, weather, wiki
+from archer.searxng import SearXNG, SUGGEST_LIMIT, SUGGEST_MIN, SUGGEST_MAX_LENGTH, active_limits, fallback_order
+from archer.sources import USER_AGENT, TTLCache, aimodels, credits, games, lyrics, products, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_provider import readiness
 from archer.ai_service import AIService
@@ -162,24 +162,20 @@ def _asset(name: str) -> str:
     return f"/static/{name}?v={_asset_versions[key]}"
 
 
-# Brand colours for the rate-limit banner, by engine or provider name (SearXNG's names included).
-ENGINE_COLORS = {"searxng": "#3050ff", "duckduckgo": "#de5833", "google": "#4285f4", "brave": "#fb542b",
-                 "startpage": "#6573ff", "bing": "#00809d", "qwant": "#5c97ff", "mojeek": "#7ab93c", "yahoo": "#6001d2",
-                 "yandex": "#fc3f1d", "presearch": "#2d8eff", "wikipedia": "#a2a9b1", "wikidata": "#339966",
-                 "serper": "#4285f4", "ecosia": "#4a9e4f", "marginalia": "#c58f2b"}
-ENGINE_NAMES = {"duckduckgo": "DuckDuckGo", "google cse": "Google", "google": "Google", "brave": "Brave",
-                "brave search": "Brave", "searxng": "SearXNG", "startpage": "Startpage", "bing": "Bing", "qwant": "Qwant"}
+# Brand colours for the rate-limit banner, by provider.
+ENGINE_COLORS = {"searxng": "#3050ff", "duckduckgo": "#de5833", "google": "#4285f4", "brave": "#fb542b"}
 
 
 def _rate_limits() -> list[dict]:
-    """Recent rate limits with a display name and brand colour, for templates/ratelimit_banner.html."""
+    """Providers rate-limited within the last hour, with a display name and brand colour, for
+    templates/ratelimit_banner.html. Only whole providers count, and only ones that are set up: an engine
+    suspended inside SearXNG (its "brave" or "google") is not the Brave or Google provider."""
+    ready = {name.split(":")[0] for name in fallback_order(websearch.backend())}
     out = []
     for entry in active_limits():
-        key = entry["engine"].lower()
-        color = next((c for name, c in ENGINE_COLORS.items() if name in key), "#8f94ff")
-        label = ENGINE_NAMES.get(key, entry["engine"][:1].upper() + entry["engine"][1:])
-        reason = re.sub(r"^Suspended:\s*", "", entry["reason"]).strip().rstrip(".")
-        out.append({**entry, "key": key, "label": label, "color": color, "reason": reason[:1].lower() + reason[1:] if reason[1:2].islower() else reason})  # keeps "CAPTCHA"
+        key = entry["provider"]
+        if key in ready and key not in {e["key"] for e in out}:
+            out.append({**entry, "key": key, "label": websearch.LABELS.get(key, key), "color": ENGINE_COLORS.get(key, "#5b5fd6")})
     return out
 
 
@@ -193,6 +189,8 @@ templates.env.filters["currency_flag"] = _currency_flag
 templates.env.filters["hue"] = _hue
 templates.env.filters["site_name"] = _site_name
 templates.env.filters["qs"] = quote_plus
+# Only web links become hrefs; anything else in stored history renders as plain text.
+templates.env.filters["web_url"] = lambda url: url if isinstance(url, str) and re.match(r"https?://", url, re.I) else ""
 templates.env.filters["money"] = aimodels.money
 
 
@@ -201,10 +199,9 @@ templates.env.filters["money"] = aimodels.money
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     # Only whether a key exists; the key itself never reaches the page.
-    recent = history_store(request).recent(limit=6) if settings.history and settings.personalize else []
     ai = ai_service(request)
     session = ai.session(request.cookies.get("archer_session"))
-    response = templates.TemplateResponse(request, "home.html", {"ai_ready": readiness(settings)[0], "recent": recent,
+    response = templates.TemplateResponse(request, "home.html", {"ai_ready": readiness(settings)[0],
                                                                 "csrf": session.csrf})
     ai_cookie(response, session)
     return response
@@ -288,8 +285,15 @@ async def suggest(request: Request, q: str = Query("")) -> JSONResponse:
         # Your own past searches that start the same way come first, as Google's history suggestions do.
         mine = history_store(request).recent(limit=3, prefix=q)
         if mine:
+            # Chromium reads google:suggestrelevance by position, so scores move with their terms.
             seen = {m.casefold() for m in mine}
-            result = [result[0], (mine + [t for t in result[1] if isinstance(t, str) and t.casefold() not in seen])[:10], *result[2:]]
+            extra = result[4] if len(result) > 4 and isinstance(result[4], dict) else {}
+            scores = extra.get("google:suggestrelevance") or []
+            rest = [(t, scores[i] if i < len(scores) else 600 - i) for i, t in enumerate(result[1])
+                    if isinstance(t, str) and t.casefold() not in seen]
+            top = max((score for _, score in rest), default=600)
+            merged = ([(m, min(1000, top + len(mine) - i)) for i, m in enumerate(mine)] + rest)[:SUGGEST_LIMIT]
+            result = [result[0], [t for t, _ in merged], [], [], {"google:suggestrelevance": [score for _, score in merged]}]
     return JSONResponse(result, media_type=_SUGGEST_MIME, headers={"Cache-Control": "no-store"})
 
 
@@ -363,6 +367,14 @@ async def api_product_photos(request: Request, name: str = Query(..., min_length
     """Photos for a product panel, credited to the maker's site, a store or a review site."""
     resp = await request.app.state.searx.search(name, "images")
     return JSONResponse(products.photos(rank_images(name, resp.results), name, brand, (alias,) if alias else ()))
+
+
+@app.get("/api/game")
+async def api_game(request: Request, appid: str = Query("", max_length=10, pattern=r"^\d*$"),
+                   title: str = Query("", max_length=120)) -> JSONResponse:
+    """Price, deals, reviews, players and requirements for a video game panel (Steam and CheapShark)."""
+    return JSONResponse(await games.details(request.app.state.ext, appid, title.strip(), settings.home_country,
+                                            settings.home_currency))
 
 
 @app.get("/api/watch")
@@ -457,13 +469,17 @@ _favicons = TTLCache(ttl=7 * 86400, size=2000)
 
 
 @app.get("/api/favicon/{host}")
-async def favicon(request: Request, host: str) -> Response:
+async def favicon(request: Request, host: str, cached: bool = False) -> Response:
     """Site icons for result badges, fetched server-side and cached, so the browser
-    never contacts a third party per result. Misses return 404 and the page keeps the letter."""
+    never contacts a third party per result. Misses return 404 and the page keeps the letter.
+    `cached` answers from the cache only: the history page uses it so that listing the sites you
+    visited never asks an icon service about them."""
     host = host.lower()
     if not _FAVICON_HOST.match(host):
         return Response(status_code=404)
     hit = _favicons.get(host)
+    if hit is None and cached:
+        return Response(status_code=404, headers={"Cache-Control": "no-store"})
     if hit is None:
         hit = ()
         # Google's 64 px icon first (crisp on high-DPI badges; unknown sites get a 404), then DuckDuckGo's.
@@ -510,8 +526,8 @@ def _day_label(at: float) -> str:
 
 
 @app.get("/history", response_class=HTMLResponse)
-async def history_page(request: Request, q: str = Query("", max_length=300), before: float | None = None):
-    """Your searches by day, each with the results you opened; searchable by meaning."""
+async def history_page(request: Request, q: str = Query("", max_length=300)):
+    """All your searches by day in one scroll, each with the results you opened; searchable by meaning."""
     store: History = history_store(request)
     personal: Personalizer = personalizer(request)
     matches = await personal.match_history(q) if q.strip() else []
@@ -521,27 +537,36 @@ async def history_page(request: Request, q: str = Query("", max_length=300), bef
         by_id = {e["id"]: e for e in store.entries(ids=[m["id"] for m in matches])}
         entries = [by_id[m["id"]] | {"match": m} for m in matches if m["id"] in by_id]
     else:
-        entries = store.entries(before=before, limit=60)
+        entries = store.entries(limit=-1)  # everything: SQLite reads LIMIT -1 as no limit
     days: list[tuple[str, list]] = []
     for entry in entries:
-        entry["time"] = datetime.fromtimestamp(entry["last_at"]).strftime("%H:%M")
+        when = datetime.fromtimestamp(entry["last_at"])
+        entry["time"], entry["iso"] = when.strftime("%H:%M"), when.isoformat(timespec="minutes")
         entry["day"] = _day_label(entry["last_at"])
         label = "Closest first" if q.strip() else entry["day"]
         if not days or days[-1][0] != label:
             days.append((label, []))
         days[-1][1].append(entry)
     prefs = store.sites()
+    stats = store.stats()
+    if stats["since"]:
+        first = datetime.fromtimestamp(stats["since"]).date()
+        same_year = first.year == datetime.now().year
+        stats["since_text"] = ("today" if first == datetime.now().date()
+                               else f"since {first.day} {first:%B}" + ("" if same_year else f" {first.year}"))
     ai = ai_service(request)
     session = ai.session(request.cookies.get("archer_session"))
     response = templates.TemplateResponse(request, "history.html", {
-        "q": q, "days": days, "matched": len(entries), "stats": store.stats(), "csrf": session.csrf,
-        "more": entries[-1]["last_at"] if len(entries) == 60 and not q.strip() else None,
-        "topics": [] if q.strip() or before else await personal.topics(),
-        "top_sites": [] if q.strip() or before else [h | {"pref": site_pref(h["host"], prefs)} for h in store.top_hosts()],
+        "q": q, "days": days, "matched": len(entries), "stats": stats, "csrf": session.csrf,
+        "topics": [] if q.strip() else await personal.topics(),
+        "top_sites": [] if q.strip() else [h | {"pref": site_pref(h["host"], prefs)} for h in store.top_hosts()],
         "prefs": sorted(prefs.items()), "enabled": settings.history, "personalize": settings.personalize,
         "model": embeddings.status(),
     })
+    # Never cached, never kept by a window that opened it from another site.
     response.headers["Cache-Control"] = "no-store"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     ai_cookie(response, session)
     return response
 

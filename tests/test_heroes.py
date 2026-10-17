@@ -520,8 +520,9 @@ def test_ai_model_hero(client):
     assert "Gemini 3 Pro" in html and "Google DeepMind" in html             # rival from another lab
     assert "GPQA Diamond" in html and "SWE-bench Verified" in html and "76.7%" in html
     assert "87.1%" in html and "81.4%" not in html          # GPQA uses its own file, best reasoning setting
-    assert "Random guessing (25%)" in html and "mystery-model-9_high" in html  # its baseline and full population
-    assert html.count('data-am-toggle="dots"') == 3          # index + 2 benchmarks, each with show/hide toggles
+    assert "mystery-model-9_high" not in html                 # only the chosen models are plotted, no background dots
+    assert html.count('class="am-filter"') == 3 and 'data-am-show="all"' in html   # a chip filter per chart
+    assert 'data-am-toggle="dots"' not in html and "am-frontier" not in html
     assert "DTBench" not in html                                          # only well-known benchmarks get tabs
     assert "hero-entity" not in html                                      # beats the Wikipedia panel
     assert aimodels.CACHE_FILE.exists()                                   # cached for the next query
@@ -556,12 +557,14 @@ def test_ai_model_price_chart(client):
         else upstream(r)))
     html = client.get("/search", params={"q": "claude opus 4.5"}).text
     assert "SWE-bench Verified" in html and "76.7%" in html
-    assert "Token pricing" in html and "models by price" in html and "Cost / point" in html
-    assert "₹882" in html and 'data-money="10.0"' in html                # rupees by default, dollars kept for the switch
-    assert "₹441" in html and "Cached input" in html                      # input $5 and the cached-input rate
+    assert "by API price" in html and "Token pricing" not in html and "Cost / point" not in html
+    assert "Estimate a workload" not in html and "data-am-cur" not in html  # no calculator or currency switch
+    assert "₹882" in html and 'data-money="10.0"' in html                # the blended price in the table, in rupees
+    assert "₹441" in html and "₹2,205" in html                            # input and output rates in the facts
     assert "1 USD = ₹88.21" in html and "13 Oct 2026" in html
-    assert 'src="/api/favicon/anthropic.com"' in html and 'src="/api/favicon/deepmind.google"' in html
-    assert "am-frontier" in html and "OpenRouter" in html
+    assert "/api/favicon/anthropic.com" not in html and "am-org" not in html   # no lab badges, names only
+    assert 'aria-label="Show Gemini 3 Pro on the chart"' in html and "am-frontier" in html   # menu and best-value line
+    assert "OpenRouter" in html
     assert "No API price listed" in html                                   # unpriced rivals stay listed, off the graph
     assert modelprices.CACHE_FILE.exists()
 
@@ -649,3 +652,102 @@ def test_product_hero_from_wikidata(client):
     assert "https://upload.wikimedia.org/i16.png" in html                    # the SVG drawing's PNG render
     assert "iPhone 15 Pro" in html and "iPhone 17 Pro" in html                # model line
     assert "Operating system" in html and "199 g" in html and "₹1,19,900" in html and "Desert Titanium" in html
+
+
+# ------------------------------------------------------------ video games
+
+def text_claim(value, qualifiers=None):
+    claim = {"mainsnak": {"snaktype": "value", "datavalue": {"type": "string", "value": value}}, "rank": "normal"}
+    if qualifiers:
+        claim["qualifiers"] = qualifiers
+    return claim
+
+
+GAME_CLAIMS = {
+    "P31": [item("Q7889")], "P348": [text_claim("1.12")],                  # a version used to make it "software"
+    "P178": [item("Q2414469")], "P123": [item("Q1194689")], "P400": [item("Q5014725"), item("Q63184502")],
+    "P404": [item("Q208850")], "P908": [item("Q14915516")], "P1733": [text_claim("1245620")],
+    "P1651": [text_claim("E3Huy2cdih0")], "P5971": [text_claim("EP0700-PPSA04609_00-ELDENRING0000000")],
+    "P444": [text_claim("95/100", {"P447": [{"snaktype": "value", "datavalue": {"value": {"id": "Q21039459"}}}]})],
+    "P2664": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "quantity", "value": {"amount": "+30000000", "unit": "1"}}}, "rank": "normal"}],
+}
+GAME_LABELS = {"Q2414469": "FromSoftware", "Q1194689": "Bandai Namco Entertainment", "Q5014725": "Microsoft Windows",
+               "Q63184502": "PlayStation 5", "Q208850": "single-player video game", "Q14915516": "PEGI 16",
+               "Q21039459": "OpenCritic", "Q7889": "video game"}
+
+
+def game_wikidata(request):
+    if request.url.host == "www.wikidata.org":
+        if request.url.params.get("props", "").startswith("claims"):
+            return httpx.Response(200, json={"entities": {"Q189489": {"claims": GAME_CLAIMS}}})
+        return httpx.Response(200, json={"entities": {k: {"labels": {"en": {"value": v}}} for k, v in GAME_LABELS.items()}})
+    return upstream(request)
+
+
+def test_video_game_gets_its_own_panel(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(game_wikidata))
+    html = client.get("/search", params={"q": "elden ring"}).text
+    assert "hero-game" in html and "Video game" in html and "hero-entity--software" not in html
+    assert 'data-game-appid="1245620"' in html and "youtube-nocookie.com/embed/E3Huy2cdih0" in html
+    assert "store.playstation.com/en-in/product/EP0700-PPSA04609_00-ELDENRING0000000" in html     # its own store page
+    assert "https://store.steampowered.com/app/1245620/" in html and "OpenCritic" in html and "PEGI 16" in html
+    assert "30 million" in html and "FromSoftware" in html and ">PC<" in html and "Single-player" in html
+
+
+STEAM_APP = {"1245620": {"success": True, "data": {
+    "name": "ELDEN RING", "is_free": False, "header_image": "https://shared.steamstatic.com/h.jpg",
+    "price_overview": {"currency": "INR", "initial": 449900, "final": 359900, "discount_percent": 20,
+                       "initial_formatted": "₹ 4,499", "final_formatted": "₹ 3,599"},
+    "metacritic": {"score": 94, "url": "https://www.metacritic.com/game/pc/elden-ring"},
+    "platforms": {"windows": True, "mac": False, "linux": False}, "release_date": {"coming_soon": False, "date": "24 Feb, 2022"},
+    "categories": [{"id": 2, "description": "Single-player"}, {"id": 38, "description": "Online Co-op"}, {"id": 999, "description": "Other"}],
+    "screenshots": [{"path_thumbnail": "https://shared.steamstatic.com/s1t.jpg", "path_full": "https://shared.steamstatic.com/s1.jpg"}],
+    "pc_requirements": {"minimum": "<strong>Minimum:</strong><br><ul class=\"bb_ul\"><li>Requires a 64-bit processor<br></li>"
+                                   "<li><strong>OS:</strong> Windows 10<br></li><li><strong>Memory:</strong> 12 GB RAM<br></li>"
+                                   "<li><strong>Graphics:</strong> NVIDIA GTX 1060 &amp; AMD RX 580<br></li></ul>",
+                        "recommended": "<ul><li><strong>OS *:</strong> Windows 11</li></ul>"},
+    "dlc": [1, 2, 3], "achievements": {"total": 42}}}}
+
+
+def game_upstream(request):
+    host, path = request.url.host, request.url.path
+    if host == "store.steampowered.com" and path == "/api/appdetails":
+        return httpx.Response(200, json=STEAM_APP)
+    if host == "store.steampowered.com" and path.startswith("/appreviews/"):
+        return httpx.Response(200, json={"success": 1, "query_summary": {"review_score_desc": "Very Positive", "total_positive": 930,
+                                                                         "total_negative": 70, "total_reviews": 1000}})
+    if host == "api.steampowered.com":
+        return httpx.Response(200, json={"response": {"player_count": 19065, "result": 1}})
+    if host == "www.cheapshark.com" and path.endswith("/stores"):
+        return httpx.Response(200, json=[{"storeID": "23", "storeName": "GameBillet", "isActive": 1}])
+    if host == "www.cheapshark.com" and request.url.params.get("steamAppID"):
+        return httpx.Response(200, json=[{"gameID": "236717"}])
+    if host == "www.cheapshark.com":
+        return httpx.Response(200, json={"cheapestPriceEver": {"price": "29.95", "date": 1751353695}, "deals": [
+            {"storeID": "23", "dealID": "abc", "price": "52.89", "retailPrice": "59.99", "savings": "11.8"}]})
+    if host == "api.frankfurter.app":
+        return httpx.Response(200, json={"date": "2026-10-16", "rates": {"INR": 95.0}})
+    return httpx.Response(404)
+
+
+def test_game_api_has_steam_price_reviews_and_pc_deals(client):
+    from archer.sources import games
+    games._cache._data.clear()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(game_upstream))
+    d = client.get("/api/game", params={"appid": "1245620"}).json()
+    assert d["price"] == {"free": False, "text": "₹3,599", "original": "₹4,499", "discount": 20}
+    assert d["reviews"] == {"label": "Very Positive", "total": 1000, "percent": 93} and d["players"] == 19065
+    assert d["metacritic"]["score"] == 94 and d["features"] == ["Single-player", "Online co-op"] and d["systems"] == ["Windows"]
+    best = d["deals"]["deals"][0]
+    assert best["store"] == "GameBillet" and best["usd"] == "$52.89" and best["home"] == "₹5,025" and best["cut"] == 12
+    assert d["deals"]["lowest"]["usd"] == "$29.95" and d["dlc"] == 3 and d["achievements"] == 42
+    assert d["requirements"]["minimum"] == [["OS", "Windows 10"], ["Memory", "12 GB RAM"], ["Graphics", "NVIDIA GTX 1060 & AMD RX 580"]]
+    assert client.get("/api/game", params={"appid": "12x"}).status_code == 422                # ids are digits only
+
+
+def test_game_api_without_steam_is_empty(client):
+    from archer.sources import games
+    games._cache._data.clear()
+    games._appids._data.clear()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"items": []})))
+    assert client.get("/api/game", params={"title": "Some Console Exclusive"}).json() == {}

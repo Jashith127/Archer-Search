@@ -55,6 +55,10 @@ W_EMBED, W_LEXICAL = 0.7, 0.3
 # A past search's meaning includes the searches around it (within SESSION seconds): "haiku" next to
 # Claude searches is a model, not a poem. Its vector is blended with its neighbours' (CONTEXT_MIX).
 SESSION, CONTEXT_MIX = 1800, 0.5
+# Topics need more than "related": a group's searches must be this much above the match cutoff on
+# average. On a real 1,221-search history, +0.04 mixed "cursor ide" with "mouse cursor ubuntu" and
+# "monster energy" with "party monster"; +0.14 kept groups to one subject, +0.24 split them up.
+TOPIC_MARGIN = 0.14
 # Blending in neighbours pulls scores slightly toward the middle, so the cutoff moves down with it:
 # at 0.96 of the calibrated cutoff the labelled pairs gained on precision and recall together.
 CONTEXT_CUTOFF = 0.96
@@ -218,6 +222,40 @@ def site_pref(host: str, prefs: dict[str, int]) -> int:
     return 0
 
 
+def average_linkage(sims: np.ndarray, cutoff: float) -> list[list[int]]:
+    """Agglomerative clustering: repeatedly merge the two groups whose members are most alike on
+    average, while that average clears the cutoff. Unlike a running centroid, one shared word can't
+    chain a group from one subject to the next. Each row keeps its best partner, so a merge only
+    rescans the rows that pointed at the merged pair."""
+    n = len(sims)
+    m = sims.astype(np.float64)
+    np.fill_diagonal(m, -np.inf)
+    size = np.ones(n)
+    alive = np.ones(n, dtype=bool)
+    groups = {i: [i] for i in range(n)}
+    arg = m.argmax(axis=1) if n else np.zeros(0, dtype=int)
+    best = m[np.arange(n), arg]
+    while n > 1:
+        i = int(np.where(alive, best, -np.inf).argmax())
+        if best[i] < cutoff:
+            break
+        j = int(arg[i])
+        m[i] = (size[i] * m[i] + size[j] * m[j]) / (size[i] + size[j])
+        m[:, i] = m[i]
+        m[i, i] = -np.inf
+        m[j], m[:, j] = -np.inf, -np.inf
+        alive[j], best[j] = False, -np.inf
+        size[i] += size[j]
+        groups[i] += groups.pop(j)
+        stale = np.where(alive & ((arg == i) | (arg == j)))[0]
+        if len(stale):
+            arg[stale] = m[stale].argmax(axis=1)
+            best[stale] = m[stale, arg[stale]]
+        closer = alive & (m[:, i] > best)
+        arg[closer], best[closer] = i, m[closer, i]
+    return list(groups.values())
+
+
 def _decay(at: float, now: float) -> float:
     return 0.5 ** (max(0.0, now - at) / 86400 / HALF_LIFE_DAYS)
 
@@ -240,6 +278,7 @@ class Personalizer:
         self._stored: dict[tuple[str, str], tuple[int, dict[str, np.ndarray]]] = {}
         self._thresholds: dict[str, float] = {}
         self._contexts: tuple | None = None
+        self._topics: tuple | None = None  # (stamp, topics): rebuilt only when history changes
 
     async def threshold(self, model: str) -> float:
         if model in RELATED:
@@ -558,43 +597,37 @@ class Personalizer:
         return out
 
     async def topics(self, limit: int = 8) -> list[dict]:
-        """History grouped by meaning: greedy clustering on query vectors, freshest first."""
-        entries = sorted((e for e in self.history.queries() if not fragment(e["q"]) and not utility(e["q"])),
+        """History grouped by meaning (average-linkage clustering on query vectors), biggest first.
+        Kept until history changes, so moving around the history page doesn't regroup it."""
+        rows = self.history.queries()
+        stamp = (self.history.version, len(rows), max((r["last"] for r in rows), default=0), self._name())
+        if self._topics and self._topics[0] == stamp:
+            return self._topics[1][:limit]
+        entries = sorted((e for e in rows if not fragment(e["q"]) and not utility(e["q"])),
                          key=lambda e: e["last"], reverse=True)[:1500]
-        if len(entries) < 3:
-            return []
-        model, vecs = await self._vectors("q", {e["norm"]: e["q"] for e in entries})
-        thr = await self.threshold(model)
-        clusters: list[dict] = []
-        for e in entries:
-            v = vecs.get(e["norm"])
-            if v is None:
-                continue
-            best, best_s = None, thr
-            for c in clusters:
-                s = float(c["centroid"] @ v) / (np.linalg.norm(c["centroid"]) or 1)
-                if s >= best_s:
-                    best, best_s = c, s
-            if best is None:
-                clusters.append({"centroid": v.copy(), "items": [e]})
-            else:
-                best["centroid"] += v
-                best["items"].append(e)
-        # Second pass: a member must still be close to its group's final centre, or the group chains
-        # from one meaning to the next through shared words ("z" → "zen browser" → "Zendaya").
-        for c in clusters:
-            centroid = c["centroid"] / (np.linalg.norm(c["centroid"]) or 1)
-            c["items"] = [e for e in c["items"] if float(vecs[e["norm"]] @ centroid) >= thr]
-        out = []
-        for c in clusters:
-            if len(c["items"]) < 2:
-                continue
-            counts = Counter(w for e in c["items"] for w in set(words(e["q"])) if len(w) > 2)
-            common = [w for w, n in counts.most_common(3) if n >= max(2, len(c["items"]) // 2)]
-            centroid = c["centroid"] / (np.linalg.norm(c["centroid"]) or 1)
-            central = max(c["items"], key=lambda e: float(vecs[e["norm"]] @ centroid))
-            out.append({"label": " · ".join(common[:2]) if common else central["q"],
-                        "queries": [e["q"] for e in c["items"][:6]], "size": len(c["items"]),
-                        "searches": sum(e["n"] for e in c["items"]), "last": c["items"][0]["last"]})
-        out.sort(key=lambda t: (t["size"], t["last"]), reverse=True)
+        out: list[dict] = []
+        if len(entries) >= 3:
+            model, vecs = await self._vectors("q", {e["norm"]: e["q"] for e in entries})
+            entries = [e for e in entries if e["norm"] in vecs]
+            cutoff = await self.threshold(model) + TOPIC_MARGIN
+            matrix = np.stack([vecs[e["norm"]] for e in entries]) if entries else np.zeros((0, 1))
+            matrix /= np.linalg.norm(matrix, axis=1, keepdims=True).clip(1e-9)
+            groups = await asyncio.to_thread(average_linkage, matrix @ matrix.T, cutoff)
+            for group in groups:
+                if len(group) < 2:
+                    continue
+                group.sort()  # entries are freshest first
+                items = [entries[i] for i in group]
+                sub = matrix[group]
+                central = items[int((sub @ sub.mean(axis=0)).argmax())]
+                counts = Counter(w for e in items for w in set(words(e["q"])) if len(w) > 1 and not w.isdigit())
+                common = {w for w, n in counts.most_common(2) if n >= max(2, (len(items) + 1) // 2)}
+                # The two most shared words, in the order the most typical search uses them ("gaming monitor").
+                label = [w for w in dict.fromkeys(words(central["q"])) if w in common]
+                label += sorted(common - set(label))
+                out.append({"label": " ".join(label) if label else central["q"],
+                            "queries": [e["q"] for e in items[:6]], "size": len(items),
+                            "searches": sum(e["n"] for e in items), "last": items[0]["last"]})
+            out.sort(key=lambda t: (t["size"], t["last"]), reverse=True)
+        self._topics = (stamp, out)
         return out[:limit]

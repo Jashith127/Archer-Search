@@ -125,6 +125,7 @@ SPECS = (
     Spec("ollama_context", "ai", "Context window", "number", help="How much evidence a local model reads at once. Larger needs more memory.", unit="tokens", step="1024", minimum="2048", maximum="262144", when="ai_provider=ollama"),
     Spec("ai_planning_rounds", "ai", "Research planning", "select", help="Tool-planning calls a research run may make before writing.", advanced=True,
          options=opts((("0", "None · answer from search only"), ("1", "One round (recommended)"), ("2", "Two rounds · more thorough")))),
+    Spec("ai_context_tokens", "ai", "AI Mode memory", "number", help="How much a research turn can send: sources plus the conversation so far. Older turns are trimmed to fit, so a conversation never runs out.", unit="tokens", step="1000", minimum="16000", maximum="1000000", advanced=True),
     Spec("ai_answer_tokens", "ai", "Research answer length", "number", help="Ceiling for one research answer.", unit="tokens", step="100", minimum="1500", maximum="8000", advanced=True),
     Spec("ai_base_url", "ai_advanced", "Provider address override", "url", help="Point a provider at a proxy or regional endpoint. Leave empty for its own address.", placeholder="Provider default", advanced=True,
          when="ai_provider=deepseek,openai,anthropic,ollama,openrouter"),

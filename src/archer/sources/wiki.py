@@ -21,6 +21,9 @@ _works_cache = TTLCache(ttl=86400)
 KINDS = {
     "character": {"Q15632617", "Q95074", "Q15773347", "Q15773317", "Q3658341", "Q1114461", "Q80447738"},
     "person": {"Q5"},
+    # Video games (and their DLC, remakes, compilations, demos, series) before "software", which also types them.
+    "game": {"Q7889", "Q209163", "Q1066707", "Q865493", "Q21125433", "Q4393107", "Q16070115", "Q64170203",
+             "Q1755420", "Q7058673"},
     "film": {"Q11424", "Q24869", "Q202866", "Q29168811", "Q18011172", "Q506240", "Q93204"},
     "tv": {"Q5398426", "Q581714", "Q1259759", "Q15416", "Q526877", "Q63952888", "Q117467246"},
     "book": {"Q7725634", "Q571", "Q47461344", "Q8261", "Q1667921", "Q277759", "Q14406742"},
@@ -61,7 +64,7 @@ KIND_META = {
     "person": ("user", "Person"), "film": ("film", "Film"), "tv": ("tv", "TV series"), "book": ("book", "Book"),
     "music": ("music", "Music"), "country": ("flag", "Country"), "org": ("building", "Organisation"),
     "species": ("leaf", "Species"), "chemical": ("flask", "Chemical"), "disease": ("virus", "Health condition"),
-    "software": ("code", "Software"), "holiday": ("sparkle", "Holiday"), "landmark": ("landmark", "Landmark"),
+    "software": ("code", "Software"), "game": ("gamepad", "Video game"), "holiday": ("sparkle", "Holiday"), "landmark": ("landmark", "Landmark"),
     "place": ("pin", "Place"), "product": ("package", "Product"), "thing": ("info", "Topic"), "character": ("user", "Fictional character"),
 }
 SUBKIND_LABEL = {"athlete": "Athlete", "politician": "Politician", "executive": "Business leader", "writer": "Writer"}
@@ -69,7 +72,8 @@ TILE_ICONS = {
     "Age": "calendar", "Died": "calendar", "Born in": "pin", "Parents": "users", "Spouse": "heart",
     "Height": "ruler", "Occupation": "briefcase", "Team": "shield", "Position": "target", "Number": "hash",
     "Office": "landmark", "Party": "flag", "Organisation": "building", "Net worth": "coins",
-    "Notable work": "book", "Released": "calendar", "Runtime": "clock", "Director": "film",
+    "Notable work": "book", "Released": "calendar", "Publisher": "building", "Platforms": "gamepad",
+    "Game modes": "users", "Series": "layers", "Engine": "cube", "Units sold": "chart", "Composer": "music", "Runtime": "clock", "Director": "film",
     "Box office": "coins", "Genre": "tag", "Aired": "tv", "Seasons": "layers", "Episodes": "list",
     "Network": "tv", "Author": "pen", "Published": "calendar", "Pages": "book", "Formed": "calendar",
     "Label": "disc", "Members": "users", "Artist": "music", "Founded": "calendar", "CEO": "user",
@@ -405,7 +409,7 @@ def _kind(entity: dict) -> str:
     # Many items are typed by a subclass we don't list (Python is a "multi-paradigm
     # programming language", not "programming language"), so fall back to tell-tale properties.
     claims = entity.get("claims", {})
-    for kind, props in (("software", ("P348", "P277", "P1324")), ("chemical", ("P274", "P246")),
+    for kind, props in (("game", ("P404", "P1733", "P5794", "P8084", "P5944")), ("software", ("P348", "P277", "P1324")), ("chemical", ("P274", "P246")),
                         ("disease", ("P780", "P1995", "P494")), ("country", ("P36", "P38")),
                         ("film", ("P57", "P2047")), ("book", ("P50",)), ("species", ("P225",))):
         if sum(p in claims for p in props) >= (2 if kind in ("country", "film") else 1):
@@ -415,6 +419,68 @@ def _kind(entity: dict) -> str:
     if _first(entity, "P625"):
         return "place"
     return "thing"
+
+
+# ------------------------------------------------------------ video games
+
+def _digits(value: str) -> str:
+    return value if re.fullmatch(r"\d{1,10}", value or "") else ""
+
+
+def _units(entity: dict) -> str:
+    """Units sold: the largest figure (later claims are usually later totals), as "12 million"."""
+    counts = [float(v["amount"]) for v in (c["value"] for c in _claims(entity, "P2664")) if isinstance(v, dict) and v.get("amount")]
+    if not counts:
+        return ""
+    top = max(counts)
+    return f"{top / 1e6:.3g} million" if top >= 1e6 else f"{int(top):,}"
+
+
+def _review_scores(entity: dict) -> list[dict]:
+    """Review scores with their outlet (P444 qualified by P447), one per outlet, e.g. Metacritic 95/100."""
+    out, seen = [], set()
+    for claim in entity.get("claims", {}).get("P444", []):
+        snak = claim.get("mainsnak", {})
+        score = snak.get("datavalue", {}).get("value")
+        by = next((q["datavalue"]["value"]["id"] for q in claim.get("qualifiers", {}).get("P447", [])
+                   if q.get("snaktype") == "value"), "")
+        if isinstance(score, str) and by and by not in seen and re.fullmatch(r"[\d.]{1,4}(/\d{1,3})?%?", score.strip()):
+            seen.add(by)
+            out.append({"by": by, "score": score.strip()})
+    return out
+
+
+# Store pages by Wikidata ID; formats from each property's formatter URL. A platform without an ID gets its
+# store's search page, so every console the game is on has somewhere to buy it.
+_STORE_IDS = (("P1733", "Steam", "https://store.steampowered.com/app/{}/", "steam"),
+              ("P6278", "Epic Games Store", "https://store.epicgames.com/p/{}", "epic"),
+              ("P2725", "GOG", "https://www.gog.com/{}", "gog"),
+              ("P5885", "Microsoft Store", "https://www.microsoft.com/store/productId/{}", "xbox"),
+              ("P5971", "PlayStation Store", "https://store.playstation.com/en-in/product/{}", "playstation"),
+              ("P5944", "PlayStation Store", "https://store.playstation.com/en-us/product/{}", "playstation"))
+_STORE_SEARCH = (("PlayStation", "PlayStation Store", "https://store.playstation.com/en-in/search/{}", "playstation"),
+                 ("Xbox", "Microsoft Store", "https://www.xbox.com/en-IN/search/results/games?q={}", "xbox"),
+                 ("Nintendo", "Nintendo eShop", "https://www.nintendo.com/search/#q={}", "nintendo"))
+
+
+_PLATFORM_SHORT = {"Microsoft Windows": "PC", "Xbox Series X and Series S": "Xbox Series X|S", "macOS": "Mac",
+                   "Nintendo Switch": "Switch", "Nintendo Switch 2": "Switch 2"}
+
+
+def _game_stores(entity: dict, platforms: list[str], title: str) -> list[dict]:
+    stores, seen = [], set()
+    for prop, label, template, key in _STORE_IDS:
+        value = _first(entity, prop)
+        if isinstance(value, str) and key not in seen and re.fullmatch(r"[A-Za-z0-9_./-]{1,90}", value):
+            seen.add(key)
+            url = template.format(quote(value, safe="/"))
+            stores.append({"label": label, "url": url, "kind": key, "host": urlsplit(url).hostname})
+    for word, label, template, key in _STORE_SEARCH:
+        if key not in seen and any(word.lower() in p.lower() for p in platforms):
+            seen.add(key)
+            url = template.format(quote(title))
+            stores.append({"label": label, "url": url, "kind": key, "host": urlsplit(url).hostname, "search": True})
+    return stores
 
 
 # ------------------------------------------------------------ panel build
@@ -436,9 +502,12 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
                  "P27", "P175", "P31", "P54", "P102", "P39", "P413", "P69", "P641", "P800", "P108", "P36",
                  "P38", "P37", "P35", "P1995", "P780", "P2176", "P1060", "P828", "P84", "P131", "P1435",
                  "P178", "P275", "P277", "P400", "P306", "P3966", "P837", "P140", "P1269", "P30", "P1441", "P170",
-                 "P176", "P1716", "P155", "P156", "P1366", "P462", "P880", "P186"]
+                 "P176", "P1716", "P155", "P156", "P1366", "P462", "P880", "P186",
+                 "P404", "P408", "P179", "P852", "P908", "P86"]
     refs = {i for p in ref_props for i in _ids(entity, p)}
     refs |= {i for p in ("P54", "P39", "P108", "P6", "P35") for i in _current_ids(entity, p)}
+    if kind == "game":
+        refs |= {score["by"] for score in _review_scores(entity)}
     for p in ("P2048", "P2047", "P2142", "P2130", "P2046", "P2044", "P1082", "P1128", "P2139", "P2218",
               "P2067", "P2101", "P2102", "P2054", "P1174", "P2049", "P2610", "P2284", "P2928"):
         if (v := _first(entity, p)) and isinstance(v, dict) and "unit" in v:
@@ -479,6 +548,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
 
     subkind = ""
     product = None
+    game = None
     if kind == "person":
         born_txt, _, born = _fmt_time(_first(entity, "P569"))
         died_txt, _, died = _fmt_time(_first(entity, "P570"))
@@ -627,6 +697,37 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         fact("Written in", names("P277", 3))
         fact("Platform", names("P400", 3) or names("P306", 3))
         fact("Paradigm", names("P3966", 3))
+    elif kind == "game":
+        released = sorted((v for v in (c["value"] for c in _claims(entity, "P577")) if isinstance(v, dict) and v.get("time")),
+                          key=lambda v: v["time"])  # the first release, not a later port
+        rel_txt, rel_y, _ = _fmt_time(released[0] if released else None)
+        tile("Released", str(rel_y or ""), rel_txt)
+        tile("Developer", names("P178", 2))
+        tile("Publisher", names("P123", 2))
+        tile("Genre", names("P136", 2))
+        tile("Game modes", ", ".join(m.replace(" video game", "") for m in name_list("P404", 3)))
+        if names("P179", 1).casefold() != page["title"].casefold():
+            tile("Series", names("P179", 1))
+        tile("Units sold", _units(entity))
+        fact("Director", names("P57", 2))
+        fact("Composer", names("P86", 2))
+        fact("Engine", names("P408", 1))
+        platforms = list(dict.fromkeys(_PLATFORM_SHORT.get(n, n) for n in name_list("P400", 12)))
+        fact("Platforms", ", ".join(platforms))
+        ratings = [labels.get(i, "") for i in _ids(entity, "P908", 1)] +                   ["ESRB " + labels[i] for i in _ids(entity, "P852", 1) if labels.get(i)]
+        game = {
+            "steam": _digits(string("P1733")),
+            "trailer": next((v for v in (c["value"] for c in _claims(entity, "P1651"))
+                             if isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9_-]{11}", v)), ""),
+            "platforms": platforms,
+            "stores": _game_stores(entity, name_list("P400", 12), page["title"]),
+            # Aggregators first: they summarise everyone else.
+            "scores": sorted(({"outlet": labels[s["by"]], "score": s["score"]} for s in _review_scores(entity) if labels.get(s["by"])),
+                             key=lambda s: s["outlet"] not in ("Metacritic", "OpenCritic"))[:4],
+            "ratings": [r for r in ratings if r],
+            "previous": names("P155", 1), "next": names("P156", 1),
+            "released": rel_txt, "year": rel_y,
+        }
     elif kind == "character":
         tile("Appears in", names("P1441", 2))
         tile("Played by", names("P175", 2))
@@ -729,6 +830,7 @@ async def lookup(client: httpx.AsyncClient, candidate: str, *, fresh: bool = Fal
         "player": player,
         "watch": watch,
         "product": product,
+        "game": game,
         "qid": qid,
         "title": page["title"],
         "description": page.get("description") or entity.get("descriptions", {}).get("en", {}).get("value", ""),

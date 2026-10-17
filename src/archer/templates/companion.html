@@ -170,17 +170,26 @@
 
   {# ------------------------------------------------------------ browser #}
   <section class="c-pane" data-pane="browser" aria-labelledby="h-browser" hidden>
-    {{ head("browser", "Browser", "Browsers don't let apps change their search engine, so this takes three clicks. Archer opens the right settings page for you.") }}
+    {{ head("browser", "Browser", "Browsers don't let apps change their search engine, so this takes a few clicks. Archer opens the right settings page for you.") }}
     {{ group_head("Installed browsers") }}
     {{ browser_list(state.app.browsers) }}
-    {{ group_head("Chromium browsers", "Helium, Chrome, Edge, Brave, Vivaldi and Opera.") }}
+    {{ group_head("Helium") }}
     <div class="c-list c-guide">
       <ol class="c-steps">
-        <li>In <b>Search engine → Manage search engines and site search</b>, find <b>Site search</b> and click <b>Add</b>.</li>
-        <li>Copy in the four values below.</li>
+        <li>In <b>Search engine → Manage search engines and site search</b>, find <b>Site search</b> and click <b>Add</b>. Already added? Open Archer's <b>⋮</b> menu and choose <b>Edit</b>.</li>
+        <li>Copy in the values below, including the suggestions URL.</li>
         <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
       </ol>
-      {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL", suggest_url)]) }}
+      {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL with %s in place of query", suggest_url)]) }}
+    </div>
+    {{ group_head("Other Chromium browsers", "Chrome, Edge, Brave and Opera. Their Add dialog has no suggestions field, so let the browser find Archer instead.") }}
+    <div class="c-list c-guide">
+      <ol class="c-steps">
+        <li>Open <a href="/" target="_blank" rel="noopener">Archer's home page</a> once in the browser. It picks Archer up from there, with its suggestions.</li>
+        <li>In <b>Search engine → Manage search engines and site search</b>, find Archer under <b>Inactive shortcuts</b> and click <b>Activate</b>.</li>
+        <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>. You can edit its shortcut to <code>ar</code>.</li>
+      </ol>
+      <p class="c-foot">Don't use <b>Add</b> here: a hand-added Archer has no suggestions and stops the browser from picking up the real one. If you added it by hand, delete that entry and start again.</p>
     </div>
     <p class="c-foot">If searches don't reach Archer, use <code>{{ fallback_search_url }}</code> instead.</p>
     {{ group_head("Firefox") }}

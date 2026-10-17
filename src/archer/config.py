@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     ollama_context: int = Field(16384, ge=2048, le=262144)
     ai_planning_rounds: int = Field(1, ge=0, le=2)
     ai_answer_tokens: int = Field(5000, ge=1500, le=8000)
+    # Input budget for one research or AI Mode turn: sources plus the conversation so far. Older turns
+    # are summarised and dropped oldest-first to fit; Ollama is further held to its context window.
+    ai_context_tokens: int = Field(120_000, ge=16_000, le=1_000_000)
     ai_daily_tokens: int = Field(500_000, ge=1)
     ai_run_usd: float = Field(0.10, gt=0)
     ai_daily_usd: float = Field(1.0, gt=0)

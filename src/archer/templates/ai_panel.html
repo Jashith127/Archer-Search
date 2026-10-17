@@ -143,6 +143,11 @@
       <div class="ai-skeleton" aria-hidden="true"><canvas data-turn-skeleton></canvas><canvas data-turn-skeleton-tail></canvas></div>
       <button type="button" class="ai-more" data-turn-more>Show full answer</button>
       <footer class="ai-turn-foot" hidden data-turn-foot>
+        {# Balanced: one line to keep the conversation going; it continues in AI Mode with this answer as context. #}
+        <form class="ai-mini-composer" data-turn-ask>
+          <input name="question" type="text" aria-label="Ask a follow-up" placeholder="Ask a follow-up…" maxlength="600" autocomplete="off" enterkeyhint="send">
+          <button type="submit" class="ai-mini-send" aria-label="Ask in AI Mode" title="Continue in AI Mode" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </form>
         <div class="ai-turn-actions">
           <button type="button" class="ai-button" data-turn-expand>Go deeper in AI Mode <span aria-hidden="true">↗</span></button>
           <button type="button" class="ai-icon-button" data-turn-copy aria-label="Copy answer" title="Copy answer"><svg aria-hidden="true"><use href="#i-copy"/></svg></button>

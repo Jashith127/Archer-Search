@@ -152,6 +152,31 @@ def test_research_uses_native_tools_and_custom_ui(ai_client):
     assert app.state.ai.runs[followup[0]["data"]["id"]].history
 
 
+def test_long_conversation_keeps_going_and_trims_oldest_turns(ai_client):
+    sid, headers = prepare(ai_client, "compare loan repayment options")
+    enable(ai_client, headers)
+    ai = app.state.ai
+    ai.settings.ai_context_tokens = 16000  # small, so the conversation has to be trimmed to fit
+    long_answer = {"kind": "paragraph", "text": "A long cited explanation. " * 40}
+    parent, questions = "", []
+    for turn in range(14):
+        question = f"Follow-up number {turn} about the loan?"
+        body = {"snapshot": sid, "depth": "research", "parent": parent, "question": question} if parent else {"snapshot": sid, "depth": "research"}
+        run = events(ai_client.post("/api/ai/runs", headers=headers, json=body))
+        assert run[-1]["event"] == "complete", run[-1]
+        parent = run[0]["data"]["id"]
+        questions.append(question if turn else "compare loan repayment options")
+        ai.runs[parent].events.insert(-1, {"event": "block", "data": long_answer})
+    payload = ai.provider.payload
+    assert payload["previous_question"] == questions[-2]
+    earlier = payload["earlier_turns_untrusted"]
+    assert earlier and len(earlier) < 12                                    # the oldest turns were dropped to fit
+    assert [t["question"] for t in earlier] == questions[-2 - len(earlier):-2]  # ...and only the oldest
+    assert len(ai.runs[parent].turns) == 12                                 # still carried for the next turn
+    ai.prune()
+    assert parent in ai.runs and sid in ai.snapshots
+
+
 def test_no_consent_and_no_key_are_explicit(ai_client):
     sid, headers = prepare(ai_client)
     assert ai_client.post("/api/ai/runs", headers=headers, json={"snapshot": sid}).status_code == 400

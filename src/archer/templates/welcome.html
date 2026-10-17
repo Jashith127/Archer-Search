@@ -88,15 +88,25 @@
 
     {# ----------------------------------------------------------- browser #}
     <section class="w-step" data-step="browser" hidden>
-      {{ step_head(6, "Search from your address bar", "Browsers don't let apps change their search engine, so this takes three clicks. Archer opens the right page for you.") }}
+      {{ step_head(6, "Search from your address bar", "Browsers don't let apps change their search engine, so this takes a few clicks. Archer opens the right page for you.") }}
       {{ browser_list(state.app.browsers) }}
+      <div class="c-group-head"><h2>Helium</h2></div>
       <div class="c-list c-guide">
         <ol class="c-steps">
-          <li>Under <b>Site search</b>, click <b>Add</b>.</li>
-          <li>Copy in the details below.</li>
+          <li>In <b>Search engine → Manage search engines and site search</b>, find <b>Site search</b> and click <b>Add</b>. Already added? Open Archer's <b>⋮</b> menu and choose <b>Edit</b>.</li>
+          <li>Copy in the values below, including the suggestions URL.</li>
           <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
         </ol>
-        {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL", suggest_url)]) }}
+        {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL with %s in place of query", suggest_url)]) }}
+      </div>
+      <div class="c-group-head"><h2>Other Chromium browsers</h2><p>Chrome, Edge, Brave and Opera. Their Add dialog has no suggestions field, so let the browser find Archer instead.</p></div>
+      <div class="c-list c-guide">
+        <ol class="c-steps">
+          <li>Open <a href="/" target="_blank" rel="noopener">Archer's home page</a> once in the browser. It picks Archer up from there, with its suggestions.</li>
+          <li>In <b>Search engine → Manage search engines and site search</b>, find Archer under <b>Inactive shortcuts</b> and click <b>Activate</b>.</li>
+          <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>. You can edit its shortcut to <code>ar</code>.</li>
+        </ol>
+        <p class="c-foot">Don't use <b>Add</b> here: a hand-added Archer has no suggestions and stops the browser from picking up the real one. If you added it by hand, delete that entry and start again.</p>
       </div>
     </section>
 

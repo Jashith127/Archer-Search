@@ -222,6 +222,9 @@ body.companion { min-height: 100vh; background: var(--c-window); font-size: 14px
 .c-browser b { margin-right: 6px; font-size: 14px; font-weight: 500; }
 .c-browser p { margin: 1px 0 0; color: var(--text-3); font-size: 12.5px; }
 .c-browsers > .c-empty { padding: 14px 0; }
+.c-browser p.c-browser-state { margin-top: 3px; color: var(--text-2); }
+.c-browser-state--ok::before, .c-browser-state--warn::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--c-ok); }
+.c-browser-state--warn::before { background: var(--c-warn); }
 
 .c-steps { display: grid; gap: 8px; margin: 0; padding: 14px 0; list-style: none; counter-reset: c-step; color: var(--text-2); font-size: 13.5px; }
 .c-steps li { position: relative; padding-left: 28px; line-height: 20px; counter-increment: c-step; }

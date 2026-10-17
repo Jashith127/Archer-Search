@@ -5,12 +5,13 @@ Nothing here touches search history. `data/companion.json` records only whether 
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from archer.config import DATA_DIR
+from archer.config import DATA_DIR, settings
 
 STATE_FILE = DATA_DIR / "companion.json"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -85,8 +86,80 @@ def browsers() -> list[dict]:
     for key, (name, _, page, prefix) in BROWSERS.items():
         if browser_path(key):
             found.append({"id": key, "name": name, "settings": page, "default": progid.startswith(prefix),
-                          "chromium": key != "firefox"})
+                          "chromium": key != "firefox", "suggest_field": key in SUGGEST_FIELD,
+                          "archer": search_setup(key, search_prefixes())})
     return sorted(found, key=lambda b: (not b["default"], list(BROWSERS).index(b["id"])))
+
+
+# Browsers whose Add and Edit search engine dialogs have a suggestions URL field. Stock Chromium's
+# (Chrome, Edge, Brave, Opera) don't: there only an engine found through /opensearch.xml has one.
+SUGGEST_FIELD = {"helium"}
+
+# Chromium profiles under %LOCALAPPDATA%. Opera keeps its profile elsewhere and isn't checked.
+PROFILES = {
+    "helium": r"imput\Helium\User Data",
+    "chrome": r"Google\Chrome\User Data",
+    "edge": r"Microsoft\Edge\User Data",
+    "brave": r"BraveSoftware\Brave-Browser\User Data",
+    "vivaldi": r"Vivaldi\User Data",
+}
+
+
+def _profile(browser: str) -> Path | None:
+    if browser not in PROFILES or not os.environ.get("LOCALAPPDATA"):
+        return None
+    root = Path(os.environ["LOCALAPPDATA"]) / PROFILES[browser]
+    try:
+        last = json.loads((root / "Local State").read_text(encoding="utf-8")).get("profile", {}).get("last_used")
+    except (OSError, ValueError, AttributeError):
+        last = None
+    path = root / (last if isinstance(last, str) and last else "Default")
+    return path if path.is_dir() else None
+
+
+def search_prefixes() -> tuple[str, ...]:
+    """Search URLs that are Archer, as Chromium stores them."""
+    return (f"{settings.base_url}/search?q=", f"http://127.0.0.1:{settings.port}/search?q=")
+
+
+def search_setup(browser: str, prefixes: tuple[str, ...]) -> dict | None:
+    """How a Chromium browser has Archer as a search engine, read from its profile (never written).
+
+    An engine without a suggestions URL never asks /suggest: one added by hand with that field left
+    empty, or in a browser whose dialog lacks it (see SUGGEST_FIELD).
+    state: ready (default, with suggestions), no_suggestions (default, added by hand),
+    found (picked up from Archer's page, not the default), manual (added by hand, not the default), missing.
+    """
+    profile = _profile(browser)
+    if profile is None:
+        return None
+    ours = lambda url: isinstance(url, str) and url.startswith(prefixes)
+    try:
+        prefs = json.loads((profile / "Preferences").read_text(encoding="utf-8"))
+        dse = prefs.get("default_search_provider_data", {}).get("mirrored_template_url_data") or {}
+    except (OSError, ValueError, AttributeError):
+        dse = {}
+    rows: list[tuple] = []
+    try:
+        # immutable: the running browser holds a lock; this reads the search engines table only.
+        db = sqlite3.connect(f"{(profile / 'Web Data').as_uri()}?mode=ro&immutable=1", uri=True)
+        try:
+            rows = db.execute("SELECT url, suggest_url, is_active FROM keywords").fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        pass
+    detected = [row for row in rows if ours(row[0]) and row[1]]
+    active = any(row[2] == 1 for row in detected)
+    if ours(dse.get("url")):
+        state = "ready" if dse.get("suggestions_url") else "no_suggestions"
+    elif detected:
+        state = "found"
+    elif any(ours(row[0]) for row in rows):
+        state = "manual"
+    else:
+        state = "missing"
+    return {"state": state, "detected": bool(detected), "active": active}
 
 
 def open_search_settings(browser: str) -> bool:
@@ -131,9 +204,44 @@ def _docker(*args: str, timeout: float = 20) -> bool:
         return False
 
 
+# Docker Desktop keeps its preferences here and its own sign-in entry in the per-user Run key.
+DOCKER_SETTINGS = Path(os.environ.get("APPDATA", "")) / "Docker" / "settings-store.json"
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_DOCKER_RUN_NAME = "Docker Desktop"
+
+
+def quiet_docker_desktop(take_over_autostart: bool = False) -> None:
+    """Let Archer start Docker Desktop in the background: no dashboard window when it starts and,
+    when Archer itself starts with Windows, no sign-in entry of Docker's own that would open it."""
+    changes = {"OpenUIOnStartupDisabled": True}
+    if take_over_autostart:
+        changes["AutoStart"] = False
+    try:
+        data = json.loads(DOCKER_SETTINGS.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and any(data.get(k) != v for k, v in changes.items()):
+            data.update(changes)
+            tmp = DOCKER_SETTINGS.with_suffix(".archer-tmp")
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.replace(DOCKER_SETTINGS)
+    except (OSError, ValueError):
+        pass  # not installed yet, or a format we don't know: leave Docker's settings alone
+    if take_over_autostart and sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, _DOCKER_RUN_NAME)
+        except OSError:
+            pass
+
+
+def docker_running() -> bool:
+    return _docker("info", "--format", "{{.ServerVersion}}")
+
+
 def _launch_docker_desktop() -> bool:
-    # `docker desktop start` (Docker Desktop 4.37+) brings the engine up in the background; whether the
-    # dashboard opens too is Docker's own "Open Docker Dashboard when Docker Desktop starts" setting.
+    # `docker desktop start` (Docker Desktop 4.37+) brings the engine up in the background; the
+    # dashboard stays closed because quiet_docker_desktop turned off "open on startup".
+    quiet_docker_desktop()
     if _docker("desktop", "start", "--detach", timeout=30):
         return True
     for home in _DOCKER_HOMES:
@@ -152,12 +260,23 @@ def start_container(name: str, wait: float = 240) -> bool:
     `docker start <name>`. Quiet, bounded, and harmless if everything is already running."""
     if not name or not docker_available():
         return False
-    if not _docker("info", "--format", "{{.ServerVersion}}"):
+    if not docker_running():
         if not _launch_docker_desktop():
             return False
         deadline = time.monotonic() + wait
-        while not _docker("info", "--format", "{{.ServerVersion}}"):
+        while not docker_running():
             if time.monotonic() > deadline:
                 return False
             time.sleep(3)
-    return _docker("start", name, timeout=90)
+    # Just after the engine comes up, a container with a restart policy may be starting on its own
+    # and `docker start` fails; once it is running, `docker start` succeeds.
+    for attempt in range(3):
+        if _docker("start", name, timeout=90):
+            return True
+        time.sleep(2)
+    return False
+
+
+def stop_docker() -> bool:
+    """Shut Docker Desktop down, engine and VM included, to give its memory back."""
+    return _docker("desktop", "stop", timeout=120)

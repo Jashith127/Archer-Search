@@ -46,3 +46,33 @@ def test_no_container_configured_does_nothing(monkeypatch):
     calls, launched = _fake_docker(monkeypatch, engine_up_after=0)
     assert not companion.start_container("")
     assert not calls and not launched
+
+
+def test_quiet_docker_desktop_hides_dashboard_and_keeps_other_settings(tmp_path, monkeypatch):
+    store = tmp_path / "settings-store.json"
+    store.write_text('{"AutoStart": true, "OpenUIOnStartupDisabled": false, "SettingsVersion": 46}', encoding="utf-8")
+    monkeypatch.setattr(companion, "DOCKER_SETTINGS", store)
+    monkeypatch.setattr(companion.sys, "platform", "linux")  # leave the real Run key alone
+    companion.quiet_docker_desktop()
+    import json
+    data = json.loads(store.read_text(encoding="utf-8"))
+    assert data == {"AutoStart": True, "OpenUIOnStartupDisabled": True, "SettingsVersion": 46}
+    companion.quiet_docker_desktop(take_over_autostart=True)
+    assert json.loads(store.read_text(encoding="utf-8"))["AutoStart"] is False
+
+
+def test_quiet_docker_desktop_ignores_missing_or_odd_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(companion.sys, "platform", "linux")
+    monkeypatch.setattr(companion, "DOCKER_SETTINGS", tmp_path / "missing.json")
+    companion.quiet_docker_desktop(take_over_autostart=True)
+    odd = tmp_path / "odd.json"
+    odd.write_text("[1, 2]", encoding="utf-8")
+    monkeypatch.setattr(companion, "DOCKER_SETTINGS", odd)
+    companion.quiet_docker_desktop()
+    assert odd.read_text(encoding="utf-8") == "[1, 2]"
+
+
+def test_stop_docker_stops_docker_desktop(monkeypatch):
+    calls, launched = _fake_docker(monkeypatch, engine_up_after=0)
+    assert companion.stop_docker()
+    assert calls == [("desktop", "stop")]

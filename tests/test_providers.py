@@ -420,3 +420,31 @@ def test_browser_settings_only_open_known_browsers(client):
     _, headers = guarded(client)
     assert client.post("/api/app/browser", json={"browser": "notepad"}, headers=headers).status_code == 422
     assert client.post("/api/app/browser", json={"browser": "edge"}).status_code == 403
+
+
+def _profile(root, dse_suggest=None, rows=()):
+    import sqlite3
+    profile = root / "imput" / "Helium" / "User Data" / "Default"
+    profile.mkdir(parents=True)
+    dse = {"url": "http://archer.localhost:4747/search?q={searchTerms}", "suggestions_url": dse_suggest} if dse_suggest is not None else {}
+    (profile / "Preferences").write_text(json.dumps({"default_search_provider_data": {"mirrored_template_url_data": dse}}), encoding="utf-8")
+    db = sqlite3.connect(profile / "Web Data")
+    db.execute("CREATE TABLE keywords (url TEXT, suggest_url TEXT, is_active INTEGER)")
+    db.executemany("INSERT INTO keywords VALUES (?, ?, ?)", rows)
+    db.commit()
+    db.close()
+
+
+@pytest.mark.parametrize("dse_suggest, rows, expected", [
+    ("http://archer.localhost:4747/suggest?q={searchTerms}", [], "ready"),
+    ("", [("http://archer.localhost:4747/search?q={searchTerms}", "http://archer.localhost:4747/suggest?q={searchTerms}", 0)], "no_suggestions"),
+    (None, [("http://archer.localhost:4747/search?q={searchTerms}", "http://archer.localhost:4747/suggest?q={searchTerms}", 0)], "found"),
+    (None, [("http://archer.localhost:4747/search?q={searchTerms}", "", 1)], "manual"),
+    (None, [("https://duckduckgo.com/?q={searchTerms}", "https://duckduckgo.com/ac/?q={searchTerms}", 1)], "missing"),
+])
+def test_browser_search_setup_spots_engines_without_suggestions(tmp_path, monkeypatch, dse_suggest, rows, expected):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _profile(tmp_path, dse_suggest, rows)
+    setup = companion.search_setup("helium", ("http://archer.localhost:4747/search?q=",))
+    assert setup["state"] == expected
+    assert companion.search_setup("opera", ("http://archer.localhost:4747/search?q=",)) is None
