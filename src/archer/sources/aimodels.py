@@ -320,10 +320,12 @@ async def ensure(client: httpx.AsyncClient, wait: float = 6) -> Catalog | None:
     global _catalog
     if _catalog is None and CACHE_FILE.exists():
         try:
-            _catalog = await asyncio.to_thread(_parse, CACHE_FILE.read_bytes())
-            _catalog.loaded_at = CACHE_FILE.stat().st_mtime
+            parsed = await asyncio.to_thread(_parse, CACHE_FILE.read_bytes())
+            parsed.loaded_at = CACHE_FILE.stat().st_mtime
+            # The startup warm-up and a first search can both get here; the first to finish is kept.
+            _catalog = _catalog or parsed
         except (zipfile.BadZipFile, KeyError, OSError, ValueError):
-            _catalog = None
+            pass
     if _catalog is None:
         if time.monotonic() - _failed_at < RETRY and _failed_at:
             return None

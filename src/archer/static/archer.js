@@ -2,6 +2,15 @@
 // Everything is built with DOM APIs + textContent; no HTML from the network is injected.
 "use strict";
 
+// A knowledge panel that arrived after the results (templates/search_late.html) moves into the
+// place the results left for it, before any other code here looks at the page.
+for (const late of document.querySelectorAll("[data-late]")) {
+  const slot = document.querySelector(`[data-late-slot="${late.dataset.late}"]`);
+  if (slot) slot.replaceWith(...late.childNodes);
+  late.remove();
+}
+document.querySelectorAll("[data-late-slot]").forEach(slot => slot.remove());  // nothing came for these
+
 // AI uses the existing search page; only an authorized POST can begin generation.
 // One panel serves both levels: Balanced renders a single answer card in the results column,
 // AI Mode (body.ai-fullview) turns the same panel into a conversation with a source rail.

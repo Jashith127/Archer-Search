@@ -1,0 +1,20 @@
+{#- The knowledge panel and what hangs off it: its notices, the AI card (which reads it), cast and
+    filmography. Drawn inline by search_main.html, or, when the results went out before the panel was
+    ready, by search_late.html. -#}
+  {% if v.hero and v.hero.kind == "entity" and v.hero.data.corrected and not (v.response and v.response.corrections) %}
+  <p class="correction">Did you mean <a href="/search?q={{ v.hero.data.title|qs }}">{{ v.hero.data.title }}</a>? Showing its info panel for “{{ v.q }}”.</p>
+  {% endif %}
+
+  {% if v.hero_failed %}
+  <div class="notice">The {{ v.query.kind }} card couldn't load because {{ v.hero_failed }} didn't respond. Try again in a minute; the web results below are unaffected.</div>
+  {% endif %}
+
+  {% if v.remembered and v.hero and v.hero.kind == "entity" %}
+  <p class="correction correction--quiet">Showing {{ v.hero.data.title }}, the meaning you picked last time. Other meanings are listed in the panel.</p>
+  {% endif %}
+
+  {% if v.hero %}{% include "heroes/" ~ ("game" if v.hero.kind == "entity" and v.hero.data.kind == "game" else v.hero.kind) ~ ".html" %}{% endif %}
+  {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
+
+  {% if v.tab == "all" and v.lazy.cast %}{% include "screen_cast.html" %}{% endif %}
+  {% if v.tab == "all" and v.lazy.filmography %}{% include "screen_filmography.html" %}{% endif %}

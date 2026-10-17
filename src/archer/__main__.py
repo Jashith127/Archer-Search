@@ -23,6 +23,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from archer.config import DATA_DIR, settings
 
@@ -99,10 +100,14 @@ def _first_view(args) -> str | None:
     return None if args.no_window else _companion_url()
 
 
-def _show(url: str) -> None:
+def _show(url: str, starting: bool = False) -> None:
     from archer.window import open_app
     if url.rstrip("/") == settings.base_url:
         webbrowser.open(url)  # the search page belongs in the real browser
+    elif starting:
+        # The server needs a second or two more; the window shows the mark meanwhile, not a blank page.
+        splash = Path(__file__).with_name("static") / "splash.html"
+        open_app(f"{splash.as_uri()}#{quote(url, safe='')}" if splash.is_file() else url)
     else:
         open_app(url)
 
@@ -240,7 +245,7 @@ def main() -> None:
     # and its first request waits in the socket's queue until the app answers it.
     view = _first_view(args)
     if view:
-        _show(view)
+        _show(view, starting=True)
     if sys.platform == "win32":
         from archer import autostart
         try:

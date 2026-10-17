@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<title>Archer</title>
+<!-- The companion window opens on this file (file://) the moment Archer launches, before the server
+     can answer, so it shows the mark instead of a blank window. It moves on to the page named in
+     its #fragment at once; the browser keeps showing this until the server replies. The bar fills
+     over about the time a start takes, then ripples while it waits. -->
+<style>
+@font-face { font-family: "DM Sans"; src: url("fonts/dm-sans-latin-wght-normal.woff2") format("woff2"); font-weight: 100 1000; }
+html, body { height: 100%; margin: 0; background: #0c0c0d; color: #ededed; }
+body { display: grid; place-items: center; font-family: "DM Sans", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wait { display: grid; justify-items: center; animation: in .45s ease-out .1s both; }
+.pxmark { width: 128px; height: 128px; overflow: visible; }
+.pxmark rect { fill: currentColor; animation: wave 2.4s steps(1, end) calc(var(--i) * 50ms) infinite both; }
+.pxmark .px-on { opacity: .86; }
+.pxmark .px-off { opacity: .07; animation-name: wave-off; }
+h1 { margin: 34px 0 0; font-size: 30px; font-weight: 500; letter-spacing: -.02em; line-height: 1.2; }
+.bar { display: flex; gap: 4px; margin-top: 26px; }
+.bar i { width: 8px; height: 8px; border-radius: 2.2px; background: currentColor; opacity: .09;
+  animation: cell-on .22s steps(2, end) calc(var(--i) * 110ms) forwards, cell-ripple 1.8s steps(1, end) calc(3.2s + var(--i) * 45ms) infinite; }
+@keyframes cell-on { to { opacity: .82; } }
+@keyframes cell-ripple { 0% { opacity: 1; } 8% { opacity: .38; } 16%, 100% { opacity: .82; } }
+@keyframes wave { 0% { opacity: .86; } 3% { opacity: 1; } 6% { opacity: .42; } 9% { opacity: .2; } 12% { opacity: .6; } 15%, 100% { opacity: .86; } }
+@keyframes wave-off { 0% { opacity: .07; } 3% { opacity: .22; } 6% { opacity: .12; } 9%, 100% { opacity: .07; } }
+@keyframes in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .pxmark rect, .wait { animation: none; } .bar i { animation: none; opacity: .5; } }
+</style>
+</head>
+<body>
+<div class="wait" role="status">
+<svg class="pxmark " viewBox="0 0 70 70" width="56" height="56" aria-hidden="true"><rect x="1.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:12"/><rect x="11.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:13"/><rect x="21.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:14"/><rect x="31.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:15"/><rect x="41.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:16"/><rect x="51.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:17"/><rect x="61.25" y="1.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:18"/><rect x="1.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:10"/><rect x="11.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:11"/><rect x="21.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:12"/><rect x="31.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:13"/><rect x="41.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:14"/><rect x="51.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:15"/><rect x="61.25" y="11.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:16"/><rect x="1.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:8"/><rect x="11.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:9"/><rect x="21.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:10"/><rect x="31.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:11"/><rect x="41.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:12"/><rect x="51.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:13"/><rect x="61.25" y="21.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:14"/><rect x="1.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:6"/><rect x="11.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:7"/><rect x="21.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:8"/><rect x="31.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:9"/><rect x="41.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:10"/><rect x="51.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:11"/><rect x="61.25" y="31.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:12"/><rect x="1.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:4"/><rect x="11.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:5"/><rect x="21.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:6"/><rect x="31.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:7"/><rect x="41.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:8"/><rect x="51.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:9"/><rect x="61.25" y="41.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:10"/><rect x="1.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:2"/><rect x="11.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:3"/><rect x="21.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:4"/><rect x="31.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:5"/><rect x="41.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:6"/><rect x="51.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:7"/><rect x="61.25" y="51.25" width="7.5" height="7.5" rx="1.9" class="px-on" style="--i:8"/><rect x="1.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-on" fill-opacity="0.62" style="--i:0"/><rect x="11.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-on" fill-opacity="0.34" style="--i:1"/><rect x="21.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:2"/><rect x="31.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:3"/><rect x="41.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-off" style="--i:4"/><rect x="51.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-on" fill-opacity="0.34" style="--i:5"/><rect x="61.25" y="61.25" width="7.5" height="7.5" rx="1.9" class="px-on" fill-opacity="0.62" style="--i:6"/></svg>
+<h1>Starting Archer</h1>
+<div class="bar" aria-hidden="true"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i><i style="--i:6"></i><i style="--i:7"></i><i style="--i:8"></i><i style="--i:9"></i><i style="--i:10"></i><i style="--i:11"></i><i style="--i:12"></i><i style="--i:13"></i><i style="--i:14"></i><i style="--i:15"></i><i style="--i:16"></i><i style="--i:17"></i><i style="--i:18"></i><i style="--i:19"></i><i style="--i:20"></i><i style="--i:21"></i><i style="--i:22"></i><i style="--i:23"></i><i style="--i:24"></i><i style="--i:25"></i><i style="--i:26"></i><i style="--i:27"></i></div>
+</div>
+<script>
+  // Only Archer's own pages: http on a loopback or *.localhost host.
+  try {
+    const next = new URL(decodeURIComponent(location.hash.slice(1)));
+    if (next.protocol === "http:" && /^(localhost|127\.0\.0\.1|[a-z0-9-]+(\.[a-z0-9-]+)*\.localhost)$/.test(next.hostname)) location.replace(next.href);
+  } catch (e) { /* no page named: stay on the mark */ }
+</script>
+</body>
+</html>

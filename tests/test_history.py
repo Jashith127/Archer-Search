@@ -346,9 +346,9 @@ def test_chosen_meaning_is_remembered(client, monkeypatch):
     seen = []
     real = views.build
 
-    async def spy(searx, ext, q, tab, page, about=""):
+    async def spy(searx, ext, q, tab, page, about="", **options):
         seen.append(about)
-        return await real(searx, ext, q, tab, page, about)
+        return await real(searx, ext, q, tab, page, about, **options)
 
     monkeypatch.setattr(views, "build", spy)
     client.get("/search", params={"q": "apple", "about": "Apple Inc."})

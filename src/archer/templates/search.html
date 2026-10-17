@@ -34,16 +34,15 @@
     <span class="serp-wait-msg"><span>Searching the web</span><span>Still searching · some engines are slow to answer</span><span>Taking longer than usual</span></span>
   </p>
   {#- A quiet cousin of AI Mode's pixel skeleton (pixelSkeleton in archer.js): lines of the mark's
-      rounded-square dots with a slow diagonal sweep, at a fraction of its ink. --w is a line's length,
-      --r its row, so the sweep leans like the mark's wave. #}
-  {% set row = namespace(i=0) %}
+      rounded-square dots with one slow sweep shared by every line, at a fraction of its ink.
+      --w is a line's length. #}
   {% if tab == "images" %}
-  <div class="serp-wait-tiles" aria-hidden="true">{% for _ in range(12) %}<span class="serp-wait-tile" style="--r:{{ loop.index0 // 4 }}; --n:{{ loop.index0 }}"></span>{% endfor %}</div>
+  <div class="serp-wait-tiles" aria-hidden="true">{% for _ in range(12) %}<span class="serp-wait-tile"></span>{% endfor %}</div>
   {% else %}
   <div class="serp-wait-matrix" aria-hidden="true">
     {% for block in [[20, 56, 94, 68], [16, 44, 96, 58], [24, 62, 90, 46], [18, 50, 93, 64], [22, 40, 88, 52]] %}
     <div class="serp-wait-block">
-      {% for width in block %}<span class="serp-wait-line" style="--w:{{ width }}%; --r:{{ row.i }}"></span>{% set row.i = row.i + 1 %}{% endfor %}
+      {% for width in block %}<span class="serp-wait-line" style="--w:{{ width }}%"></span>{% endfor %}
     </div>
     {% endfor %}
   </div>

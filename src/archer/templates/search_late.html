@@ -1,0 +1,15 @@
+{#- Third part of the results page, sent only when the results went out before the knowledge panel
+    (views.build with defer): the panel and everything that depends on it. Each [data-late] block is
+    moved into its [data-late-slot] by archer.js before anything else runs. -#}
+{% from "macros.html" import lazy_strip %}
+<div data-late="hero" hidden>{% include "search_hero.html" %}</div>
+{% if v.lazy.works %}
+<div data-late="works" hidden>
+  <section class="works" data-works-qid="{{ v.lazy.works.qid }}" data-works-role="{{ v.lazy.works.role }}">
+    <h2 class="section-title">{{ {"cast": "Movies and shows", "author": "Books", "performer": "Albums"}[v.lazy.works.role] }}</h2>
+    <div class="works-row"><div class="work skeleton"></div><div class="work skeleton"></div><div class="work skeleton"></div></div>
+  </section>
+</div>
+{% endif %}
+{% if v.lazy.images and not v.early_lazy.images %}<div data-late="images" hidden>{{ lazy_strip("images", v.q, "Images", "image") }}</div>{% endif %}
+{% if v.lazy.news and not v.early_lazy.news %}<div data-late="news" hidden>{{ lazy_strip("news", v.q, "In the news", "news") }}</div>{% endif %}

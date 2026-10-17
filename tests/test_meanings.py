@@ -126,3 +126,20 @@ def test_quick_answer_has_a_centred_label_not_a_badge(client):
     html = client.get("/search", params={"q": "what does archer mean in tv"}).text
     answer = html.split('class="hero hero-answer"')[1].split("</section>")[0]
     assert '<p class="answer-label">Quick answer</p>' in answer and "hero-badge" not in answer
+
+
+def test_results_go_out_before_a_slow_panel(client):
+    """Wikipedia answering slowly holds back only the panel: the results arrive first with a
+    placeholder in its place, and the panel follows in a late block that archer.js moves there."""
+    import asyncio
+
+    async def slow(request):
+        if request.url.host in ("en.wikipedia.org", "www.wikidata.org"):
+            await asyncio.sleep(0.5)
+        return upstream(request)
+
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(slow))
+    html = client.get("/search", params={"q": "dune"}).text
+    main, late = html.split("</main>")
+    assert 'data-late-slot="hero"' in main and "Dune (2021 film)" not in main.split('data-late-slot="hero"')[0]
+    assert 'data-late="hero"' in late and "2021 film by Denis Villeneuve" in late

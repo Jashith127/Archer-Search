@@ -4,6 +4,7 @@ from html import escape
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote_plus
+import asyncio
 import logging
 import re
 import threading
@@ -58,6 +59,9 @@ async def lifespan(app: FastAPI):
         if settings.personalize:
             threading.Thread(target=embeddings.warm, daemon=True).start()
         threading.Thread(target=_warm_templates, daemon=True).start()
+        if aimodels.CACHE_FILE.exists():
+            # Parse the saved AI-model catalog now (about a second), not during the first search.
+            app.state.warm_catalog = asyncio.create_task(aimodels.ensure(ext))
         yield
         await app.state.ai.close()
         app.state.history.close()
@@ -265,8 +269,39 @@ async def search(request: Request, q: str = Query(""), tab: str = Query("all"), 
 async def _search_page(request: Request, q: str, tab: str, p: int, full: bool, about: str, ai: AIService, session):
     yield templates.get_template("search.html").render(
         {"request": request, "q": " ".join(q.split()) if q.strip() else q, "tab": tab, "ai_view": full, "open_ended": True})
-    yield templates.get_template("search_main.html").render(
-        {"request": request, **await _search_context(request, q, tab, p, full, about, ai, session)})
+    context = await _search_context(request, q, tab, p, full, about, ai, session)
+    yield templates.get_template("search_main.html").render({"request": request, **context})
+    view: views.View = context["v"]
+    if view.pending:
+        # The results are up; the knowledge panel follows when Wikipedia answers.
+        try:
+            await view.pending()
+        except Exception as exc:  # the page is already readable; a failed panel just doesn't appear
+            log.warning("knowledge panel failed: %s", type(exc).__name__)
+        else:
+            context["ai"] = ai.info(session, _snapshot(ai, session, view))
+            _record(request, view, q, tab, full, context["chosen"])
+            yield templates.get_template("search_late.html").render({"request": request, **context})
+    yield "</body>\n</html>\n"
+
+
+def _snapshot(ai: AIService, session, view: views.View):
+    return ai.snapshot(session, view) if view.tab == "all" and view.page == 1 else None
+
+
+def _record(request: Request, view: views.View, q: str, tab: str, full: bool, chosen: str) -> int | None:
+    """Save this search in history (page 1, not a prefetch). Saving it again later, once a deferred
+    panel is known, updates the same entry with the panel's name."""
+    if not (settings.history and q.strip() and view.page == 1 and not _prefetch(request)):
+        return None
+    store: History = history_store(request)
+    hero = ""
+    if view.hero:
+        hero = view.hero.kind + (":" + str(view.hero.data.get("title", "")) if isinstance(view.hero.data, dict) else "")
+    history_id = store.record_search(q, tab, "ai" if full else "search", chosen, hero[:200])
+    if chosen:
+        store.remember_meaning(q, chosen)
+    return history_id
 
 
 async def _search_context(request: Request, q: str, tab: str, p: int, full: bool, about: str, ai: AIService, session) -> dict:
@@ -275,24 +310,20 @@ async def _search_context(request: Request, q: str, tab: str, p: int, full: bool
     if not about and settings.personalize and tab == "all" and p == 1 and q.strip():
         # A meaning picked from "Other meanings" before is what this name means to you.
         about = store.meaning(q)
-    view = await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about) if q.strip() else views.View("", "all", 1, classify(""))
+    # AI Mode's page is built around the panel and its evidence, so it waits for the panel.
+    view = (await views.build(request.app.state.searx, request.app.state.ext, q, tab, p, about, defer=not full)
+            if q.strip() else views.View("", "all", 1, classify("")))
     view.remembered = about if about and not chosen else ""
     personal = await _personal_view(request, view)
-    history_id = None
-    if settings.history and q.strip() and p == 1 and not _prefetch(request):
-        hero = ""
-        if view.hero:
-            hero = view.hero.kind + (":" + str(view.hero.data.get("title", "")) if isinstance(view.hero.data, dict) else "")
-        history_id = store.record_search(q, tab, "ai" if full else "search", chosen, hero[:200])
-        if chosen:
-            store.remember_meaning(q, chosen)
-    snapshot = ai.snapshot(session, view) if tab == "all" and p == 1 else None
+    history_id = _record(request, view, q, tab, full, chosen)
+    # A deferred panel's AI card comes with the panel (search_late.html): the card reads the panel.
+    snapshot = None if view.pending else _snapshot(ai, session, view)
     provider = view.response.provider if view.response else settings.search_provider
     return {
         "v": view, "provider_page": websearch.page_url(provider, q, views.TABS[tab]),
         "provider_label": websearch.LABELS.get(provider, provider),
         "ai": ai.info(session, snapshot),
-        "ai_view": full,
+        "ai_view": full, "chosen": chosen,
         "history_id": history_id, "personal": personal,
         # Headers are sent before the search runs, so a redirect from the provider becomes a link.
         "redirect": view.response.redirect if view.response else None,

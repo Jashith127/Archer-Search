@@ -51,6 +51,10 @@ class View:
     related: list[str] = field(default_factory=list)
     hero_failed: str | None = None  # source name when the hero's data source failed
     remembered: str = ""  # a meaning chosen on an earlier search of this name, applied again
+    # Set when the results went out before the knowledge panel (build(defer=True)): awaiting it fills
+    # in the hero and the final `lazy`; `early_lazy` is what the first part of the page already drew.
+    pending: object = None
+    early_lazy: dict = field(default_factory=dict)
 
 
 _FAILED = object()
@@ -326,7 +330,14 @@ def _song_from_results(query: str, results: list[Result]) -> Hero | None:
 
 # --------------------------------------------------------------------- build
 
-async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: int, about: str = "") -> View:
+# How long finished results wait for a knowledge panel that is still loading before going out without it.
+HERO_GRACE = 0.3
+
+
+async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: int, about: str = "",
+                defer: bool = False) -> View:
+    """The page's view. With `defer`, results don't wait for a Wikipedia panel that is still loading:
+    the view comes back without it and `view.pending` finishes it (panel, its chips and lazy rows)."""
     query = classify(q, settings.home_currency)
     view = View(q=query.text, tab=tab, page=page, query=query)
     first_page_all = tab == "all" and page == 1
@@ -350,66 +361,98 @@ async def build(searx: SearXNG, ext: httpx.AsyncClient, q: str, tab: str, page: 
         except BaseException:
             hero_future.cancel()
             raise
+        view.response = response
+        view.related = suggestion_terms(response.suggestions, view.q)
         if not hero_future.done() and not about and query.kind in ("general", "question"):
             _prefetch_meaning(ext, query, response.results)
-        hero = await hero_future
-        if hero is _FAILED:
-            # Say so instead of silently dropping the card (entity panels are optional, so stay quiet).
-            if query.kind in SOURCES:
-                view.hero_failed = SOURCES[query.kind]
-        else:
-            view.hero = hero
+        if defer and query.kind in ("general", "question") and not hero_future.done():
+            await asyncio.wait([hero_future], timeout=HERO_GRACE)
+            if not hero_future.done():
+                _results(view, query, response)
+                view.lazy = _lazy(view, query)
+                view.early_lazy = dict(view.lazy)
+
+                async def finish() -> None:
+                    _take_hero(view, query, await hero_future)
+                    await _hero_phase(view, ext, query, response, about)
+                    view.lazy = _lazy(view, query)
+                view.pending = finish
+                return view
+        _take_hero(view, query, await hero_future)
     else:
         response = await search_task
-    view.response = response
-    view.related = suggestion_terms(response.suggestions, view.q)
-    if first_page_all and query.kind in ("general", "question") and (query.entity_candidate or about)             and (view.hero is None or view.hero.kind == "entity"):
+        view.response = response
+        view.related = suggestion_terms(response.suggestions, view.q)
+    await _hero_phase(view, ext, query, response, about)
+    _results(view, query, response)
+    view.lazy = _lazy(view, query)
+    return view
+
+
+def _take_hero(view: View, query: Query, hero) -> None:
+    if hero is _FAILED:
+        # Say so instead of silently dropping the card (entity panels are optional, so stay quiet).
+        if query.kind in SOURCES:
+            view.hero_failed = SOURCES[query.kind]
+    else:
+        view.hero = hero
+
+
+async def _hero_phase(view: View, ext: httpx.AsyncClient, query: Query, response: SearchResponse, about: str) -> None:
+    """Everything that decides the page's one hero once the search has answered."""
+    if not (view.tab == "all" and view.page == 1):
+        return
+    if query.kind in ("general", "question") and (query.entity_candidate or about) \
+            and (view.hero is None or view.hero.kind == "entity"):
         if not query.entity_candidate:  # a chip on a longer query: still offer the way back
             query.entity_candidate = about
         view.hero = await _settle_meaning(ext, query, view.hero, response.results, about)
-    if first_page_all and query.kind == "general" and query.entity_candidate:
+    if query.kind == "general" and query.entity_candidate:
         view.hero = _product_hero(query, view.hero, response, view.related) or view.hero
-    if first_page_all and not view.hero and query.kind in ("general", "question"):
+    if not view.hero and query.kind in ("general", "question"):
         view.hero = _song_from_results(query.text, response.results)
-    if first_page_all and query.kind == "places":
+    if query.kind == "places":
         view.hero = _places_hero(query, response)
-
-    if first_page_all and not view.hero:
+    if not view.hero:
         for answer in response.answers:
             if answer.get("engine") == "currency" and (cur := parse_currency_answer(answer.get("answer", ""))):
                 view.hero = Hero("currency", cur)
                 break
-    if first_page_all and not view.hero and query.kind in ("question", "general"):
+    if not view.hero and query.kind in ("question", "general"):
         view.hero = _quick_answer(response)
 
+
+def _results(view: View, query: Query, response: SearchResponse) -> None:
     results = response.results
-    if tab == "all":
+    if view.tab == "all":
         view.discussions = [r for r in results if DISCUSSION_HOSTS.search(r.host)][:4]
         if len(view.discussions) >= 2:
             ids = {id(r) for r in view.discussions}
             results = [r for r in results if id(r) not in ids]
         else:
             view.discussions = []
-    if tab == "images":
+    if view.tab == "images":
         results = rank_images(query.text, results)
     view.results = results
 
-    if first_page_all:
-        entity = view.hero.data if view.hero and view.hero.kind == "entity" else None
-        kind = entity["kind"] if entity else None
-        product = view.hero.data if view.hero and view.hero.kind == "product" else None
-        view.lazy = {
-            "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind in ("aimodel", "product"))),
-            "videos": query.wants_videos,
-            "images": query.wants_images or kind in IMAGE_KINDS,
-            "works": {"qid": entity["qid"], "role": entity["works_role"]}
-            if entity and entity.get("works_role") in ("author", "performer") else None,
-            "filmography": {"qid": entity["qid"], "tmdb": entity.get("tmdb_person", "")}
-            if entity and entity.get("works_role") == "cast" else None,
-            "cast": {"qid": entity["qid"], "media": entity["watch"]["media"], "tmdb": entity["watch"]["tmdb"],
-                     "names": entity.get("cast", [])} if kind in ("film", "tv") and entity.get("watch") else None,
-            "weather_at": entity["coords"] if kind in WEATHER_KINDS and entity.get("coords") else None,
-            # More prices and reviews (two cached searches) and a picture gallery, after the page is up.
-            "product": {"name": product["name"], "q": query.text} if product else None,
-        }
-    return view
+
+def _lazy(view: View, query: Query) -> dict:
+    if not (view.tab == "all" and view.page == 1):
+        return {}
+    entity = view.hero.data if view.hero and view.hero.kind == "entity" else None
+    kind = entity["kind"] if entity else None
+    product = view.hero.data if view.hero and view.hero.kind == "product" else None
+    return {
+        "news": bool(query.wants_news or kind in NEWS_KINDS or (view.hero and view.hero.kind in ("aimodel", "product"))),
+        "videos": query.wants_videos,
+        "images": query.wants_images or kind in IMAGE_KINDS,
+        "works": {"qid": entity["qid"], "role": entity["works_role"]}
+        if entity and entity.get("works_role") in ("author", "performer") else None,
+        "filmography": {"qid": entity["qid"], "tmdb": entity.get("tmdb_person", "")}
+        if entity and entity.get("works_role") == "cast" else None,
+        "cast": {"qid": entity["qid"], "media": entity["watch"]["media"], "tmdb": entity["watch"]["tmdb"],
+                 "names": entity.get("cast", [])} if kind in ("film", "tv") and entity.get("watch") else None,
+        "weather_at": entity["coords"] if kind in WEATHER_KINDS and entity.get("coords") else None,
+        # More prices and reviews (two cached searches) and a picture gallery, after the page is up.
+        "product": {"name": product["name"], "q": query.text} if product else None,
+    }
