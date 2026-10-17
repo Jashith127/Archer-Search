@@ -37,6 +37,14 @@ SearXNG or a DeepSeek key.
 - **Startup:** Start with Windows passes `--startup`, which honours a sign-in delay, a ready
   notification, what to open (tray, companion or search) and an optional SearXNG container.
 
+### Installer · 17 October 2026
+
+- **Window:** ArcherSetup hosts its page in WebView2 inside a borderless WinForms form (`installer/src/Frame.cs`): no title bar, but Windows' own shadow, rounded corners and minimise animation. The page draws minimise and close and marks its top strip `app-region: drag` (a posted "drag" message covers older runtimes). Without the WebView2 runtime it falls back to the old Chromium `--app` window. The page is 760×660, so the setup screen never scrolls; Options is a row at the top that opens a sheet.
+- **Flow:** a hero first (the dot field scatters, scans and assembles the pixel Archer mark, then the name rises letter by letter), then one setup screen, install progress, and a done screen. No step rail, version labels or system checks; a failed install says why and offers Try again.
+- **Where results come from:** a Recommended group in SearXNG's marquee blue holds the keyless choices (SearXNG on this PC, DuckDuckGo); Google (Serper) and Brave sit below as "With an API key", with an optional key field. Rows follow the companion's provider lists. The chosen logo sits large in the left panel; switching breaks it into dots in the logo's own colours, which flow into the next logo and resolve into it in about half a second.
+- **SearXNG without Docker:** choosing it runs `python -m archer.searxng_local install` after Archer's packages and writes `ARCHER_SEARXNG_RUNTIME=native`. Docker is no longer part of setup (`Docker.cs` is gone). This needs `searxng_local.py` from the native-SearXNG work in the payload; without it setup stops at that step and offers DuckDuckGo.
+- **Uninstall:** setup copies itself to `bin\ArcherSetup.exe` and Installed apps opens it with `--uninstall` (it relaunches from %TEMP% so it can delete its own folder). An installed Archer's hero also offers Update or Uninstall. Removing stops Archer and SearXNG, removes shortcuts, the startup entry, SearXNG and the Installed apps entry, and keeps `.env` and `data\` unless asked to delete them.
+
 ### History and personalization · 16 October 2026
 
 Archer now keeps a local search history and uses it to personalize results, without an LLM.

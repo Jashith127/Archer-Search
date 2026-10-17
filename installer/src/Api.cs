@@ -1,4 +1,4 @@
-// The JSON API the installer UI calls. Long work (SearXNG, the install) runs as a Job the page polls.
+// The JSON API the installer UI calls. The install runs as a Job the page polls.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -106,19 +106,16 @@ namespace ArcherSetup
                     return State();
                 case "/api/ping":
                     return Ok();
-                case "/api/check":
-                    return Check();
-                case "/api/docker/start":
-                    return new Dictionary<string, object> { { "ok", Docker.StartDesktop() } };
-                case "/api/searxng/setup":
-                    Jobs.Start("searxng", Docker.Setup);
-                    return Ok();
-                case "/api/searxng/choice":
-                    Choices.SetSearch(req.Str(body, "mode"), req.Str(body, "url"), req.Str(body, "container"));
+                case "/api/choice":
+                    if (!Jobs.AnyRunning()) Choices.SetSearch(req.Str(body, "provider"), req.Str(body, "key"));
                     return Ok();
                 case "/api/install":
                     Installer.Autostart = req.Str(body, "autostart") != "False";
                     Jobs.Start("install", Installer.Run);
+                    return Ok();
+                case "/api/uninstall":
+                    Uninstaller.DeleteData = req.Str(body, "deleteData") == "True";
+                    Jobs.Start("uninstall", Uninstaller.Run);
                     return Ok();
                 case "/api/job":
                     {
@@ -161,58 +158,32 @@ namespace ArcherSetup
         static object State()
         {
             var browser = Browsers.Default();
+            var env = EnvFile.Read(Path.Combine(Program.InstallDir, ".env"));
+            string provider;
+            env.TryGetValue("ARCHER_SEARCH_PROVIDER", out provider);
             return new Dictionary<string, object>
             {
                 { "version", Program.Version },
                 { "dir", Program.InstallDir },
                 { "existing", File.Exists(Path.Combine(Program.InstallDir, "pyproject.toml")) },
+                { "uninstall", Program.Uninstall },  // opened from Installed apps
                 { "dry", Program.Dry },
                 { "browser", browser },
                 { "searchUrl", Choices.BaseUrl() + "/search?q=%s" },
                 { "suggestUrl", Choices.BaseUrl() + "/suggest?q=%s" },
                 { "baseUrl", Choices.BaseUrl() },
+                // An update starts from what's set; for keys only whether one exists, never the key.
+                { "provider", provider ?? "" },
+                { "keys", new Dictionary<string, object> {
+                    { "google", Has(env, "ARCHER_SERPER_API_KEY") || Has(env, "ARCHER_GOOGLE_API_KEY") },
+                    { "brave", Has(env, "ARCHER_BRAVE_API_KEY") || Has(env, "BRAVE_API_KEY") } } },
             };
         }
 
-        // The system check. Docker decides whether the SearXNG step appears at all.
-        static object Check()
+        static bool Has(Dictionary<string, string> env, string key)
         {
-            var docker = Docker.Status();
-            var result = new Dictionary<string, object>
-            {
-                { "windows", WindowsName() },
-                { "arch", Installer.Arm64() ? "ARM64" : "x64" },
-                { "freeGb", FreeGb() },
-                { "online", Installer.Online() },
-                { "docker", docker },
-            };
-            return result;
-        }
-
-        // Environment.OSVersion reports 6.2 to unmanifested apps; the registry has the real release.
-        static string WindowsName()
-        {
-            try
-            {
-                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
-                {
-                    int build;
-                    int.TryParse(k.GetValue("CurrentBuildNumber") as string, out build);
-                    string release = k.GetValue("DisplayVersion") as string ?? "";
-                    return (build >= 22000 ? "Windows 11" : "Windows 10") + (release.Length > 0 ? " " + release : "");
-                }
-            }
-            catch { return "Windows"; }
-        }
-
-        static double FreeGb()
-        {
-            try
-            {
-                var root = Path.GetPathRoot(Program.InstallDir);
-                return Math.Round(new DriveInfo(root).AvailableFreeSpace / 1e9, 1);
-            }
-            catch { return -1; }
+            string v;
+            return env.TryGetValue(key, out v) && v.Length > 0;
         }
 
         // FolderBrowserDialog needs an STA thread with no other UI on it.
@@ -242,17 +213,17 @@ namespace ArcherSetup
         }
     }
 
-    // What the user chose on the SearXNG step, written into Archer's .env during the install.
+    // The search provider picked on the first screen, written into Archer's .env during the install.
     static class Choices
     {
-        public static string SearchMode = "";   // "" (untouched) | searxng | duckduckgo
-        public static string SearxngUrl = "", Container = "";
+        public static string Provider = "";   // "" (untouched) | searxng | duckduckgo | google | brave
+        public static string Key = "";        // Serper key for Google, or a Brave Search key; optional
+        public static string SearxngUrl = "http://127.0.0.1:8888";  // set once SearXNG is installed
 
-        public static void SetSearch(string mode, string url, string container)
+        public static void SetSearch(string provider, string key)
         {
-            SearchMode = mode == "searxng" ? "searxng" : mode == "duckduckgo" ? "duckduckgo" : "";
-            SearxngUrl = url ?? "";
-            Container = container ?? "";
+            Provider = Array.IndexOf(new[] { "searxng", "duckduckgo", "google", "brave" }, provider) >= 0 ? provider : "";
+            Key = Provider == "google" || Provider == "brave" ? (key ?? "").Trim() : "";
         }
 
         public static string BaseUrl()

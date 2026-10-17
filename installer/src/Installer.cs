@@ -17,7 +17,7 @@ namespace ArcherSetup
     {
         const string RepoUrl = "https://github.com/Jashith127/Archer-Search";
         static DateTime launchedAt = DateTime.MinValue;
-        public static bool Autostart = true;  // Archer's own Run-key entry; it brings Docker and SearXNG up too
+        public static bool Autostart = true;  // Archer's own Run-key entry; it brings SearXNG up too
 
         static string Dir { get { return Program.InstallDir; } }
         static string Venv(string exe) { return Path.Combine(Dir, ".venv", "Scripts", exe); }
@@ -26,20 +26,6 @@ namespace ArcherSetup
         {
             string a = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITEW6432") ?? Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "");
             return a.Equals("ARM64", StringComparison.OrdinalIgnoreCase);
-        }
-
-        public static bool Online()
-        {
-            if (Program.Dry) return true;
-            try
-            {
-                var req = (HttpWebRequest)WebRequest.Create("https://pypi.org/simple/");
-                req.Method = "HEAD";
-                req.Timeout = 6000;
-                using (req.GetResponse()) return true;
-            }
-            catch (WebException e) { return e.Response != null; }
-            catch { return false; }
         }
 
         public static void Run(Job job)
@@ -57,9 +43,16 @@ namespace ArcherSetup
             string uv = FindUv(job);
             job.Progress = 0.18;
 
+            bool searxng = Choices.Provider == "searxng";
             job.Step = "packages";
-            Sync(job, uv);
-            job.Progress = 0.86;
+            Sync(job, uv, searxng ? 0.62 : 0.86);
+
+            if (searxng)
+            {
+                job.Step = "searxng";
+                SearXNG(job);
+                job.Progress = 0.86;
+            }
 
             job.Step = "shortcuts";
             string ico = Path.Combine(Dir, "data", "archer.ico");
@@ -161,15 +154,17 @@ namespace ArcherSetup
         }
 
         // uv picks a suitable Python (downloading one when needed) and installs Archer's locked packages.
-        static void Sync(Job job, string uv)
+        // uv's milestones fill 0.2 to `top` of the bar.
+        static void Sync(Job job, string uv, double top)
         {
             job.Say("Installing Python and Archer's packages");
+            Func<double, double> at = x => 0.2 + (x - 0.2) * (top - 0.2) / (0.86 - 0.2);
             double floor = 0.2;
             var started = DateTime.UtcNow;
             var ticker = new Timer(_ =>
             {
                 // Ease toward the next milestone so the bar keeps moving through quiet stretches.
-                double target = Math.Min(0.82, floor + 0.12);
+                double target = Math.Min(at(0.82), floor + at(0.32) - 0.2);
                 job.Progress = Math.Max(job.Progress, job.Progress + (target - job.Progress) * 0.06);
             }, null, 400, 400);
             try
@@ -178,11 +173,11 @@ namespace ArcherSetup
                 int code = Shell.Stream(uv, "sync --frozen --no-dev", Dir, job, 1200000, line =>
                 {
                     string l = line.ToLowerInvariant();
-                    if (l.Contains("cpython") || l.Contains("python")) floor = Math.Max(floor, 0.3);
-                    if (l.Contains("creating virtual environment")) floor = Math.Max(floor, 0.4);
-                    if (l.StartsWith("resolved")) floor = Math.Max(floor, 0.5);
-                    if (l.StartsWith("prepared")) floor = Math.Max(floor, 0.7);
-                    if (l.StartsWith("installed")) floor = Math.Max(floor, 0.82);
+                    if (l.Contains("cpython") || l.Contains("python")) floor = Math.Max(floor, at(0.3));
+                    if (l.Contains("creating virtual environment")) floor = Math.Max(floor, at(0.4));
+                    if (l.StartsWith("resolved")) floor = Math.Max(floor, at(0.5));
+                    if (l.StartsWith("prepared")) floor = Math.Max(floor, at(0.7));
+                    if (l.StartsWith("installed")) floor = Math.Max(floor, at(0.82));
                     job.Progress = Math.Max(job.Progress, floor);
                 }, env);
                 if (code != 0) throw new Exception("uv couldn't install Archer's packages (exit " + code + "). The log above has details.");
@@ -190,6 +185,25 @@ namespace ArcherSetup
             finally { ticker.Dispose(); }
             if (!File.Exists(Venv("archerw.exe"))) throw new Exception("The install finished without Archer's launcher.");
             job.Say(string.Format("Packages ready in {0:0}s", (DateTime.UtcNow - started).TotalSeconds));
+        }
+
+        // SearXNG on this PC, no Docker: Archer's own searxng_local installs a pinned, checksummed
+        // release with its own Python under %LOCALAPPDATA%\Archer\searxng, and Archer starts it.
+        static void SearXNG(Job job)
+        {
+            if (!File.Exists(Path.Combine(Dir, "src", "archer", "searxng_local.py")))
+                throw new Exception("This version of Archer can't run SearXNG on its own. Choose another search provider.");
+            job.Say("Setting up SearXNG on this PC");
+            string url = "";
+            int code = Shell.Stream(Venv("python.exe"), "-m archer.searxng_local install", Dir, job, 1200000, line =>
+            {
+                if (line.StartsWith("{\"url\"")) url = line;
+                job.Progress = Math.Min(0.84, job.Progress + (0.84 - job.Progress) * 0.08);
+            });
+            if (code != 0) throw new Exception("SearXNG couldn't be set up (exit " + code + "). The log has details.");
+            var m = System.Text.RegularExpressions.Regex.Match(url, "\"url\":\\s*\"([^\"]+)\"");
+            Choices.SearxngUrl = m.Success ? m.Groups[1].Value : "http://127.0.0.1:8888";
+            job.Say("SearXNG will run at " + Choices.SearxngUrl + " whenever Archer does");
         }
 
         static void Shortcuts(Job job, string ico)
@@ -213,18 +227,21 @@ namespace ArcherSetup
         {
             string env = Path.Combine(Dir, ".env");
             var values = new Dictionary<string, string>();
-            if (Choices.SearchMode == "searxng")
+            string provider = Choices.Provider;
+            if (provider == "searxng")
             {
-                values["ARCHER_SEARCH_PROVIDER"] = "searxng";
+                values["ARCHER_SEARXNG_RUNTIME"] = "native";
                 values["ARCHER_SEARXNG_URL"] = Choices.SearxngUrl;
                 values["ARCHER_RESULTS_URL"] = Choices.SearxngUrl.Replace("127.0.0.1", "localhost") + "/search?q={q}";
-                if (Choices.Container.Length > 0) values["ARCHER_SEARXNG_CONTAINER"] = Choices.Container;
+                if (EnvFile.Read(env).ContainsKey("ARCHER_SEARXNG_CONTAINER")) values["ARCHER_SEARXNG_CONTAINER"] = "";  // no more Docker
             }
-            else if (Choices.SearchMode == "duckduckgo" && !EnvFile.Read(env).ContainsKey("ARCHER_SEARCH_PROVIDER"))
+            else if (provider == "google")
             {
-                // Without SearXNG, start on DuckDuckGo; an upgrade keeps whatever was chosen before.
-                values["ARCHER_SEARCH_PROVIDER"] = "duckduckgo";
+                values["ARCHER_GOOGLE_BACKEND"] = "serper";
+                if (Choices.Key.Length > 0) values["ARCHER_SERPER_API_KEY"] = Choices.Key;
             }
+            else if (provider == "brave" && Choices.Key.Length > 0) values["ARCHER_BRAVE_API_KEY"] = Choices.Key;
+            if (provider.Length > 0) values["ARCHER_SEARCH_PROVIDER"] = provider;
             if (values.Count == 0) return;
             EnvFile.Set(env, values);
             job.Say("Saved search settings to .env");
@@ -234,8 +251,19 @@ namespace ArcherSetup
         {
             using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Archer"))
             {
-                string script = Path.Combine(Dir, "scripts", "uninstall.ps1");
-                string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -RemoveFiles";
+                // Installed apps opens this same setup window on its uninstall screen.
+                string setup = Path.Combine(Dir, "bin", "ArcherSetup.exe"), cmd;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(setup));
+                    File.Copy(System.Windows.Forms.Application.ExecutablePath, setup, true);
+                    cmd = "\"" + setup + "\" --uninstall --dir \"" + Dir + "\"";
+                }
+                catch (IOException)
+                {
+                    string script = Path.Combine(Dir, "scripts", "uninstall.ps1");
+                    cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -RemoveFiles";
+                }
                 key.SetValue("DisplayName", "Archer");
                 key.SetValue("DisplayVersion", Program.Version);
                 key.SetValue("Publisher", "Archer");
@@ -245,7 +273,6 @@ namespace ArcherSetup
                 key.SetValue("URLInfoAbout", RepoUrl);
                 key.SetValue("HelpLink", RepoUrl);
                 key.SetValue("UninstallString", cmd);
-                key.SetValue("QuietUninstallString", cmd + " -Quiet");
                 key.SetValue("NoModify", 1, RegistryValueKind.DWord);
                 key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
                 key.SetValue("EstimatedSize", 120000, RegistryValueKind.DWord);  // KB, packages included
@@ -293,9 +320,15 @@ namespace ArcherSetup
                 new[] { "packages", "Resolved 41 packages in 2ms" },
                 new[] { "packages", "Prepared 39 packages in 4.18s" },
                 new[] { "packages", "Installed 39 packages in 812ms" },
+                new[] { "searxng", "Downloading SearXNG 8252c0b" },
+                new[] { "searxng", "Unpacked 1873 files" },
+                new[] { "searxng", "SearXNG 8252c0b is installed; it will listen on http://127.0.0.1:8888" },
                 new[] { "shortcuts", "Added Archer to the desktop and Start menu" },
                 new[] { "finish", "Archer " + Program.Version + " is installed in " + Dir },
             };
+            var steps = new List<string[]>(plan);
+            if (Choices.Provider != "searxng") steps.RemoveAll(st => st[0] == "searxng");
+            plan = steps.ToArray();
             for (int i = 0; i < plan.Length; i++)
             {
                 job.Step = plan[i][0];

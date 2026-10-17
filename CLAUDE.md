@@ -27,6 +27,7 @@ Personal AI search engine served on `http://archer.localhost:4747`, used as the 
 - Companion app: `settings_service.py` (field schema with provider cards and `when` conditions, validate-then-write `.env`, live apply, masked secrets, connection tests), `settings_routes.py` (`/api/settings*`, `/api/app/*`, guarded like AI POSTs), `envfile.py` (comment-preserving `.env` edits), `window.py` (opens a page as a Chromium `--app` window), `templates/companion_base.html`, `companion.html` (panes), `welcome.html` (setup wizard), `companion_fields.html` (shared field macros), `static/companion.css`, `static/companion.js`. A new setting needs a field in `config.py` and a `Spec` in `settings_service.py`; place it in a pane or setup step by name. `tests/companion_browser_server.py` serves it on a throwaway config at :4790
 - AI UI: `templates/ai_panel.html` (one panel; Balanced card or AI Mode via `body.ai-fullview`, turns cloned from a `<template>`), AI section of `archer.js` and `archer.css`
 - `scripts/install.ps1`, `install.cmd`: one-click install (uv sync, shortcuts, launch)
+- `installer/`: ArcherSetup.exe (`build.ps1`, `build.sh`). `src/Frame.cs` (frameless WebView2 window, Chromium `--app` fallback), `Api.cs` (token-guarded JSON API), `Installer.cs` (unpack, uv, native SearXNG, shortcuts, `.env` choices), `Uninstaller.cs` (`--uninstall`); `ui/` is the page (hero, provider choice, install, done, uninstall). `--dry` simulates every step; `tests/installer.browser.cjs` drives it at :4791
 
 ## Commands
 - `uv sync`: install
