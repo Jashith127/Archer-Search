@@ -112,6 +112,39 @@ def test_download_checks_sha256(monkeypatch, tmp_path):
     assert not dest.exists()
 
 
+def test_build_venv_compiles_shims_and_the_standard_library_after_copying(monkeypatch, tmp_path):
+    home = tmp_path / "cpython-3.12"
+    (home / "Lib").mkdir(parents=True)
+    release = tmp_path / "rel"
+    site = release / "venv" / "Lib" / "site-packages"
+    runs = []
+
+    def run(cmd, progress, cwd=None, timeout=900, check=True):
+        if cmd[1] == "venv":
+            site.mkdir(parents=True)
+            (release / "venv" / "pyvenv.cfg").write_text(f"home = {home}\nversion_info = 3.12\n", encoding="utf-8")
+        runs.append((cmd, check, sorted(p.name for p in site.glob("*.py")) if site.is_dir() else []))
+
+    monkeypatch.setattr(sx, "uv_path", lambda: "uv")
+    monkeypatch.setattr(sx, "_run", run)
+    sx.build_venv(release, lambda line: None)
+    compiles = [(cmd, check, present) for cmd, check, present in runs if "compileall" in cmd]
+    assert [cmd[-1] for cmd, _, _ in compiles] == [str(release / "src" / "searx"), str(site), str(home / "Lib")]
+    shims, stdlib = compiles[1], compiles[2]
+    assert "-l" in shims[0] and {"pwd.py", "sitecustomize.py"} <= set(shims[2])  # copied before compiling
+    assert stdlib[1] is False and sx.STDLIB_SKIP in stdlib[0]  # its test files may fail; that's fine
+
+
+def test_build_venv_skips_the_standard_library_without_pyvenv_cfg(monkeypatch, tmp_path):
+    runs = []
+    monkeypatch.setattr(sx, "uv_path", lambda: "uv")
+    monkeypatch.setattr(sx, "_run", lambda cmd, progress, **kw: runs.append(cmd))
+    monkeypatch.setattr(sx, "SHIMS", tmp_path / "no-shims")
+    (tmp_path / "rel" / "venv" / "Lib" / "site-packages").mkdir(parents=True)
+    sx.build_venv(tmp_path / "rel", lambda line: None)
+    assert sum("compileall" in cmd for cmd in runs) == 2
+
+
 def _fake_install(monkeypatch, fail_venv=False):
     calls = {"download": 0}
     body = _tarball(GOOD)

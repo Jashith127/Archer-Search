@@ -66,6 +66,8 @@ PYTHON = "3.12"
 SHIMS = Path(__file__).with_name("searxng_shim")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 CREATE_SUSPENDED = 0x4
+# Standard-library folders SearXNG never imports; site-packages is the venv's job.
+STDLIB_SKIP = r"[\\/](test|tests|idlelib|tkinter|turtledemo|lib2to3|ensurepip|site-packages)[\\/]"
 
 Progress = Callable[[str], None]
 
@@ -261,7 +263,7 @@ def freeze_version(pin: Pin, src: Path) -> None:
         'GIT_URL = "https://github.com/searxng/searxng"\nGIT_BRANCH = "master"\n', encoding="utf-8")
 
 
-def _run(cmd: list[str], progress: Progress, cwd: Path | None = None, timeout: float = 900) -> None:
+def _run(cmd: list[str], progress: Progress, cwd: Path | None = None, timeout: float = 900, check: bool = True) -> None:
     try:
         done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=timeout, creationflags=NO_WINDOW)
@@ -270,7 +272,7 @@ def _run(cmd: list[str], progress: Progress, cwd: Path | None = None, timeout: f
     for line in (done.stdout + done.stderr).splitlines()[-20:]:
         if line.strip():
             progress(line.rstrip())
-    if done.returncode != 0:
+    if check and done.returncode != 0:
         raise SetupError(f"{Path(cmd[0]).name} {cmd[1]} exited with {done.returncode}.")
 
 
@@ -289,6 +291,28 @@ def build_venv(release_dir: Path, progress: Progress) -> None:
     site = venv / "Lib" / "site-packages"
     for shim in SHIMS.glob("*.py"):
         shutil.copy2(shim, site / shim.name)
+    # The shims and uv's _virtualenv.py, which every process imports.
+    _run([python, "-m", "compileall", "-q", "-l", str(site)], progress)
+    # uv's managed Python ships most of its standard library without bytecode (asyncio, for one), so the
+    # first start would compile the ~60 modules SearXNG imports that lack it. The .pyc files land beside
+    # the sources, shared by every venv on this Python; a few test files there don't compile on purpose,
+    # so failures aren't fatal.
+    stdlib = _base_home(venv) / "Lib"
+    if stdlib.is_dir():
+        progress("Compiling Python's standard library")
+        _run([python, "-m", "compileall", "-qq", "-j", "0", "-x", STDLIB_SKIP, str(stdlib)], progress, check=False)
+
+
+def _base_home(venv: Path) -> Path:
+    """The folder of the Python a venv was made from, per its pyvenv.cfg."""
+    try:
+        for line in (venv / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "home":
+                return Path(value.strip())
+    except OSError:
+        pass
+    return venv / "missing-home"
 
 
 def install(pin: Pin = PIN, progress: Progress = print) -> Release:
