@@ -37,6 +37,9 @@ if (Test-Path (Join-Path $root 'searxng\settings.yml')) {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if ($docker) { & $docker.Source rm -f archer-searxng 2>&1 | Out-Null }
 }
+# SearXNG run natively on this PC lives beside Archer's own data, not in the install folder.
+$native = Join-Path $env:LOCALAPPDATA 'Archer\searxng'
+if (Test-Path $native) { Remove-Item -Recurse -Force $native -ErrorAction SilentlyContinue }
 $uninstall = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Archer'
 if (& $mine (Get-ItemProperty -Path $uninstall -ErrorAction SilentlyContinue).InstallLocation) { Remove-Item -Path $uninstall -Recurse }
 Set-Location $env:TEMP

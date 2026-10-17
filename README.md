@@ -61,7 +61,7 @@ type (Images, News, or Videos).
 | Provider | What you need | How Archer gets results |
 |---|---|---|
 | DuckDuckGo | Nothing | DuckDuckGo has no official web-results API, so Archer reads its HTML-only page and the JSON its own image, news and video tabs use. Works out of the box; heavy use can be rate-limited. |
-| SearXNG | A SearXNG instance (Docker) | Its JSON API. Most private; combines many engines. Archer can `docker start` its container at launch. |
+| SearXNG | Nothing: setup installs it on this PC | Its JSON API. Most private; combines many engines. Setup downloads a pinned, checksummed SearXNG release and runs it natively, with no Docker. An older install with `ARCHER_SEARXNG_CONTAINER` set keeps using its container. |
 | Google | A [Serper](https://serper.dev) key (2,500 free searches), or an existing Programmable Search key + engine ID | Google closed its Custom Search JSON API to new customers and turns it off on 1 January 2027, so new users go through Serper. |
 | Brave Search | A [Brave Search API](https://api-dashboard.search.brave.com) key | Brave's official API, with a small monthly credit. |
 
@@ -96,7 +96,7 @@ Open it from the Start menu, the tray, the sliders icon on the results page, or
   and spending limits with today's usage.
 - **Personal:** home location, country, currency and the contact Wikipedia requires, with **Detect**.
 - **Startup:** Start with Windows, what happens at sign-in (tray, companion or search), a delay
-  after sign-in, a ready notification, SearXNG's Docker container, port and address, and restart.
+  after sign-in, a ready notification, SearXNG, port and address, and restart.
 - **Browser:** your installed browsers (default first), each with a button that opens its
   search-engine settings, plus the values to paste.
 - **Connections:** the optional TMDB key for where-to-watch listings.
