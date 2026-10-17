@@ -1,6 +1,6 @@
 [project]
 name = "archer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Personal AI search engine, served on localhost as Helium's default search engine."
 readme = "README.md"
 requires-python = ">=3.12"
