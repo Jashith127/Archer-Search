@@ -38,21 +38,6 @@
   {% endif %}
 
   <div class="home-try" aria-label="Try">
-    {% if recent %}
-    <div class="home-try-row home-recent" data-hint-for="search" aria-label="Recent searches">
-      {% for item in recent %}
-      <a class="home-chip" href="/search?q={{ item|qs }}"><svg aria-hidden="true"><use href="#u-clock"/></svg>{{ item|truncate(40, True, "…") }}</a>
-      {% endfor %}
-      <a class="home-chip home-chip--quiet" href="/history">All history</a>
-    </div>
-    {% else %}
-    <div class="home-try-row" data-hint-for="search">
-      <button type="button" class="home-chip" data-home-try="weather tomorrow"><svg aria-hidden="true"><use href="#i-cloud-sun"/></svg>weather tomorrow</button>
-      <button type="button" class="home-chip" data-home-try="time in tokyo"><svg aria-hidden="true"><use href="#u-clock"/></svg>time in tokyo</button>
-      <button type="button" class="home-chip" data-home-try="define serendipity"><svg aria-hidden="true"><use href="#u-book"/></svg>define serendipity</button>
-      <button type="button" class="home-chip" data-home-try="18% of 2450"><svg aria-hidden="true"><use href="#u-hash"/></svg>18% of 2450</button>
-    </div>
-    {% endif %}
     <div class="home-try-row" data-hint-for="ai" hidden>
       <button type="button" class="home-chip" data-home-try="How do mRNA vaccines train the immune system?"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>How do mRNA vaccines work?</button>
       <button type="button" class="home-chip" data-home-try="Plan a relaxed 3-day trip to Kyoto in autumn"><svg aria-hidden="true"><use href="#u-sparkle"/></svg>Plan 3 days in Kyoto</button>

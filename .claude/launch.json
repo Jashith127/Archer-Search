@@ -36,6 +36,49 @@
       "port": 4790
     },
     {
+      "name": "installer-dry",
+      "runtimeExecutable": "installer/dist/ArcherSetup.exe",
+      "runtimeArgs": [
+        "--dry",
+        "--no-integrate",
+        "--dev-port",
+        "4791",
+        "--ui",
+        "installer/ui",
+        "--dir",
+        "C:\\ArcherPreview"
+      ],
+      "port": 4791,
+      "url": "http://127.0.0.1:4791"
+    },
+    {
+      "name": "installer-uninstall-dry",
+      "runtimeExecutable": "installer/dist/ArcherSetup.exe",
+      "runtimeArgs": [
+        "--dry",
+        "--no-integrate",
+        "--uninstall",
+        "--dev-port",
+        "4792",
+        "--ui",
+        "installer/ui",
+        "--dir",
+        "C:\\Users\\Jash\\Desktop\\Archer"
+      ],
+      "port": 4792,
+      "url": "http://127.0.0.1:4792"
+    },
+    {
+      "name": "history-fixture",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "python",
+        "tests/history_browser_server.py"
+      ],
+      "port": 4752
+    },
+    {
       "name": "screen-fixture",
       "runtimeExecutable": "uv",
       "runtimeArgs": [

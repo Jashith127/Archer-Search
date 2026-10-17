@@ -95,7 +95,10 @@ async def recent(request: Request, q: str = Query("", max_length=300)):
 @router.post("/forget")
 async def forget(request: Request, body: Forget):
     guard(request, ai_service(request))
-    return JSONResponse({"removed": history(request).delete_query(body.q)})
+    store = history(request)
+    removed = store.delete_query(body.q)
+    await asyncio.to_thread(store.scrub)
+    return JSONResponse({"removed": removed})
 
 
 @router.post("/delete")
@@ -104,6 +107,7 @@ async def delete(request: Request, body: Delete):
     store = history(request)
     removed = sum(store.delete_search(i) for i in body.searches) + sum(store.delete_click(i) for i in body.clicks)
     store.drop_orphan_vectors()
+    await asyncio.to_thread(store.scrub)
     return JSONResponse({"removed": removed})
 
 

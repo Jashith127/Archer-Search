@@ -1,171 +1,189 @@
 {% extends "base.html" %}
-{% from "macros.html" import site_badge, closeness, model_pill, hero_badge %}
+{% from "macros.html" import site_badge, closeness %}
 {% from "pixel_mark.html" import pixel_mark %}
 {% block title %}{% if q %}{{ q }} · {% endif %}History · Archer{% endblock %}
 {% block body_class %}serp history-body{% endblock %}
 {% block body %}
-{% set PREF_LABEL = {1: "Raised", -1: "Lowered", -2: "Blocked"} %}
+{% set PREF = {1: "raise", -1: "lower", -2: "block"} %}
+{% set SITE_STATES = [("raise", "Raise", "h-up"), ("", "Normal", "h-dot"), ("lower", "Lower", "h-down"), ("block", "Block", "h-block")] %}
+<svg width="0" height="0" class="sr-only" aria-hidden="true">
+  <symbol id="h-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="h-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="h-dot" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="h-block" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/></g></symbol>
+  <symbol id="h-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="h-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></g></symbol>
+</svg>
+
 <header class="top">
   <div class="wrap top-inner">
     <a class="brand" href="/" aria-label="Archer home">{{ pixel_mark(32) }}</a>
     <form class="searchbar history-search" action="/history" method="get" role="search">
       <svg class="searchbar-lead" aria-hidden="true"><use href="#u-clock"/></svg>
-      <input name="q" value="{{ q }}" autocomplete="off" spellcheck="false" aria-label="Search your history" placeholder="Search your history by meaning, e.g. “screen for my laptop”">
+      <input name="q" value="{{ q }}" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Search your history" placeholder="Search your history by meaning, like “screen for my laptop”">
+      {% if q %}<a class="h-search-reset" href="/history" aria-label="Show all history" title="Show all history"><svg aria-hidden="true"><use href="#i-x"/></svg></a>{% endif %}
       <button type="submit" class="searchbar-go"><svg aria-hidden="true"><use href="#i-search"/></svg>Search</button>
     </form>
-    <a class="top-settings top-history is-current" href="/history" aria-label="History" title="History" aria-current="page"><svg aria-hidden="true"><use href="#u-clock"/></svg></a>
-    <a class="top-settings" href="/app#data" aria-label="Privacy settings" title="Privacy settings"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></svg></a>
+    <a class="top-settings" href="/" aria-label="Search the web" title="Search the web"><svg aria-hidden="true"><use href="#i-search"/></svg></a>
+    <a class="top-settings h-top-settings" href="/app#data" aria-label="Privacy settings" title="Privacy settings"><svg aria-hidden="true" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></svg></a>
   </div>
-  <nav class="wrap tabs" aria-label="History">
-    <div class="tabs-list">
-      <a class="tab{% if not q %} is-active{% endif %}" href="/history"><svg class="tab-icon" aria-hidden="true"><use href="#u-list"/></svg>All searches</a>
-      {% if q %}<a class="tab is-active" href="/history?q={{ q|qs }}"><svg class="tab-icon" aria-hidden="true"><use href="#u-target"/></svg>Matches</a>{% endif %}
-      {% if topics %}<a class="tab" href="#topics"><svg class="tab-icon" aria-hidden="true"><use href="#u-layers"/></svg>Topics</a>{% endif %}
-      {% if top_sites or prefs %}<a class="tab" href="#sites"><svg class="tab-icon" aria-hidden="true"><use href="#u-globe"/></svg>Sites</a>{% endif %}
-    </div>
-    {{ model_pill(model) }}
-  </nav>
 </header>
 
-<main class="wrap page" data-history-page data-csrf="{{ csrf }}">
- <div class="history">
-  <div class="h-head">
-    <div class="h-head-main">
-      {{ hero_badge("shield", "History", "Only on this computer") }}
+<main class="wrap page h-page" data-history-page data-csrf="{{ csrf }}">
+ <div class="h-layout">
+  <section class="h-head">
+    {% if q %}
+    <h1 class="sr-only">Searches like {{ q }}</h1>
+    <a class="h-back" href="/history"><svg aria-hidden="true"><use href="#u-chevron"/></svg>All history</a>
+    <p class="h-count-line">{% if matched %}<strong>{{ matched }}</strong> match{{ "es" if matched != 1 }} for “{{ q }}”, closest first{% else %}No matches for “{{ q }}”{% endif %}</p>
+    {% else %}
+    <h1 class="sr-only">History</h1>
+    <p class="h-count-line">
+      {%- if stats.searches -%}
+      <strong>{{ "{:,}".format(stats.searches) }}</strong> search{{ "es" if stats.searches != 1 }} and <strong>{{ "{:,}".format(stats.clicks) }}</strong> page{{ "s" if stats.clicks != 1 }} opened{% if stats.since_text %} {{ stats.since_text }}{% endif %}
+      {%- else -%}
+      No searches yet
+      {%- endif -%}
+      {% if not enabled %}<span class="h-paused">Paused · <a href="/app#data">Resume in Settings</a></span>{% endif %}
+    </p>
+    {% if stats.searches %}<button type="button" class="h-button h-button--quiet-danger" data-history-clear-open><svg aria-hidden="true"><use href="#h-trash"/></svg>Clear history</button>{% endif %}
+    {% endif %}
+  </section>
+
+  <aside class="h-aside">
+    {% if topics %}
+    <section class="h-side h-side--topics" id="topics" aria-labelledby="h-topics">
+      <h2 class="h-side-title" id="h-topics">Topics</h2>
+      <p class="h-side-note">Your searches, grouped by what they're about.</p>
+      <ul class="h-topics">
+        {% for t in topics %}
+        <li class="h-topic">
+          <a class="h-topic-link" href="/history?q={{ t.label|qs }}" title="Everything in your history like this">
+            <span class="h-topic-label">{{ t.label }}</span>
+            <span class="h-topic-n">{{ t.size }}</span>
+          </a>
+          <p class="h-topic-queries">{{ t.queries[:3]|join(", ") }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if top_sites or prefs %}
+    <section class="h-side h-side--sites" id="sites" aria-labelledby="h-sites">
+      <h2 class="h-side-title" id="h-sites">Sites</h2>
+      <p class="h-side-note">Raise a site to move it up in your results, lower it to move it down, or block it to hide it.</p>
+      <ul class="h-sites">
+        {% set listed = [] %}
+        {% set rows = [] %}
+        {% for s in top_sites %}{% set _ = listed.append(s.host) %}{% set _ = rows.append((s.host, s.pref, s.n)) %}{% endfor %}
+        {% for host, pref in prefs if host not in listed %}{% set _ = rows.append((host, pref, 0)) %}{% endfor %}
+        {% for host, pref, n in rows %}
+        <li class="h-site" data-site="{{ host }}">
+          {{ site_badge(host, cached=True) }}
+          <span class="h-site-text">
+            <span class="h-site-name">{{ host }}</span>
+            <span class="h-site-meta">{% if n %}Opened {{ n }} time{{ "s" if n != 1 }}{% else %}Not opened lately{% endif %}</span>
+          </span>
+          <span class="h-seg" role="group" aria-label="Ranking for {{ host }}">
+            {% for value, text, icon in SITE_STATES %}
+            <button type="button" data-site-set="{{ value }}" aria-pressed="{{ 'true' if (PREF.get(pref, '') == value) else 'false' }}" aria-label="{{ text }} {{ host }}" title="{{ text }}"><svg aria-hidden="true"><use href="#{{ icon }}"/></svg></button>
+            {% endfor %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </aside>
+
+  <div class="h-feed">
+    <div class="h-selbar" data-selbar hidden>
+      <span class="h-selbar-count" data-sel-count></span>
+      <button type="button" class="h-button" data-sel-cancel>Cancel</button>
+      <button type="button" class="h-button h-button--danger" data-sel-remove><svg aria-hidden="true"><use href="#h-trash"/></svg>Remove</button>
+    </div>
+
+    {% for label, entries in days %}
+    <section class="h-day" aria-label="{{ label }}">
+      {% if not q %}<h2 class="h-day-title">{{ label }}<span class="h-day-n">{{ entries|length }}</span></h2>{% endif %}
+      <ol class="h-list{% if q %} h-list--matches{% endif %}">
+        {% for e in entries %}
+        {% set href = ('/ai' if e.mode == 'ai' else '/search') ~ '?q=' ~ (e.q|qs) ~ ('&tab=' ~ e.tab if e.tab != 'all' else '') ~ ('&about=' ~ (e.about|qs) if e.about else '') %}
+        <li class="h-entry" data-entry="{{ e.id }}">
+          <div class="h-row">
+            <span class="h-lead">
+              {% if e.match %}{{ closeness(e.match.dots, e.match.how) }}{% else %}<time class="h-time" datetime="{{ e.iso }}">{{ e.time }}</time>{% endif %}
+              <input type="checkbox" class="h-pick" data-pick="{{ e.id }}" aria-label="Select “{{ e.q }}”">
+            </span>
+            <a class="h-query" href="{{ href }}">
+              {% if e.mode == "ai" %}<svg class="h-kind" aria-label="AI Mode"><use href="#u-sparkle"/></svg>{% endif %}
+              <span class="h-query-text">{{ e.q }}</span>
+            </a>
+            <span class="h-tags">
+              {% if e.tab != "all" %}<span class="h-pill">{{ e.tab|capitalize }}</span>{% endif %}
+              {% if e.about %}<span class="h-pill" title="Meaning you picked">{{ e.about }}</span>{% endif %}
+              {% if e.count > 1 %}<span class="h-count" title="Searched {{ e.count }} times">{{ e.count }}×</span>{% endif %}
+              {% if e.match and e.match.how == "page" %}<span class="h-via" title="A page you opened from this search: {{ e.match.page }}">via a page you opened</span>{% endif %}
+              {% if e.match %}<span class="h-when">{{ e.day }}, {{ e.time }}</span>{% endif %}
+            </span>
+            <button type="button" class="h-remove" data-remove-search="{{ e.id }}" aria-label="Remove “{{ e.q }}” from history" title="Remove"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+          </div>
+          {% if e.clicks %}
+          <ul class="h-clicks">
+            {% for c in e.clicks %}
+            {% set url = c.url|web_url %}
+            <li class="h-click{% if e.match and e.match.how == 'page' and (c.title or c.host) == e.match.page %} is-match{% endif %}" data-click="{{ c.id }}">
+              {{ site_badge(c.host, cached=True) }}
+              {% if url %}<a class="h-click-title" href="{{ url }}" rel="noreferrer noopener">{{ c.title or url }}</a>{% else %}<span class="h-click-title">{{ c.title or c.host }}</span>{% endif %}
+              <span class="h-host">{{ c.host }}</span>
+              <button type="button" class="h-remove" data-remove-click="{{ c.id }}" aria-label="Remove this page from history" title="Remove"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% else %}
+    <div class="h-empty">
+      {{ pixel_mark(44, "h-empty-mark") }}
       {% if q %}
-      <h1 class="h-title">Searches like <span class="h-title-q">“{{ q }}”</span></h1>
-      {% if matched %}<p class="h-sub">{{ matched }} match{{ "es" if matched != 1 }}, closest first. {% if model.name == "lexical" or model.state == "failed" %}Matched on words.{% else %}Matched by meaning, so different wording still counts.{% endif %}</p>{% endif %}
+      <p class="h-empty-title">Nothing in your history is close to “{{ q }}”.</p>
+      <p class="h-empty-text">{% if model.name == "lexical" or model.state == "failed" %}Archer is matching words, so try the words you searched with, or <a href="/app#data">turn on matching by meaning</a>.{% else %}Try describing it another way.{% endif %}</p>
+      <p class="h-empty-actions"><a class="h-button" href="/history">Show all history</a><a class="h-button" href="/search?q={{ q|qs }}">Search the web instead</a></p>
       {% else %}
-      <h1 class="h-title">Your searches</h1>
-      <dl class="h-stats">
-        <div><dt>Searches</dt><dd>{{ stats.searches }}</dd></div>
-        <div><dt>Opened</dt><dd>{{ stats.clicks }}</dd></div>
-        {% if topics %}<div><dt>Topics</dt><dd>{{ topics|length }}</dd></div>{% endif %}
-        {% if stats.since %}<div><dt>Since</dt><dd class="h-stats-text">{{ stats.since|ago }}</dd></div>{% endif %}
-      </dl>
+      <p class="h-empty-title">{{ "Nothing here yet." if enabled else "History is paused." }}</p>
+      <p class="h-empty-text">{% if enabled %}Your searches will show up here as you make them.{% else %}<a href="/app#data">Resume it in Settings</a> to start keeping searches again.{% endif %}</p>
       {% endif %}
     </div>
-    <div class="h-actions">
-      <button type="button" class="h-button" data-history-toggle="{{ 'false' if enabled else 'true' }}">
-        <span class="h-rec{% if not enabled %} is-paused{% endif %}" aria-hidden="true"></span>{{ "Pause history" if enabled else "Resume history" }}
-      </button>
-      <span class="h-clear">
-        <select class="h-select" data-history-range aria-label="Time range to clear">
-          <option value="hour">Last hour</option><option value="day">Last 24 hours</option><option value="week">Last 7 days</option><option value="all">All time</option>
-        </select>
-        <button type="button" class="h-button h-button--danger" data-history-clear>Clear</button>
-      </span>
-    </div>
+    {% endfor %}
+
   </div>
+ </div>
 
-  {% if not enabled %}
-  <div class="notice notice--soft">History is paused. Archer isn't recording new searches or opened results; what's here stays until you clear it.</div>
-  {% endif %}
-  {% if not personalize %}
-  <div class="notice notice--soft">Personalized results are off, so history isn't changing your results. <a href="/app#data">Turn them on</a></div>
-  {% endif %}
-
-  {% if topics %}
-  <section class="h-section" id="topics" aria-labelledby="h-topics">
-    <h2 class="section-title" id="h-topics"><svg aria-hidden="true"><use href="#u-layers"/></svg>Your topics<span class="section-note">grouped by meaning</span></h2>
-    <div class="h-topics">
-      {% for t in topics %}
-      <article class="h-topic">
-        <a class="h-topic-label" href="/history?q={{ t.label|qs }}" title="Everything in your history like this">{{ t.label }}</a>
-        <p class="h-topic-meta">{{ t.size }} searches · {{ t.last|ago }}</p>
-        <ul class="h-topic-list">
-          {% for item in t.queries[:4] %}<li><a href="/search?q={{ item|qs }}"><svg aria-hidden="true"><use href="#i-search"/></svg><span>{{ item }}</span></a></li>{% endfor %}
-        </ul>
-        {% if t.size > 4 %}<a class="h-topic-more" href="/history?q={{ t.label|qs }}">+{{ t.size - 4 }} more</a>{% endif %}
-      </article>
+ <dialog class="h-dialog" data-clear-dialog aria-labelledby="h-clear-title">
+  <form class="h-dialog-body" method="dialog">
+    <h2 class="h-dialog-title" id="h-clear-title">Clear history</h2>
+    <p class="h-dialog-text">Searches, opened pages and picked meanings from this time are erased from this computer. This can't be undone. Raised, lowered and blocked sites stay.</p>
+    <fieldset class="h-ranges">
+      <legend class="sr-only">Time range</legend>
+      {% for value, text in [("hour", "Last hour"), ("day", "Last 24 hours"), ("week", "Last 7 days"), ("all", "Everything")] %}
+      <label class="h-range"><input type="radio" name="range" value="{{ value }}"{% if loop.first %} checked{% endif %}><span>{{ text }}</span></label>
       {% endfor %}
+    </fieldset>
+    <p class="h-dialog-error" data-clear-error role="alert" hidden></p>
+    <div class="h-dialog-actions">
+      <button type="submit" class="h-button" value="cancel">Cancel</button>
+      <button type="button" class="h-button h-button--danger-solid" data-clear-confirm>Clear history</button>
     </div>
-  </section>
-  {% endif %}
+  </form>
+ </dialog>
 
-  {% for label, entries in days %}
-  <section class="h-day" aria-label="{{ label }}">
-    <h2 class="section-title h-day-title">{% if q %}<svg aria-hidden="true"><use href="#u-target"/></svg>{% endif %}{{ label }}</h2>
-    <ol class="h-list{% if q %} h-list--matches{% endif %}">
-      {% for e in entries %}
-      <li class="h-entry" data-entry="{{ e.id }}">
-        <div class="h-row">
-          {% if e.match %}
-          {{ closeness(e.match.dots, e.match.how) }}
-          {% else %}
-          <span class="h-time">{{ e.time }}</span>
-          {% endif %}
-          <svg class="h-kind" aria-label="{{ 'AI Mode' if e.mode == 'ai' else 'Search' }}"><use href="{{ '#u-sparkle' if e.mode == 'ai' else '#i-search' }}"/></svg>
-          <a class="h-query" href="{{ '/ai' if e.mode == 'ai' else '/search' }}?q={{ e.q|qs }}{% if e.tab != 'all' %}&tab={{ e.tab }}{% endif %}{% if e.about %}&about={{ e.about|qs }}{% endif %}">{{ e.q }}</a>
-          {% if e.tab != "all" %}<span class="h-pill">{{ e.tab|capitalize }}</span>{% endif %}
-          {% if e.about %}<span class="h-pill" title="Meaning you picked">{{ e.about }}</span>{% endif %}
-          {% if e.count > 1 %}<span class="h-count" title="Searched {{ e.count }} times">×{{ e.count }}</span>{% endif %}
-          {% if e.match and e.match.how == "page" %}<span class="h-via" title="A page you opened from this search: {{ e.match.page }}">via a page you opened</span>{% endif %}
-          {% if e.match %}<span class="h-when">{{ e.day }} · {{ e.time }}</span>{% endif %}
-          <button type="button" class="h-remove" data-remove-search="{{ e.id }}" aria-label="Remove “{{ e.q }}” from history" title="Remove"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
-        </div>
-        {% if e.clicks %}
-        <ul class="h-clicks">
-          {% for c in e.clicks %}
-          <li class="h-click{% if e.match and e.match.how == 'page' and (c.title or c.host) == e.match.page %} is-match{% endif %}" data-click="{{ c.id }}">
-            {{ site_badge(c.host) }}
-            <a href="{{ c.url }}">{{ c.title or c.url }}</a>
-            <span class="h-host">{{ c.host }}</span>
-            <button type="button" class="h-remove" data-remove-click="{{ c.id }}" aria-label="Remove this page from history" title="Remove"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ol>
-  </section>
-  {% else %}
-  <div class="h-empty">
-    {{ pixel_mark(40, "h-empty-mark") }}
-    {% if q %}
-    <p class="h-empty-title">Nothing in your history is close to “{{ q }}”.</p>
-    <p class="h-empty-text">{% if model.name == "lexical" or model.state == "failed" %}Archer is matching words, so try the words you searched with, or <a href="/app#data">turn on matching by meaning</a>.{% else %}Archer matched by meaning and found nothing near it. Try describing it another way.{% endif %}</p>
-    <p class="h-empty-actions"><a class="h-button" href="/history">Show all history</a> <a class="h-button" href="/search?q={{ q|qs }}">Search the web instead</a></p>
-    {% else %}
-    <p class="h-empty-title">No history yet.</p>
-    <p class="h-empty-text">{{ "Searches you make and results you open will appear here, and Archer will start recognising what you come back to." if enabled else "History is paused." }}</p>
-    {% endif %}
-  </div>
-  {% endfor %}
-
-  {% if more %}<p class="h-more"><a class="h-button" href="/history?before={{ more }}">Older searches</a></p>{% endif %}
-
-  {% if top_sites or prefs %}
-  <section class="h-section" id="sites" aria-labelledby="h-sites">
-    <h2 class="section-title" id="h-sites"><svg aria-hidden="true"><use href="#u-globe"/></svg>Sites</h2>
-    <p class="h-note">Raised sites move up in your results, lowered ones move down and blocked ones are hidden. Sites you open often for a kind of search already rise for similar searches.</p>
-    <ul class="h-sites">
-      {% set listed = [] %}
-      {% for s in top_sites %}
-      {% set _ = listed.append(s.host) %}
-      <li class="h-site" data-site="{{ s.host }}">
-        {{ site_badge(s.host) }}<span class="h-site-name">{{ s.host }}</span><span class="h-site-count">opened {{ s.n }}×</span>
-        <span class="h-seg" role="group" aria-label="Preference for {{ s.host }}">
-          {% for value, text, num in [("raise", "Raise", 1), ("", "Normal", 0), ("lower", "Lower", -1), ("block", "Block", -2)] %}
-          <button type="button" data-site-set="{{ value }}" aria-pressed="{{ 'true' if s.pref == num else 'false' }}">{{ text }}</button>
-          {% endfor %}
-        </span>
-      </li>
-      {% endfor %}
-      {% for host, pref in prefs if host not in listed %}
-      <li class="h-site" data-site="{{ host }}">
-        {{ site_badge(host) }}<span class="h-site-name">{{ host }}</span><span class="h-site-count">{{ PREF_LABEL[pref] }}</span>
-        <span class="h-seg" role="group" aria-label="Preference for {{ host }}">
-          {% for value, text, num in [("raise", "Raise", 1), ("", "Normal", 0), ("lower", "Lower", -1), ("block", "Block", -2)] %}
-          <button type="button" data-site-set="{{ value }}" aria-pressed="{{ 'true' if pref == num else 'false' }}">{{ text }}</button>
-          {% endfor %}
-        </span>
-      </li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
+ <div class="h-toast" data-toast role="status" aria-live="polite" hidden>
+   <span data-toast-text></span>
+   <button type="button" class="h-toast-undo" data-toast-undo hidden>Undo</button>
  </div>
 </main>
 {% endblock %}

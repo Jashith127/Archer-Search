@@ -69,6 +69,16 @@ const shot = async (page, name) => { if (shots) await page.screenshot({ path: pa
   await page.locator('.h-entry').first().hover();
   await page.locator('[data-remove-search]').first().click();
   await page.waitForFunction(n => document.querySelectorAll('.h-entry').length === n - 1, entries);
+  // Removal can be undone from the toast; the delete is sent when the toast closes or the page is left.
+  await page.locator('[data-toast-undo]').click();
+  assert.equal(await page.locator('.h-entry').count(), entries);
+  await page.locator('.h-entry').first().hover();
+  await page.locator('[data-remove-search]').first().click();
+  // Clearing goes through a dialog.
+  await page.locator('[data-history-clear-open]').click();
+  assert.ok(await page.locator('[data-clear-dialog]').evaluate(d => d.open));
+  await shot(page, 'history-clear.png');
+  await page.locator('[data-clear-dialog] button[value=cancel]').click();
   await page.locator('[data-site="rtings.com"] [data-site-set="lower"]').click();
   await page.waitForFunction(() => document.querySelector('[data-site="rtings.com"] [data-site-set="lower"]').getAttribute('aria-pressed') === 'true');
   await page.goto(`${BASE}/history?q=${encodeURIComponent('screen sharpness')}`);
@@ -78,9 +88,9 @@ const shot = async (page, name) => { if (shots) await page.screenshot({ path: pa
   assert.equal(await page.locator('.h-via').count(), 1, 'a match through an opened page says so');
   await shot(page, 'history-search.png');
 
-  // Home shows recent searches.
+  // Home shows no history chips.
   await page.goto(`${BASE}/`);
-  assert.ok(await page.locator('.home-recent .home-chip').count() >= 2);
+  assert.equal(await page.locator('.home-recent').count(), 0);
   await shot(page, 'home.png');
 
   // Mobile width: no horizontal scroll on the history page.

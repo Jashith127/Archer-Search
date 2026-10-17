@@ -136,6 +136,8 @@ supports it, shorter for narrow follow-ups. Lead with what matters most; cut gen
 nobody asked for, and repeated points. Define jargon on first use. Prefer a table or list to long prose.
 If a source failed, continue with the others; never replace a supported answer with an apology.
 User followups inherit explicit subjects/constraints but may change them. State material assumptions.
+earlier_turns_untrusted is the conversation before previous_question, oldest first: use it to resolve
+"it", "that one" or "the second option", not as evidence to cite.
 FOLLOWUPS: up to 3 short, specific next questions this evidence or a search could answer, each
 moving forward (a decision, a detail, a neighbour topic), never a rephrasing of this question.
 """
@@ -163,6 +165,9 @@ answer only when ambiguity materially changes the result. Tool arguments must ma
 
 
 SAVED_TTL = 3600  # seconds a finished answer is replayed for the same question
+MAX_RUNS = 96     # runs kept in memory (each follow-up is one)
+MAX_TURNS = 40    # earlier turns a follow-up carries as summaries
+TURN_CHARS = 700  # characters kept from each earlier answer
 
 
 def eligible(view):
@@ -192,6 +197,7 @@ class Snapshot:
     warnings: list
     created: float = field(default_factory=time.monotonic)
     ui: dict = field(default_factory=dict)
+    touched: float = field(default_factory=time.monotonic)  # a conversation keeps its search alive
 
 
 @dataclass
@@ -210,6 +216,8 @@ class Run:
     created: float = field(default_factory=time.monotonic)
     ui: dict = field(default_factory=dict)
     history: list = field(default_factory=list)
+    turns: list = field(default_factory=list)  # earlier questions and answers, oldest first, for a long conversation
+    touched: float = field(default_factory=time.monotonic)
     previous_question: str = ""
     subject: str = ""
     parent: str = ""
@@ -261,8 +269,9 @@ class AIService:
     def prune(self):
         cutoff = time.monotonic() - 1800
         self.sessions = {k: s for k, s in self.sessions.items() if s.touched > cutoff}
-        self.snapshots = {k: s for k, s in self.snapshots.items() if s.created > cutoff}
-        self.runs = {k: r for k, r in self.runs.items() if not r.done or r.created > cutoff}
+        # Idle time counts, not age, so a conversation can run for as long as it keeps going.
+        self.snapshots = {k: s for k, s in self.snapshots.items() if s.touched > cutoff}
+        self.runs = {k: r for k, r in self.runs.items() if not r.done or r.touched > cutoff}
         fresh = time.monotonic() - SAVED_TTL
         self.saved = {k: r for k, r in self.saved.items() if r.created > fresh}
 
@@ -320,14 +329,21 @@ class AIService:
             raise AIError(missing)
         if automatic and (self.mode != "balanced" or not snap.auto or depth != "compact" or parent_id or question or selected or regenerate):
             raise AIError("Automatic AI is not enabled for this search.")
-        evidence, ui, history = snap.evidence, snap.ui, []
+        evidence, ui, history, turns = snap.evidence, snap.ui, [], []
+        snap.touched = time.monotonic()
         if parent_id:
             parent = self.runs.get(parent_id)
             if not parent or parent.owner != session.id or parent.snapshot.id != snap.id or not parent.done:
                 raise AIError("That research session is unavailable or still running.")
+            parent.touched = time.monotonic()
             evidence, ui = parent.evidence, parent.ui
             history = [{"kind": e["data"]["kind"], "heading": e["data"].get("heading", ""),
                 "text": e["data"].get("text", "")[:500]} for e in parent.events if e["event"] == "block"][-4:]
+            # Older turns travel as short summaries; context() drops the oldest first when space runs out.
+            if parent.previous_question:
+                turns = parent.turns + [{"question": parent.previous_question,
+                    "answer": " ".join(b["text"] for b in parent.history if b.get("text"))[:TURN_CHARS]}]
+            turns = turns[-MAX_TURNS:]
         question = question or snap.query
         if not question.strip():
             raise AIError("Enter a question to begin research.")
@@ -350,7 +366,7 @@ class AIService:
         if sum(not r.done for r in self.runs.values()) >= 2:
             raise AIError("Two AI runs are already active. Stop one or wait for it to finish.")
         self.make_room()
-        run = Run(secrets.token_urlsafe(18), session.id, snap, depth, question, key, copy.deepcopy(evidence), ui=copy.deepcopy(ui), history=history)
+        run = Run(secrets.token_urlsafe(18), session.id, snap, depth, question, key, copy.deepcopy(evidence), ui=copy.deepcopy(ui), history=history, turns=turns)
         run.previous_question = parent.question[:600] if parent_id else ""
         run.subject = parent.subject if parent_id else (snap.query or question)
         run.parent = parent_id
@@ -366,8 +382,9 @@ class AIService:
         return run
 
     def make_room(self):
-        if len(self.runs) >= 32:
-            old = next((k for k, r in self.runs.items() if r.done), None)
+        if len(self.runs) >= MAX_RUNS:
+            # The least recently used finished run goes, never a conversation still in use.
+            old = min((k for k, r in self.runs.items() if r.done), key=lambda k: self.runs[k].touched, default=None)
             if old:
                 self.runs.pop(old)
 
@@ -442,7 +459,7 @@ class AIService:
 
     async def execute(self, run, selected):
         limits = {"input": 0, "output": 0, "usd": 0.0,
-            "input_limit": 12000 if run.depth == "compact" else 40000,
+            "input_limit": 12000 if run.depth == "compact" else self.turn_input_limit(),
             "output_limit": 700 if run.depth == "compact" else self.settings.ai_answer_tokens + 1400}
         model_calls = 0
         media_task = None
@@ -570,14 +587,23 @@ class AIService:
                     raise AIError("Couldn't retrieve supporting evidence. Try a more specific question.")
                 run.emit("sources", {"sources": [e.payload() for e in run.evidence]})
                 run.emit("status", {"stage": "writing", "text": "Connecting the evidence"})
-                chars = 1100 if run.depth == "compact" else 2800
-                while True:
-                    payload = self.context(run, outcomes, selected, chars=chars)
-                    inputs = len(json.dumps(payload, ensure_ascii=False).encode()) + len(ANSWER_PROMPT.encode()) + 400
-                    if inputs + limits["input"] <= limits["input_limit"] or chars <= 100:
-                        break
-                    chars //= 2
                 output = min(700 if run.depth == "compact" else self.settings.ai_answer_tokens, limits["output_limit"]-limits["output"])
+                # Shrink to fit the turn's budget instead of failing: shorter source text first, then the
+                # oldest conversation turns, then fewer sources.
+                chars, keep, count = (1100 if run.depth == "compact" else 2800), len(run.turns), 10
+                while True:
+                    payload = self.context(run, outcomes, selected, chars=chars, keep=keep, count=count)
+                    inputs = len(json.dumps(payload, ensure_ascii=False).encode()) + len(ANSWER_PROMPT.encode()) + 400
+                    if self.fits(limits, inputs, output):
+                        break
+                    if chars > 350:
+                        chars //= 2
+                    elif keep:
+                        keep -= max(1, keep // 2)
+                    elif count > 3:
+                        count -= 2
+                    else:
+                        break  # the budget check below reports it
                 reservation = self.budget.reserve(limits, inputs, output)
                 blocks = []
                 omitted = []
@@ -640,11 +666,25 @@ class AIService:
                     self.saved.pop(next(iter(self.saved)))
                 self.saved[run.saved_as] = run
 
-    def context(self, run, outcomes, selected, chars, planning=False):
+    def turn_input_limit(self):
+        """Input budget for one research or AI Mode turn, in conservative (byte-sized) tokens. A local
+        model is held to its own context window, leaving room for the answer."""
+        limit = self.settings.ai_context_tokens
+        if resolve(self.settings).provider == "ollama":
+            limit = min(limit, max(8000, (self.settings.ollama_context - self.settings.ai_answer_tokens) * 3))
+        return limit
+
+    def fits(self, limits, inputs, output):
+        if limits["input"] + inputs > limits["input_limit"]:
+            return False
+        return not self.budget.priced or limits["usd"] + self.budget.cost(inputs, output) <= self.settings.ai_run_usd
+
+    def context(self, run, outcomes, selected, chars, planning=False, keep=None, count=10):
         # Pick the most relevant sources, then send them in a fixed order: DeepSeek bills a repeated
         # prompt prefix at about 2% of the input price, so a follow-up that reuses its parent's
         # evidence is mostly a cache hit. The question and the clock go last for the same reason.
-        picked = useful_evidence(run.evidence, run.question + " " + run.subject, selected)[:8 if planning else 10]
+        picked = useful_evidence(run.evidence, run.question + " " + run.subject, selected)[:8 if planning else count]
+        keep = len(run.turns) if keep is None else keep
         ordered = sorted(picked, key=lambda e: (e.id not in selected, int(e.id[1:]) if e.id[1:].isdigit() else 0))
         return {
             "evidence": [{"id": e.id, "title": e.title, "url": e.url, "kind": e.kind,
@@ -654,10 +694,11 @@ class AIService:
             "visual_need": run.visual.get("need", "none"),
             "media_results": [{"id": sid, "category": card["data"]["category"],
                 "items": [{"ref": item.get("ref", ""), "title": item["title"], "host": item.get("host", "")} for item in card["data"]["items"]]}
-                for sid, card in run.ui.items() if card["kind"] == "media"],
+                for sid, card in run.ui.items() if card["kind"] == "media"][-2:],  # the newest galleries, not every earlier turn's
             "tool_outcomes": outcomes[-8:], "warnings": run.snapshot.warnings,
             "constraints": {"country": self.settings.home_country, "currency": self.settings.home_currency}
                 if re.search(r"\b(watch|loan|emi|price|cost|buy|budget)\b", run.question, re.I) else {},
+            "earlier_turns_untrusted": run.turns[len(run.turns) - keep:] if keep else [],
             "previous_answer_untrusted": run.history,
             "original_query": run.subject[:600], "previous_question": run.previous_question,
             "mode": run.depth, "utc_now": now(), "question": run.question[:1000]}

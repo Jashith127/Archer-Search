@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const setSmall = value => {
     small = value;
+    if (!isFull()) sourcesPanel.open = false;  // expanding shows the answer, not the source list
     try { localStorage.setItem("archer-ai-small", value ? "1" : "0"); } catch {}
     applySize();
   };
@@ -383,6 +384,7 @@ document.addEventListener("DOMContentLoaded", () => {
     else turn.answer.append(section);
     turn.blocks.push(block);
     turn.node.classList.add("has-answer");
+    turn.node.classList.toggle("has-more", turn.blocks.length > 1 || turn.cards.childElementCount > 0);
     decodeReveal(section);
   };
   const fact = (label, value) => el("div", { class: "ai-fact" }, el("small", { text: label }), el("strong", { text: String(value) }));
@@ -501,6 +503,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     panel.append(citations([card.source_id]));
     turn.cards.append(panel);
+    turn.node.classList.add("has-more");
     decodeReveal(panel);
   };
 
@@ -524,6 +527,17 @@ document.addEventListener("DOMContentLoaded", () => {
     part("retry").addEventListener("click", retry);
     part("retry-error").addEventListener("click", retry);
     part("copy").addEventListener("click", () => copyAnswer(t));
+    // Balanced's follow-up line: continues in AI Mode, with this answer as the conversation so far.
+    const ask = part("ask");
+    const askInput = ask.elements.question;
+    askInput.addEventListener("input", () => { ask.querySelector("button").disabled = !askInput.value.trim(); });
+    ask.addEventListener("submit", event => {
+      event.preventDefault();
+      const question = askInput.value.trim();
+      if (!question || busy) return;
+      askInput.value = "";
+      start("research", { ...(t.runId && t.node.dataset.state === "complete" ? { parent: t.runId } : {}), question });
+    });
     welcome.hidden = true;
     thread.append(node);
     applySize();
@@ -658,8 +672,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.input_tokens != null) meta.title = (data.model_calls || 1) + " model calls · " + (data.input_tokens + data.output_tokens).toLocaleString() + " tokens";
       thread.querySelectorAll("[data-turn-followups]").forEach(n => n.replaceChildren());
       const list = turn.part("followups");
-      if (data.followups?.length) list.append(el("p", { class: "ai-block-label", text: "Ask next" }));
-      for (const question of data.followups || []) {
+      // Suggested next questions belong to AI Mode; Balanced has its follow-up line instead.
+      const suggestions = isFull() ? data.followups || [] : [];
+      if (suggestions.length) list.append(el("p", { class: "ai-block-label", text: "Ask next" }));
+      for (const question of suggestions) {
         const button = el("button", { type: "button", class: "ai-followup-chip" }, el("span", { text: question }), el("span", { class: "ai-followup-arrow", "aria-hidden": "true", text: isFull() ? "→" : "↗" }));
         button.addEventListener("click", () => start(isFull() ? find("[data-ai-depth]").value : "research", { parent: turn.runId, question }));
         list.append(button);
@@ -1064,47 +1080,125 @@ for (const section of $$("[data-unrelate-q]")) {
   });
 }
 
-// History page: remove entries, clear a range, pause, and set site preferences.
+// History page. Removing is undoable for a few seconds: rows leave at once and the delete is sent
+// when the toast closes, another removal starts, or the page is left (keepalive). Clearing a range
+// goes through a dialog; failures show in the toast, never in alert().
 const historyPage = $("[data-history-page]");
 if (historyPage) {
+  const toast = $("[data-toast]", historyPage), toastText = $("[data-toast-text]", toast), undoButton = $("[data-toast-undo]", toast);
+  let toastTimer = 0;
+  const say = (text, { tone = "", undo = null, ms = 4000 } = {}) => {
+    clearTimeout(toastTimer);
+    toastText.textContent = text;
+    toast.dataset.tone = tone;
+    undoButton.hidden = !undo;
+    undoButton.onclick = undo;
+    toast.hidden = false;
+    toastTimer = setTimeout(() => { toast.hidden = true; }, ms);
+  };
+  const fail = (error) => say(error.message || "Archer couldn't update your history.", { tone: "error", ms: 6000 });
+
+  // Detach nodes (and any day left empty), remembering where each one was.
+  const detach = (nodes) => {
+    const spots = [];
+    for (const node of nodes) {
+      if (!node.isConnected) continue;
+      spots.push({ node, parent: node.parentNode, next: node.nextSibling });
+      node.remove();
+    }
+    for (const day of $$(".h-day", historyPage)) {
+      if (!$(".h-entry", day)) { spots.push({ node: day, parent: day.parentNode, next: day.nextSibling }); day.remove(); }
+    }
+    recount();
+    return spots;
+  };
+  const restore = (spots) => {
+    for (const s of spots.reverse()) s.parent.insertBefore(s.node, s.next?.isConnected ? s.next : null);
+    recount();
+  };
+  const recount = () => { for (const day of $$(".h-day", historyPage)) { const n = $(".h-day-n", day); if (n) n.textContent = $$(".h-entry", day).length; } };
+
+  let pending = null;
+  const send = (batch, keepalive = false) => fetch("/api/history/delete", {
+    method: "POST", keepalive, headers: { "Content-Type": "application/json", "X-Archer-CSRF": pageCsrf() },
+    body: JSON.stringify({ searches: batch.searches, clicks: batch.clicks }),
+  }).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Archer couldn't remove that."); });
+  const commit = (keepalive = false) => {
+    if (!pending) return;
+    const batch = pending;
+    pending = null;
+    clearTimeout(batch.timer);
+    send(batch, keepalive).catch((error) => { restore(batch.spots); fail(error); });
+  };
+  const remove = (searches, clicks, nodes, label) => {
+    commit();
+    const spots = detach(nodes);
+    const batch = { searches, clicks, spots };
+    batch.timer = setTimeout(() => { if (pending === batch) { commit(); toast.hidden = true; } }, 6000);
+    pending = batch;
+    say(label, { ms: 6000, undo: () => {
+      if (pending !== batch) return;
+      clearTimeout(batch.timer);
+      pending = null;
+      restore(spots);
+      toast.hidden = true;
+    } });
+    syncPicks();
+  };
+  addEventListener("pagehide", () => commit(true));
+
+  // Selecting several searches.
+  const selbar = $("[data-selbar]", historyPage), selCount = $("[data-sel-count]", selbar);
+  const picked = () => $$("[data-pick]:checked", historyPage);
+  function syncPicks() {
+    const n = picked().length;
+    selbar.hidden = n === 0;
+    historyPage.classList.toggle("is-picking", n > 0);
+    selCount.textContent = `${n} selected`;
+    for (const box of $$("[data-pick]", historyPage)) box.closest(".h-entry").classList.toggle("is-picked", box.checked);
+  }
+  historyPage.addEventListener("change", (e) => { if (e.target.matches("[data-pick]")) syncPicks(); });
+  $("[data-sel-cancel]", selbar).addEventListener("click", () => { picked().forEach((b) => { b.checked = false; }); syncPicks(); });
+  $("[data-sel-remove]", selbar).addEventListener("click", () => {
+    const boxes = picked();
+    boxes.forEach((b) => { b.checked = false; });
+    remove(boxes.map((b) => Number(b.dataset.pick)), [], boxes.map((b) => b.closest(".h-entry")),
+      `Removed ${boxes.length} search${boxes.length === 1 ? "" : "es"}`);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && picked().length && !$("dialog[open]")) { picked().forEach((b) => { b.checked = false; }); syncPicks(); }
+  });
+
   historyPage.addEventListener("click", async (e) => {
     const removeSearch = e.target.closest("[data-remove-search]");
     const removeClick = e.target.closest("[data-remove-click]");
     const siteSet = e.target.closest("[data-site-set]");
-    try {
-      if (removeSearch) {
-        await historyPost("/api/history/delete", { searches: [Number(removeSearch.dataset.removeSearch)] });
-        const entry = removeSearch.closest(".h-entry"), list = entry.parentElement;
-        entry.remove();
-        if (!list.children.length) list.closest(".h-day")?.remove();
-      } else if (removeClick) {
-        await historyPost("/api/history/delete", { clicks: [Number(removeClick.dataset.removeClick)] });
-        removeClick.closest(".h-click").remove();
-      } else if (siteSet) {
-        const row = siteSet.closest("[data-site]");
-        await historyPost("/api/history/site", { host: row.dataset.site, pref: siteSet.dataset.siteSet || null });
+    if (removeSearch) {
+      remove([Number(removeSearch.dataset.removeSearch)], [], [removeSearch.closest(".h-entry")], "Removed from history");
+    } else if (removeClick) {
+      remove([], [Number(removeClick.dataset.removeClick)], [removeClick.closest(".h-click")], "Page removed from history");
+    } else if (siteSet) {
+      const row = siteSet.closest("[data-site]"), pref = siteSet.dataset.siteSet || null;
+      try {
+        await historyPost("/api/history/site", { host: row.dataset.site, pref });
         $$("[data-site-set]", row).forEach((b) => b.setAttribute("aria-pressed", String(b === siteSet)));
-      }
-    } catch (error) { alert(error.message); }
-  });
-  const clearButton = $("[data-history-clear]", historyPage);
-  let confirming = 0;
-  clearButton?.addEventListener("click", async () => {
-    const range = $("[data-history-range]", historyPage).value;
-    if (!confirming) {
-      clearButton.textContent = range === "all" ? "Clear everything?" : "Confirm clear";
-      confirming = setTimeout(() => { confirming = 0; clearButton.textContent = "Clear"; }, 3500);
-      return;
+        const said = { raise: "will rank higher", lower: "will rank lower", block: "is hidden from your results" }[pref] || "ranks normally again";
+        say(`${row.dataset.site} ${said}`);
+      } catch (error) { fail(error); }
     }
-    clearTimeout(confirming);
+  });
+
+  // Clear a time range.
+  const dialog = $("[data-clear-dialog]", historyPage), confirmClear = $("[data-clear-confirm]", dialog), clearError = $("[data-clear-error]", dialog);
+  $("[data-history-clear-open]", historyPage)?.addEventListener("click", () => { clearError.hidden = true; dialog.showModal(); });
+  confirmClear.addEventListener("click", async () => {
+    const range = $("input[name=range]:checked", dialog).value;
+    confirmClear.disabled = true;
+    commit();
     try { await historyPost("/api/history/clear", { range }); location.reload(); }
-    catch (error) { clearButton.textContent = "Clear"; confirming = 0; alert(error.message); }
+    catch (error) { confirmClear.disabled = false; clearError.textContent = error.message; clearError.hidden = false; }
   });
-  const toggle = $("[data-history-toggle]", historyPage);
-  toggle?.addEventListener("click", async () => {
-    try { await historyPost("/api/settings", { values: { history: toggle.dataset.historyToggle } }); location.reload(); }
-    catch (error) { alert(error.message); }
-  });
+  dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
 }
 
 const cache = new Map();
@@ -1690,6 +1784,180 @@ function productPanel(panel) {
 }
 $$("[data-product]").forEach(productPanel);
 
+// ------------------------------------------------ video game panel
+const wholePicture = (pic) => pic.classList.toggle("is-whole", /\.svg(\?|$)/i.test(pic.src) || pic.naturalWidth < pic.naturalHeight * 1.3);
+
+// The bento resolves itself: the picture beside the price and ratings cards wants a 16:9 height. When those
+// cards are much shorter than that, the fact tiles join their column and fill it; otherwise the tiles share
+// a full-width row below. Decided from widths only, so moving the tiles can't flip the decision back.
+function layoutGame(panel) {
+  const grid = $(".gm-grid", panel), side = $(".gm-side", panel), media = $(".gm-media", panel), tiles = $(".gm-tiles", panel);
+  if (!grid || !tiles) return;
+  const place = () => {
+    const stacked = getComputedStyle(grid).gridTemplateColumns.split(" ").length < 2;
+    const cards = $$(".gm-card", side).reduce((h, c) => h + c.offsetHeight, 0) + 12 * ($$(".gm-card", side).length - 1);
+    const shots = $("[data-gm-shots]", panel);
+    const want = media.clientWidth * 9 / 16 + (shots && !shots.hidden ? shots.offsetHeight + 8 : 0);
+    const inSide = !stacked && cards < want - 110;
+    if (inSide !== tiles.parentElement.classList.contains("gm-side")) {
+      if (inSide) side.append(tiles); else grid.after(tiles);
+    }
+    panel.classList.toggle("gm-tiles-in-side", inSide);
+  };
+  let width = 0;
+  new ResizeObserver(() => { if (panel.clientWidth !== width) { width = panel.clientWidth; place(); } }).observe(panel);
+  place();
+  return place;
+}
+// /api/game adds Steam's price, reviews, players, screenshots and PC requirements, and CheapShark's PC deals.
+const gameCount = (n) => Number(n).toLocaleString("en-IN");
+function gamePanel(panel) {
+  const priceBox = $("[data-gm-price]", panel);
+  const url = `/api/game?appid=${encodeURIComponent(panel.dataset.gameAppid || "")}&title=${encodeURIComponent(panel.dataset.gameTitle || "")}`;
+  // No trailer or cover from Wikidata: the game's best image-search picture fills the stage.
+  const fillStage = () => {
+    const holder = $(".gm-placeholder", panel);
+    if (!holder) return;
+    strip("images", `${panel.dataset.gameTitle} video game`).then((items) => {
+      const pick = (items || []).find((i) => isHttp(i.full) || isHttp(i.thumb));
+      if (!pick || !holder.isConnected) return;
+      const pic = el("img", { class: "gm-cover", src: isHttp(pick.full) ? pick.full : pick.thumb, alt: panel.dataset.gameTitle, referrerpolicy: "no-referrer", "data-gm-cover": "" });
+      pic.addEventListener("error", () => { if (isHttp(pick.thumb) && pic.src !== pick.thumb) pic.src = pick.thumb; });
+      holder.replaceWith(pic);
+    });
+  };
+  // A square or tall picture (a logo, box art) is shown whole; wide art and screenshots fill the stage.
+  panel.addEventListener("load", (event) => {
+    const pic = event.target;
+    if (pic.classList && pic.classList.contains("gm-cover")) wholePicture(pic);
+  }, true);
+  $$(".gm-cover", panel).forEach((pic) => { if (pic.complete && pic.naturalWidth) wholePicture(pic); });
+  const relayout = layoutGame(panel) || (() => {});
+  getJSON(url).then((d) => {
+    requestAnimationFrame(relayout);  // the cards have their final height once this fills them
+    if (!d || !d.appid) {
+      priceBox.replaceChildren(el("span", { class: "muted", text: "Not sold on Steam. Prices are on the stores below." }));
+      fillStage();
+      return;
+    }
+    const steamLink = isHttp(d.url) ? d.url : null;
+    // Price on Steam, in the home currency, with any discount.
+    if (d.price && d.price.free) priceBox.replaceChildren(el("strong", { class: "gm-price-now", text: "Free to play" }));
+    else if (d.price) {
+      priceBox.replaceChildren(...[el("strong", { class: "gm-price-now", text: d.price.text }),
+        d.price.discount ? el("span", { class: "gm-cut", text: `−${d.price.discount}%` }) : null,
+        d.price.original ? el("s", { class: "muted", text: d.price.original }) : null,
+        el("a", { class: "gm-price-where", href: steamLink, text: "on Steam" })].filter(Boolean));
+    } else priceBox.replaceChildren(el("span", { class: "muted", text: d.coming_soon ? `Coming soon${d.release ? " · " + d.release : ""}` : "No Steam price in your region" }));
+
+    // Best current PC deals across stores, and the lowest price ever.
+    const deals = (d.deals && d.deals.deals) || [];
+    const list = $("[data-gm-deals]", panel);
+    deals.slice(0, 3).forEach((deal, i) => {
+      if (!isHttp(deal.url)) return;
+      list.append(el("li", { class: i ? "" : "is-best" }, el("a", { href: deal.url, rel: "noopener noreferrer" },
+        el("span", { class: "gm-deal-store" }, el("strong", { text: deal.store }), i ? null : el("small", { text: "Best PC deal" })),
+        deal.cut ? el("span", { class: "gm-cut", text: `−${deal.cut}%` }) : null,
+        el("span", { class: "gm-deal-price" }, el("strong", { text: deal.usd }), deal.home ? el("small", { text: "≈ " + deal.home }) : null))));
+    });
+    const lowest = d.deals && d.deals.lowest;
+    if (lowest) list.append(el("li", { class: "gm-lowest", text: `Lowest ever ${lowest.usd}${lowest.home ? " (≈ " + lowest.home + ")" : ""}${lowest.date ? " · " + lowest.date : ""}` }));
+    list.hidden = !list.children.length;
+
+    // Steam's user reviews as a bar, players right now, and Metacritic when Wikidata had no score.
+    const reviews = $("[data-gm-reviews]", panel);
+    if (d.reviews && d.reviews.total) {
+      const bar = el("span", { class: "gm-bar" }, el("i"));
+      bar.firstChild.style.width = Math.max(2, Math.min(100, d.reviews.percent)) + "%";
+      reviews.classList.add(d.reviews.percent >= 70 ? "is-good" : d.reviews.percent >= 40 ? "is-mixed" : "is-bad");
+      reviews.append(el("a", { href: steamLink ? steamLink + "#app_reviews_hash" : null },
+        el("strong", { text: d.reviews.label }), el("span", { text: ` · ${d.reviews.percent}% of ${gameCount(d.reviews.total)} Steam reviews` })), bar);
+      reviews.hidden = false;
+    }
+    const critics = $("[data-gm-critics]", panel);
+    if (d.metacritic && !$$(".gm-critic span", critics).some((s) => s.textContent === "Metacritic")) {
+      critics.prepend(el("a", { class: "gm-critic", href: isHttp(d.metacritic.url) ? d.metacritic.url : null },
+        el("strong", { text: String(d.metacritic.score) }), el("small", { text: "/100" }), el("span", { text: "Metacritic" })));
+    }
+    if (Number.isFinite(d.players) && d.players > 0) {
+      const players = $("[data-gm-players]", panel);
+      players.append(el("i", { class: "gm-live", "aria-hidden": "true" }), document.createTextNode(`${gameCount(d.players)} playing on Steam right now`));
+      players.hidden = false;
+    }
+
+    // Steam features (co-op, controller support…), PC systems, DLC and achievements as chips.
+    const features = $("[data-gm-features]", panel);
+    // Single-player and multiplayer are already in the Game modes tile; Windows is a given on Steam.
+    const extra = (d.features || []).filter((f) => !/^(Single-player|Multiplayer|Family Sharing)$/.test(f)).slice(0, 4);
+    [...extra, ...(d.systems || []).filter((s) => s !== "Windows").map((s) => "Runs on " + s), d.dlc ? `${d.dlc} DLC` : ""]
+      .filter(Boolean).forEach((f) => features.append(el("span", { class: "tag-chip gm-feature", text: f })));
+
+    // Screenshots: thumbnails under the stage; picking one shows it, the trailer thumb goes back.
+    const stage = $("[data-gm-stage]", panel);
+    const shots = $("[data-gm-shots]", panel);
+    const first = stage.firstElementChild;
+    const show = (node, thumb) => {
+      stage.replaceChildren(node);
+      $$(".gm-shot", shots).forEach((t) => t.classList.toggle("is-active", t === thumb));
+    };
+    const pics = (d.screenshots || []).filter((s) => isHttp(s.full) && isHttp(s.thumb));
+    if (pics.length) {
+      if (first && !first.matches("[data-gm-cover]")) {
+        const back = el("button", { type: "button", class: "gm-shot gm-shot--video is-active", "aria-label": "Trailer" }, img(($("img", first) || {}).src || pics[0].thumb), icon("film"));
+        back.addEventListener("click", () => show(first, back));
+        shots.append(back);
+      } else if (first && !first.matches("img") && isHttp(d.header)) {
+        first.replaceWith(el("img", { class: "gm-cover", src: d.header, alt: "", referrerpolicy: "no-referrer", "data-gm-cover": "" }));
+      }
+      for (const s of pics) {
+        const thumb = el("button", { type: "button", class: "gm-shot", "aria-label": "Screenshot" }, img(s.thumb));
+        thumb.addEventListener("click", () => show(el("img", { class: "gm-cover", src: s.full, alt: "Screenshot", referrerpolicy: "no-referrer" }), thumb));
+        shots.append(thumb);
+      }
+      shots.hidden = false;
+    }
+
+    if (!pics.length && !isHttp(d.header)) fillStage();
+
+    // PC requirements, minimum against recommended.
+    const req = d.requirements || {};
+    const labels = [...new Set([...(req.minimum || []), ...(req.recommended || [])].map((r) => r[0]))];
+    if (labels.length) {
+      const value = (rows, label) => ((rows || []).find((r) => r[0] === label) || [null, "—"])[1];
+      const table = el("table", { class: "gm-reqs-table" },
+        el("thead", {}, el("tr", {}, el("th", {}), el("th", { text: "Minimum" }), req.recommended && req.recommended.length ? el("th", { text: "Recommended" }) : null)),
+        el("tbody", {}, ...labels.map((l) => el("tr", {}, el("th", { text: l }), el("td", { text: value(req.minimum, l) }),
+          req.recommended && req.recommended.length ? el("td", { text: value(req.recommended, l) }) : null))));
+      $("[data-gm-reqs-body]", panel).append(table);
+      $("[data-gm-reqs]", panel).hidden = false;
+    }
+  });
+}
+$$("[data-game]").forEach(gamePanel);
+
+// Bento rows: as many columns as fit (tiles at least `min` wide, at most six), then the tiles shared out
+// evenly across the rows, shorter rows first, each row's tiles splitting its width. No row is left short.
+function balanceBento(grid, min = 160) {
+  const tiles = [...grid.children];
+  if (tiles.length < 2) return;
+  const fit = () => {
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const cols = Math.max(1, Math.min(6, tiles.length, Math.floor((grid.clientWidth + gap) / (min + gap))));
+    const rows = Math.ceil(tiles.length / cols);
+    const per = Math.floor(tiles.length / rows), extra = tiles.length % rows;
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      const n = per + (r >= rows - extra ? 1 : 0);  // shorter rows first: their wider tiles lead
+      // Half a pixel spare per row, so rounding never wraps the last tile onto a line of its own.
+      for (let k = 0; k < n; k++) tiles[i++].style.setProperty("--bento-w", `calc((100% - ${(n - 1) * gap}px) / ${n} - 0.5px)`);
+    }
+    grid.classList.add("is-balanced");
+  };
+  new ResizeObserver(fit).observe(grid);
+  fit();
+}
+$$(".gm-tiles").forEach((grid) => balanceBento(grid));
+
 // Load the first candidate image that actually decodes; null if none do.
 function firstLoading(candidates) {
   return new Promise((resolve) => {
@@ -2116,19 +2384,6 @@ function placeAmLabels(svg) {
     leader.hidden = Math.abs(ly - 4 - m.y) <= 6;
   }
 }
-// The best-value line joins only what is visible, so a hidden model leaves no bend behind.
-function drawAmFrontier(svg) {
-  const line = $(".am-frontier", svg);
-  if (!line) return;
-  const dots = $("[data-am-dots]", svg);
-  const circles = [...$$("[data-mark]:not(.is-off) .am-dot", svg), ...(dots.classList.contains("is-off") ? [] : $$("circle", dots))];
-  // SVG y grows downward: walking right (pricier), keep each point that scores higher (smaller y).
-  const pts = circles.map((c) => [+c.getAttribute("cx"), +c.getAttribute("cy")]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  let best = Infinity;
-  const kept = pts.filter(([, y]) => (y < best ? ((best = y), true) : false));
-  line.setAttribute("points", kept.map((p) => p.join(",")).join(" "));
-  line.style.display = kept.length > 1 ? "" : "none";
-}
 // On a phone the plot scrolls sideways: open it on the searched model, not the cheap or old end.
 function centreAmPlot(panel) {
   const wrap = $(".am-plot-wrap", panel), self = $(".am-mark--self .am-dot", panel);
@@ -2136,34 +2391,55 @@ function centreAmPlot(panel) {
   const dot = self.getBoundingClientRect(), box = wrap.getBoundingClientRect();
   wrap.scrollLeft += dot.left + dot.width / 2 - (box.left + box.width / 2);
 }
-function setAmToggle(button, on) {
-  const panel = button.closest("[role=tabpanel]");
-  const key = button.dataset.amToggle;
-  const target = key === "dots" ? $("[data-am-dots]", panel) : $(`[data-mark="${key}"]`, panel);
-  button.setAttribute("aria-pressed", String(on));
-  target?.classList.toggle("is-off", !on);
+// The best-value line joins only the models shown, so hiding one leaves no bend behind.
+function drawAmFrontier(svg) {
+  const line = $(".am-frontier", svg);
+  if (!line) return;
+  // SVG y grows downward: walking right (pricier), keep each point that scores higher (smaller y).
+  const pts = $$("[data-mark]:not(.is-off) .am-dot", svg).map((c) => [+c.getAttribute("cx"), +c.getAttribute("cy")])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let best = Infinity;
+  const kept = pts.filter(([, y]) => (y < best ? ((best = y), true) : false));
+  line.setAttribute("points", kept.map((p) => p.join(",")).join(" "));
+  line.style.display = kept.length > 1 ? "" : "none";
 }
-function redrawAmPlot(panel) {
+// The Models menu: a checked box is on the chart; its table row dims when it's off. The button counts what's shown.
+function setAmToggle(box, on) {
+  const panel = box.closest("[role=tabpanel]");
+  const key = box.dataset.amToggle;
+  box.checked = on;
+  $(`[data-mark="${key}"]`, panel)?.classList.toggle("is-off", !on);
+  $(`.am-row[data-key="${key}"]`, panel)?.classList.toggle("is-off", !on);
+}
+function syncAmFilter(panel) {
+  const boxes = $$("[data-am-toggle]", panel);
+  const count = $("[data-am-count]", panel);
+  if (count) count.textContent = `${boxes.filter((b) => b.checked).length} of ${boxes.length}`;
   const svg = $("[data-am-plot]", panel);
   placeAmLabels(svg);
   drawAmFrontier(svg);
 }
-for (const button of $$("[data-am-toggle]")) {
-  button.addEventListener("click", () => {
-    setAmToggle(button, button.getAttribute("aria-pressed") !== "true");
-    redrawAmPlot(button.closest("[role=tabpanel]"));
-  });
+for (const box of $$("[data-am-toggle]")) {
+  box.addEventListener("change", () => { setAmToggle(box, box.checked); syncAmFilter(box.closest("[role=tabpanel]")); });
 }
 // "Show all" brings every model back; "Only …" keeps the searched model and hides the rest.
 for (const button of $$("[data-am-show]")) {
   button.addEventListener("click", () => {
     const panel = button.closest("[role=tabpanel]");
-    for (const t of $$("[data-am-table] [data-am-toggle]", panel)) {
-      setAmToggle(t, button.dataset.amShow === "all" || t.classList.contains("am-toggle--self"));
+    for (const box of $$("[data-am-toggle]", panel)) {
+      setAmToggle(box, button.dataset.amShow === "all" || box.closest(".am-pick--self") !== null);
     }
-    redrawAmPlot(panel);
+    syncAmFilter(panel);
   });
 }
+// The menu closes on a click elsewhere or Escape, like any dropdown.
+document.addEventListener("click", (event) => {
+  for (const menu of $$("[data-am-filter][open]")) if (!menu.contains(event.target)) menu.open = false;
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  for (const menu of $$("[data-am-filter][open]")) { menu.open = false; $("summary", menu).focus(); }
+});
 
 // ------------------------------------------- AI model chart: sortable model table
 for (const table of $$("[data-am-table]")) {
@@ -2188,17 +2464,12 @@ for (const table of $$("[data-am-table]")) {
   }
 }
 
-// ------------------------------------------- AI model card: currency and cost estimator
-// Prices arrive in US dollars (data-money); the card shows them in the home currency or USD,
-// remembered per browser. aimodels.money is the server-side twin of fmtMoney.
+// ------------------------------------------- AI model card: prices in the home currency
+// Prices arrive in US dollars (data-money) and show in the home currency when a rate is known.
+// aimodels.money is the server-side twin of fmtMoney.
 for (const card of $$("[data-am-card]")) {
-  const home = card.dataset.fxCode ? { code: card.dataset.fxCode, symbol: card.dataset.fxSymbol, rate: +card.dataset.fxRate } : null;
-  const USD = { code: "USD", symbol: "$", rate: 1 };
-  const KEY = "archer.aimodel.currency";
-  let current = home || USD;
-  try { if (home && localStorage.getItem(KEY) === "USD") current = USD; } catch { /* storage blocked: keep the default */ }
-  const other = () => (current === USD ? home : USD);
-
+  const current = card.dataset.fxCode ? { code: card.dataset.fxCode, symbol: card.dataset.fxSymbol, rate: +card.dataset.fxRate }
+    : { code: "USD", symbol: "$", rate: 1 };
   const fmtMoney = (usd, cur) => {
     const v = usd * cur.rate;
     const d = v > 0 && v < 0.1 ? 4 : v < 100 ? 2 : 0;
@@ -2230,70 +2501,12 @@ for (const card of $$("[data-am-card]")) {
       }
     }
     const label = $("[data-am-xlabel]", svg);
-    if (label) label.textContent = `API price, ${current.symbol.trim()} per million tokens (3:1 input:output)`;
+    if (label) label.textContent = `API price, ${current.symbol.trim()} per million tokens`;
   };
-
-  const estimate = $("[data-am-estimate]", card);
-  const pricing = $("[data-am-pricing]", card);
-  const field = (name) => Math.max(0, parseFloat($(`[data-am-field="${name}"]`, estimate).value) || 0);
-  const updateEstimate = () => {
-    if (!estimate) return;
-    const n = Math.max(1, field("n"));
-    const costIn = field("in") * +pricing.dataset.in / 1e6, costOut = field("out") * +pricing.dataset.out / 1e6;
-    const per = costIn + costOut;
-    for (const [side, cost] of [["in", costIn], ["out", costOut]]) {
-      const value = $(`[data-am-split="${side}"]`, estimate);
-      value.dataset.money = cost * n;
-      value.textContent = fmtMoney(cost * n, current);
-      $(`[data-am-split-bar="${side}"]`, estimate).style.flex = String(cost || 0.0001);
-    }
-    const total = $("[data-am-total-val]", estimate);
-    total.dataset.money = per * n;
-    total.textContent = fmtMoney(per * n, current);
-    const alt = other();
-    $("[data-am-total-sub]", estimate).textContent = [n > 1 ? `${fmtMoney(per, current)} per request` : "",
-      alt ? `≈ ${fmtMoney(per * n, alt)}` : ""].filter(Boolean).join(" · ");
-  };
-
-  const apply = () => {
-    for (const node of $$("[data-money]", card)) {
-      if (node.hasAttribute("data-am-total-val") || node.hasAttribute("data-am-split")) continue;
-      const cur = node.hasAttribute("data-money-alt") ? other() : current;
-      node.textContent = cur ? fmtMoney(+node.dataset.money, cur) + (node.dataset.suffix || "") : "";
-    }
-    for (const svg of $$("[data-am-plot][data-lx0]", card)) relabelAxis(svg);
-    for (const b of $$("[data-am-cur]", card)) b.setAttribute("aria-pressed", String(b.dataset.amCur === current.code));
-    updateEstimate();
-  };
-
-  for (const b of $$("[data-am-cur]", card)) {
-    b.addEventListener("click", () => {
-      current = b.dataset.amCur === "USD" ? USD : home;
-      try { localStorage.setItem(KEY, current.code); } catch { /* not remembered; still switches */ }
-      apply();
-    });
+  for (const node of $$("[data-money]", card)) {
+    if (!node.hasAttribute("data-money-alt")) node.textContent = fmtMoney(+node.dataset.money, current) + (node.dataset.suffix || "");
   }
-  if (estimate) {
-    const presets = $$("[data-am-preset]", estimate);
-    for (const b of presets) {
-      b.addEventListener("click", () => {
-        const [i, o, n] = b.dataset.amPreset.split(",");
-        $('[data-am-field="in"]', estimate).value = i;
-        $('[data-am-field="out"]', estimate).value = o;
-        $('[data-am-field="n"]', estimate).value = n;
-        presets.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-        updateEstimate();
-      });
-    }
-    for (const input of $$("[data-am-field]", estimate)) {
-      input.addEventListener("input", () => {
-        const now = [field("in"), field("out"), Math.max(1, field("n"))].join(",");
-        presets.forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.amPreset === now)));
-        updateEstimate();
-      });
-    }
-  }
-  apply();
+  for (const svg of $$("[data-am-plot][data-lx0]", card)) relabelAxis(svg);
 }
 
 // ------------------------------------------------------- AI model chart tabs

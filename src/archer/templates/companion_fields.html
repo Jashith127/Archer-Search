@@ -129,12 +129,27 @@
 </div>
 {%- endmacro %}
 
+{# How a Chromium browser has Archer (companion.search_setup). Without a suggestions URL the address bar shows none. #}
+{% macro search_state(setup, field) -%}
+{% if setup %}{% set st = setup.state %}
+<p class="c-browser-state c-browser-state--{{ 'ok' if st == 'ready' else 'warn' }}">
+  {%- if st == "ready" %}Archer is the default, with address-bar suggestions.
+  {%- elif st in ("no_suggestions", "manual") and field %}Archer {{ "is the default but has" if st == "no_suggestions" else "was added with" }} no suggestions URL, so the address bar shows none. Open its <b>⋮</b> menu, choose <b>Edit</b> and paste the Suggestions URL below{% if st == "manual" %}, then make it the default{% endif %}.
+  {%- elif st == "no_suggestions" and setup.detected %}Archer is the default but was added by hand, so the address bar shows no suggestions. Make the other Archer the default{% if not setup.active %} (activate it under <b>Inactive shortcuts</b> first){% endif %}, then delete this one.
+  {%- elif st == "no_suggestions" %}Archer is the default but was added by hand, so the address bar shows no suggestions. Delete it, then follow the steps below.
+  {%- elif st == "found" %}Archer is ready to add{% if not setup.active %}: activate it under <b>Inactive shortcuts</b>, then{% else %}:{% endif %} make it the default.
+  {%- elif st == "manual" %}Archer was added by hand, so it can't give suggestions. Delete it, then follow the steps below.
+  {%- else %}Archer isn't added yet.{% endif -%}
+</p>
+{% endif %}
+{%- endmacro %}
+
 {% macro browser_list(browsers) -%}
 <div class="c-list c-browsers" data-browsers>
   {% for b in browsers %}
   <div class="c-browser">
     {{ logo("b-" ~ b.id, b.name) }}
-    <div class="c-browser-text"><b>{{ b.name }}</b>{% if b.default %}<em class="c-badge">Default</em>{% endif %}<p>{{ "Opens its search engine settings" if b.chromium else "Search settings, then add Archer from its address bar" }}</p></div>
+    <div class="c-browser-text"><b>{{ b.name }}</b>{% if b.default %}<em class="c-badge">Default</em>{% endif %}<p>{{ "Opens its search engine settings" if b.chromium else "Search settings, then add Archer from its address bar" }}</p>{{ search_state(b.archer, b.suggest_field) }}</div>
     <button type="button" class="c-button" data-browser="{{ b.id }}">Open settings</button>
   </div>
   {% else %}

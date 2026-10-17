@@ -1,0 +1,103 @@
+{% from "macros.html" import hero_badge, link_chip, site_badge %}
+{# Video game panel. Wikidata gives the facts, platforms, store links, critic scores and trailer; archer.js
+   adds Steam's price, reviews, players, screenshots and PC requirements and CheapShark's PC deals from
+   /api/game after the page is up. #}
+{% set e = v.hero.data %}
+{% set g = e.game or {} %}
+<section class="hero hero-entity hero-game" data-game data-game-appid="{{ g.steam }}" data-game-title="{{ e.title }}">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, extra=(g.year|string if g.year else "")) }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+    <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
+  </div>
+
+  <div class="gm-grid">
+    <div class="gm-media">
+      <div class="gm-stage" data-gm-stage>
+        {% if g.trailer %}
+        <div class="player-pane gm-trailer is-active" data-embed="https://www.youtube-nocookie.com/embed/{{ g.trailer }}?autoplay=1&rel=0" data-kind="youtube">
+          <button type="button" class="player-facade" aria-label="Play the trailer"><img src="https://i.ytimg.com/vi/{{ g.trailer }}/hqdefault.jpg" alt="" referrerpolicy="no-referrer"><span class="player-play"><svg><use href="#i-play"/></svg></span></button>
+        </div>
+        {% elif e.image %}
+        <img class="gm-cover" src="{{ e.image }}" alt="{{ e.title }}" referrerpolicy="no-referrer" data-gm-cover>
+        {% else %}
+        <div class="gm-placeholder" data-gm-cover><svg><use href="#u-gamepad"/></svg></div>
+        {% endif %}
+      </div>
+      <div class="gm-shots" data-gm-shots hidden></div>
+    </div>
+
+    <aside class="gm-side">
+      <section class="gm-card gm-buy" aria-label="Price">
+        <p class="gm-label"><svg><use href="#u-coins"/></svg>Price</p>
+        <div class="gm-price" data-gm-price>{% if g.steam %}<span class="skeleton-text"></span>{% else %}<span class="muted">Checking Steam…</span>{% endif %}</div>
+        <ul class="gm-deals" data-gm-deals hidden></ul>
+        {% if g.stores %}
+        <div class="gm-stores">
+          {% for s in g.stores %}<a class="gm-store" href="{{ s.url }}">{{ site_badge(s.host) }}<span>{{ s.label }}</span>{% if s.search %}<small>Search</small>{% endif %}</a>{% endfor %}
+        </div>
+        {% endif %}
+      </section>
+      <section class="gm-card gm-scores" aria-label="Ratings">
+        <p class="gm-label"><svg><use href="#u-star"/></svg>Ratings</p>
+        <div class="gm-reviews" data-gm-reviews hidden></div>
+        <div class="gm-critics" data-gm-critics>
+          {% for s in g.scores %}<span class="gm-critic"><strong>{{ s.score.split('/')[0] }}</strong>{% if '/' in s.score %}<small>/{{ s.score.split('/')[1] }}</small>{% endif %}<span>{{ s.outlet }}</span></span>{% endfor %}
+        </div>
+        <p class="gm-players" data-gm-players hidden></p>
+      </section>
+    </aside>
+  </div>
+
+  <div class="tiles gm-tiles">
+    {% for t in e.tiles %}
+    <div class="tile">
+      <span class="tile-label"><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</span>
+      <span class="tile-value{% if t.value|length > 22 %} is-long{% endif %}">{{ t.value[:1]|upper }}{{ t.value[1:] }}</span>
+      {% if t.sub %}<span class="tile-sub">{{ t.sub }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="gm-chips">
+    {% for p in g.platforms %}<a class="tag-chip" href="/search?q={{ (e.title ~ ' ' ~ p)|qs }}"><svg><use href="#u-gamepad"/></svg>{{ p }}</a>{% endfor %}
+    {% for r in g.ratings %}<span class="tag-chip gm-rating"><svg><use href="#u-shield"/></svg>{{ r }}</span>{% endfor %}
+    <span class="gm-features" data-gm-features></span>
+  </div>
+
+  {% if g.previous or g.next %}
+  <nav class="gm-series" aria-label="Series">
+    {% if g.previous %}<a class="meaning-chip" href="/search?q={{ g.previous|qs }}"><small>Previous</small>{{ g.previous }}</a>{% endif %}
+    {% if g.next %}<a class="meaning-chip" href="/search?q={{ g.next|qs }}"><small>Next</small>{{ g.next }}</a>{% endif %}
+  </nav>
+  {% endif %}
+
+  <details class="gm-reqs" data-gm-reqs hidden>
+    <summary><span class="about-label"><svg><use href="#u-cpu"/></svg>PC requirements</span><span class="about-toggle"><span class="about-more">Show</span><span class="about-less">Hide</span><svg><use href="#u-chevron"/></svg></span></summary>
+    <div class="gm-reqs-body" data-gm-reqs-body></div>
+  </details>
+
+  {% if e.extract or e.facts %}
+  <details class="about" open>
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">
+      {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+      {% if e.facts %}<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <p class="hero-source">Facts from Wikipedia and Wikidata. Prices, reviews and players from Steam; PC deals from CheapShark (US stores, in US dollars).</p>
+</section>

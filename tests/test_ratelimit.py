@@ -133,10 +133,22 @@ def client(tmp_path):
 def test_results_page_shows_the_rate_limit_banner(client):
     html = client.get("/search", params={"q": "why do cats knead"}).text
     banner = re.search(r'<div class="rl-banner".*?</button>', html, re.S)[0]
-    assert "SearXNG rate limit reached" in banner and "Searching with DuckDuckGo for now" in banner
-    assert "--c: #fb542b" in banner and "Brave" in banner and "too many requests" in banner     # Brave's own colour
-    assert "--c: #4285f4" in banner and "Google" in banner and "Startpage" in banner and "data-rl-close" in banner
+    assert "SearXNG is rate-limited · Searching with DuckDuckGo for now" in banner and "--rl: #3050ff" in banner
+    assert 'data-rl-key="searxng"' in banner and "data-rl-close" in banner
+    # SearXNG's own engines named "brave" and "google" are not the Brave or Google providers, which aren't set up.
+    assert not re.search(r"Brave|Google|Startpage", banner)
     assert "Official guide" in html                                                             # DuckDuckGo's results
+
+
+def test_banner_names_only_limited_providers_that_are_set_up(client, monkeypatch):
+    searxng.note_limit("DuckDuckGo", "CAPTCHA", "duckduckgo")
+    searxng.note_limit("Brave Search", "HTTP 429", "brave")                 # left over from a key since removed
+    html = client.get("/search", params={"q": "why do cats knead"}).text
+    banner = re.search(r'<div class="rl-banner".*?</button>', html, re.S)[0]
+    assert "SearXNG and DuckDuckGo are rate-limited" in banner and "Brave" not in banner
+    monkeypatch.setattr(settings, "brave_api_key", "k")
+    html = client.get("/search", params={"q": "why do cats knead"}).text
+    assert "Brave Search" in re.search(r'<div class="rl-banner".*?</button>', html, re.S)[0]   # once it has a key, it can be named
 
 
 def test_strips_and_ai_research_work_on_duckduckgo_alone(client, monkeypatch):
@@ -155,3 +167,81 @@ def test_engine_variants_share_one_banner_entry():
     for engine in ("brave", "brave.images", "google cse", "google news", "startpage images"):
         searxng.note_limit(engine, "Suspended: too many requests")
     assert sorted(e["engine"] for e in searxng.active_limits()) == ["brave", "google", "startpage"]
+
+
+def test_only_real_rate_limits_count():
+    for reason in ("Suspended: too many requests", "Suspended: CAPTCHA", "HTTP error 429", "Google's daily query limit is used up",
+                   "Brave's rate limit or monthly credit is used up", "Quota exceeded"):
+        assert searxng.RATE_LIMITED.search(reason), reason
+    for reason in ("timeout", "result limit reached for this page", "SearXNG returned HTTP 500"):
+        assert not searxng.RATE_LIMITED.search(reason), reason
+
+
+def test_case_and_spacing_variants_share_one_searxng_call():
+    upstream = Upstream(searxng_down=False)
+    s = search(upstream)
+
+    async def run():
+        await s.search("dune", "news")
+        await s.search("  Dune ", "news")   # the entity panel's top story asks with the article's title
+        await s.search("DUNE", "news")
+    asyncio.run(run())
+    assert upstream.calls.count("127.0.0.1") == 1
+
+
+def test_a_working_nothing_found_is_cached_but_a_rate_limit_is_not():
+    calls = []
+
+    def empty(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"results": [], "unresponsive_engines": []})
+    s = search(empty)
+    asyncio.run(s.search("zzqx nothing", "news"))
+    asyncio.run(s.search("zzqx nothing", "news"))
+    assert len(calls) == 1
+
+    limited = Upstream(searxng_down=True)
+    s = search(limited)
+    settings.search_fallback = False
+    asyncio.run(s.search("anything"))
+    asyncio.run(s.search("anything"))
+    assert limited.calls.count("127.0.0.1") == 2
+
+
+def test_only_real_rate_limits_count():
+    for reason in ("Suspended: too many requests", "Suspended: CAPTCHA", "HTTP error 429", "Google's daily query limit is used up",
+                   "Brave's rate limit or monthly credit is used up", "Quota exceeded"):
+        assert searxng.RATE_LIMITED.search(reason), reason
+    for reason in ("timeout", "result limit reached for this page", "SearXNG returned HTTP 500"):
+        assert not searxng.RATE_LIMITED.search(reason), reason
+
+
+def test_case_and_spacing_variants_share_one_searxng_call():
+    upstream = Upstream(searxng_down=False)
+    s = search(upstream)
+
+    async def run():
+        await s.search("dune", "news")
+        await s.search("  Dune ", "news")   # the entity panel's top story asks with the article's title
+        await s.search("DUNE", "news")
+    asyncio.run(run())
+    assert upstream.calls.count("127.0.0.1") == 1
+
+
+def test_a_working_nothing_found_is_cached_but_a_rate_limit_is_not(monkeypatch):
+    calls = []
+
+    def empty(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"results": [], "unresponsive_engines": []})
+    s = search(empty)
+    asyncio.run(s.search("zzqx nothing", "news"))
+    asyncio.run(s.search("zzqx nothing", "news"))
+    assert len(calls) == 1
+
+    monkeypatch.setattr(settings, "search_fallback", False)
+    limited = Upstream(searxng_down=True)
+    s = search(limited)
+    asyncio.run(s.search("anything"))
+    asyncio.run(s.search("anything"))
+    assert limited.calls.count("127.0.0.1") == 2

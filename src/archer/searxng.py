@@ -19,6 +19,8 @@ import httpx
 from archer.config import settings
 
 CACHE_TTL = 600  # seconds
+# Pictures and videos for a query barely change within the hour; web results and news stay at ten minutes.
+CACHE_TTLS = {"images": 3600, "videos": 3600}
 _CACHE_MAX = 256
 SUGGEST_MIN = 2
 SUGGEST_MAX_LENGTH = 300
@@ -87,8 +89,9 @@ class SearchResponse:
 
 # ------------------------------------------------------------- rate limits
 # Engine suspensions inside SearXNG ("Suspended: too many requests", "CAPTCHA", "access denied") and
-# provider errors (429, used-up credits, DuckDuckGo's bot check) all count.
-RATE_LIMITED = re.compile(r"suspend|too many|captcha|access denied|rate.?limit|\b429\b|credits|used up|limit", re.I)
+# provider errors (429, used-up credits or quota, DuckDuckGo's bot check) all count. Not a bare "limit":
+# that also matched errors that aren't rate limits.
+RATE_LIMITED = re.compile(r"suspend|too many|captcha|access denied|rate.?limit|\b429\b|credits|quota|used up", re.I)
 COOLDOWN = 600       # seconds a rate-limited provider is skipped
 SHOWN_FOR = 3600     # seconds a rate limit stays in the banner after it was last seen
 _limits: dict[str, dict] = {}
@@ -164,6 +167,7 @@ class Search:
 
     async def search(self, q: str, category: str = "general", page: int = 1) -> SearchResponse:
         # Search preferences are part of the key, so changing them never serves stale results.
+        q = " ".join(q.split())
         key = self._key(q, category, page)
         if key not in self._search_pending:
             task = asyncio.create_task(self._search(q, category, page))
@@ -174,14 +178,15 @@ class Search:
     @staticmethod
     def _key(q, category, page):
         from archer import websearch
-        return (q, category, page, settings.safesearch, settings.search_language, settings.home_country,
+        # Engines ignore case and spacing, so "Dune" (the panel's news and pictures) shares "dune"'s search.
+        return (" ".join(q.split()).casefold(), category, page, settings.safesearch, settings.search_language, settings.home_country,
                 websearch.backend(), settings.search_fallback)
 
     async def _search(self, q: str, category: str = "general", page: int = 1) -> SearchResponse:
         from archer import websearch
         key = self._key(q, category, page)
         hit = self._cache.get(key)
-        if hit and time.monotonic() - hit[0] < CACHE_TTL:
+        if hit and time.monotonic() - hit[0] < CACHE_TTLS.get(category, CACHE_TTL):
             return hit[1]
 
         name = websearch.backend()
@@ -221,7 +226,8 @@ class Search:
         if first and out.results and out.provider != name.split(":")[0]:
             why = "is rate-limited" if first[1] == "rate-limited" else f"didn't answer ({first[1]})"
             out.notice = f"{first[0]} {why}, so these results are from {websearch.LABELS.get(out.provider, out.provider)}."
-        if out.results or out.answers:  # don't pin an empty, rate-limited response
+        # Keep answers and a working provider's "nothing found"; never pin a failed or rate-limited response.
+        if out.results or out.answers or not (out.error or limited or out.redirect):
             if len(self._cache) >= _CACHE_MAX:
                 self._cache.pop(next(iter(self._cache)))
             self._cache[key] = (time.monotonic(), out)

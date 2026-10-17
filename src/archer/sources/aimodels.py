@@ -417,28 +417,36 @@ def _plot(population: list[Point], cast: list[tuple[Model, str]], score, percent
           baseline: float | None = None, by_price: bool = False) -> dict:
     """Score against release date, or against API price when the chart's models have prices.
 
-    Every other result is a faint dot; the highlighted cast is labelled on top. On the price axis
-    a dashed line joins the best-value models: nothing else scores higher for less."""
+    Only the highlighted models are drawn, and the axes fit them, so the chart reads at a glance.
+    `population` (everything else Epoch tested) only counts towards the caption. On the price axis a
+    dashed line joins the best-value models shown: none of them scores higher for less."""
     if by_price:
         cast = [(m, role) for m, role in cast if m.price]
-        pts = [p for p in population if p.price]
-        xs = [math.log10(p.price) for p in pts] + [math.log10(m.price) for m, _ in cast]
+        xs = [math.log10(m.price) for m, _ in cast]
         x0, x1 = min(xs) - .12, max(xs) + .12
         if x1 - x0 < 1:
             mid = (x0 + x1) / 2
             x0, x1 = mid - .5, mid + .5
         xof = lambda price: math.log10(price)  # noqa: E731
     else:
-        start = date.fromordinal(focus.toordinal() - 2 * 365)  # two years of context keeps the recent cluster legible
-        pts = [p for p in population if p.released >= start]
-        dates = [p.released for p in pts] + [m.released for m, _ in cast]
-        x0, x1 = min(dates).toordinal() - 20, max(dates).toordinal() + 20
+        dates = [m.released for m, _ in cast]
+        x0, x1 = min(dates).toordinal() - 30, max(dates).toordinal() + 30
+        if x1 - x0 < 240:  # at least eight months, so close releases don't sprawl across the width
+            mid = (x0 + x1) // 2
+            x0, x1 = mid - 120, mid + 120
         xof = lambda d: d.toordinal()  # noqa: E731
-    values = [p.value for p in pts] + [score(m) for m, _ in cast]
+    values = [score(m) for m, _ in cast]
     if percent:
-        y0, y1, step = 0.0, 100.0, 25
+        # Zoom to the models shown, in steps of ten, keeping a little room above and below.
+        y0 = max(0.0, math.floor((min(values) - 5) / 10) * 10)
+        y1 = min(100.0, math.ceil((max(values) + 5) / 10) * 10)
+        if y1 - y0 < 30:
+            y0 = max(0.0, y1 - 30)
+        step = 10 if y1 - y0 <= 50 else 20 if y1 - y0 <= 80 else 25
     else:
-        y0, y1 = math.floor(min(values) / 10) * 10, math.ceil(max(values) / 10) * 10
+        y0, y1 = math.floor((min(values) - 2) / 10) * 10, math.ceil((max(values) + 2) / 10) * 10
+        if y1 - y0 < 20:  # close scores still get a readable band
+            y0, y1 = y0 - 10, y1 + 10
         step = 10 if y1 - y0 <= 50 else 20
     pw, ph = W - _L - _R, H - _T - _B
 
@@ -456,16 +464,12 @@ def _plot(population: list[Point], cast: list[tuple[Model, str]], score, percent
     if by_price:
         ticks = [t for t in _PRICE_TICKS if x0 < math.log10(t) < x1]
         xt = [{"x": sx(t), "label": _money(t).replace(".00", "")} for t in ticks]
-        dots = [{"x": sx(p.price), "y": sy(p.value),
-                 "title": f"{p.title} · {_money(p.price)}/M tokens · {fmt(p.value)}"} for p in pts]
     else:
         first, last = date.fromordinal(x0), date.fromordinal(x1)
         months = (1, 7) if (x1 - x0) < 2.5 * 365 else (1,)
         xt = [{"x": sx(d), "label": str(d.year) if d.month == 1 else f"Jul {d:%y}"}
               for y in range(first.year, last.year + 1) for mo in months
               if first < (d := date(y, mo, 1)) < last]
-        dots = [{"x": sx(p.released), "y": sy(p.value), "title": f"{p.title} · {p.released:%b %Y} · {fmt(p.value)}"}
-                for p in pts]
 
     marks = []
     for i, (m, role) in enumerate(cast):
@@ -478,16 +482,16 @@ def _plot(population: list[Point], cast: list[tuple[Model, str]], score, percent
     frontier = ""
     if by_price:
         best, line = -1.0, []
-        for price, value in sorted([(p.price, p.value) for p in pts] + [(m.price, score(m)) for m, _ in cast],
-                                  key=lambda pv: (pv[0], -pv[1])):
+        for price, value in sorted(((m.price, score(m)) for m, _ in cast), key=lambda pv: (pv[0], -pv[1])):
             if value > best:
                 best = value
                 line.append(f"{sx(price)},{sy(value)}")
         frontier = " ".join(line) if len(line) > 1 else ""
-    base = {"y": sy(baseline * 100), "label": f"Random guessing ({baseline * 100:.0f}%)"} if baseline else None
+    base = ({"y": sy(baseline * 100), "label": f"Random guessing ({baseline * 100:.0f}%)"}
+            if baseline and y0 <= baseline * 100 <= y1 else None)
     return {"w": W, "h": H, "left": _L, "right": W - _R, "top": _T, "bottom": _T + ph, "grid": grid, "xt": xt,
             "lx0": round(x0, 4) if by_price else "", "lx1": round(x1, 4) if by_price else "",
-            "dots": dots, "marks": marks, "base": base, "by_price": by_price, "frontier": frontier,
+            "marks": marks, "base": base, "by_price": by_price, "frontier": frontier,
             "x_label": "API price, $ per million tokens (3:1 input:output)" if by_price else ""}
 
 
@@ -585,23 +589,11 @@ def panel(cat: Catalog, model: Model, today: date | None = None, prices: dict | 
 
 
 def _pricing(model: Model, cast: list[tuple[Model, str]]) -> dict | None:
-    """The token-price section: this model's rates and how its blended price compares with the chart's."""
+    """This model's API rates per million tokens: input, output and the blended figure the charts use."""
     if not model.cost:
         return None
     c = model.cost
-    peers = sorted(((m, role) for m, role in cast if m.price), key=lambda mr: mr[0].price)
-    top = max(m.price for m, _ in peers)
-    compare = [{"name": m.name, "org": m.org, "site": org_site(m.org), "role": role, "usd": m.price,
-                "text": f"{_money(m.price)}", "width": round(max(m.price / top, .02) * 100, 1)} for m, role in peers]
-    cheaper = sum(1 for m, _ in peers if m.price < model.price)
-    return {
-        "input": c.input, "output": c.output, "cached": c.cached, "blended": c.blended,
-        "text": {"input": _money(c.input), "output": _money(c.output), "blended": _money(c.blended),
-                 "cached": _money(c.cached) if c.cached else ""},
-        "compare": compare if len(compare) >= 2 else [],
-        "rank_note": (f"Cheapest of the {len(peers)} priced models in this chart" if cheaper == 0 else
-                      f"{cheaper} of the {len(peers)} priced models here cost less") if len(peers) >= 2 else "",
-    }
+    return {"input": c.input, "output": c.output, "cached": c.cached, "blended": c.blended}
 
 
 def money(usd: float | str, fx_: dict | None = None) -> str:

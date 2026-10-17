@@ -23,6 +23,17 @@ if [ ! -d "$refpkg/build/.NETFramework/v4.8" ]; then
 fi
 fw="$refpkg/build/.NETFramework/v4.8"
 
+# Microsoft's WebView2 package (the installer window), pinned and checksummed like build.ps1.
+wv2_version=1.0.4191.47
+wv2_sha256=f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0
+wv2="$here/.refs/webview2-$wv2_version"
+if [ ! -f "$wv2/lib/net462/Microsoft.Web.WebView2.Core.dll" ]; then
+    curl -sSL "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$wv2_version/microsoft.web.webview2.$wv2_version.nupkg" -o "$obj/webview2.nupkg"
+    echo "$wv2_sha256  $obj/webview2.nupkg" | sha256sum -c --quiet - || { echo "The WebView2 package does not match its checksum" >&2; exit 1; }
+    rm -rf "$wv2" && mkdir -p "$wv2"
+    unzip -q -o "$obj/webview2.nupkg" -d "$wv2"
+fi
+
 version="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "$root/pyproject.toml" | head -1)"
 printf '%s' "$version" > "$obj/version.txt"
 
@@ -48,6 +59,10 @@ args=(/nologo /noconfig /nostdlib+ /target:winexe /optimize+ /platform:anycpu /l
       "/resource:$obj/payload.zip,payload.zip" "/resource:$obj/version.txt,version.txt")
 for f in "$here"/ui/*; do [ -f "$f" ] && args+=("/resource:$f,ui/$(basename "$f")"); done
 for f in "$root"/src/archer/static/fonts/*; do args+=("/resource:$f,ui/fonts/$(basename "$f")"); done
+for lib in Microsoft.Web.WebView2.Core Microsoft.Web.WebView2.WinForms; do
+    args+=("/resource:$wv2/lib/net462/$lib.dll,lib/$lib.dll" "/reference:$wv2/lib/net462/$lib.dll")
+done
+for arch in x64 arm64 x86; do args+=("/resource:$wv2/runtimes/win-$arch/native/WebView2Loader.dll,native/$arch/WebView2Loader.dll"); done
 for r in mscorlib System System.Core System.Drawing System.Windows.Forms System.Web.Extensions \
          System.IO.Compression System.IO.Compression.FileSystem System.Management Microsoft.CSharp; do
     args+=("/reference:$fw/$r.dll")

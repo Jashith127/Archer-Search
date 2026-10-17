@@ -141,7 +141,7 @@ async def cached_run(request: Request, run_id: str):
     if not owner or not run or run.owner != owner.id or not run.done:
         raise HTTPException(404, "Completed research not found.")
     chain, current = [], run
-    while current and len(chain) < 8 and current.owner == owner.id:
+    while current and len(chain) < 41 and current.owner == owner.id:
         chain.append({"question": current.question, "depth": current.depth, "events": current.events})
         current = ai.runs.get(current.parent)
     return JSONResponse({"snapshot": run.snapshot.id, "events": run.events, "question": run.question,

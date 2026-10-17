@@ -1,7 +1,8 @@
 {# Site badge: the real favicon (proxied through /api/favicon) over a lettered fallback. #}
-{% macro site_badge(host) -%}
+{# `cached` shows an icon only if Archer already has it, so the page never triggers a lookup. #}
+{% macro site_badge(host, cached=False) -%}
 {% set name = host|site_name %}
-<span class="badge" style="--h: {{ name|hue }}">{{ (name[:1] or "?")|upper }}<img class="badge-icon" src="/api/favicon/{{ host }}" alt="" loading="lazy"></span>
+<span class="badge" style="--h: {{ name|hue }}">{{ (name[:1] or "?")|upper }}<img class="badge-icon" src="/api/favicon/{{ host }}{% if cached %}?cached=1{% endif %}" alt="" loading="lazy"></span>
 {%- endmacro %}
 
 {# Type badge that opens every hero card: icon + kind, with optional context. #}

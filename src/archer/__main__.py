@@ -3,6 +3,10 @@
 - Started from the Start menu or a shortcut: opens the companion app (setup on first run).
 - Started by Windows at sign-in (`--startup`): waits the configured delay, optionally starts
   SearXNG's Docker container, then does what Settings → Startup says (tray only by default).
+
+When Archer manages SearXNG's container it starts Docker Desktop itself, in the background, and
+takes over Docker's own sign-in entry (which opens the dashboard) while Archer starts with Windows.
+The tray menu can start and stop Docker.
 """
 
 import argparse
@@ -83,15 +87,43 @@ def _show(url: str) -> None:
         open_app(url)
 
 
+def _manages_docker() -> bool:
+    return bool(settings.searxng_container) and settings.search_provider == "searxng"
+
+
 def _run_tray(server: uvicorn.Server, thread: threading.Thread, restart: threading.Event,
-              view: str | None, notify: bool) -> bool:
+              view: str | None, notify: bool, docker_boot: threading.Thread | None = None) -> bool:
     """Show the tray icon at once, while the server is still importing; returns False if it never started."""
     import pystray
 
-    from archer import autostart
+    from archer import autostart, companion
     from archer.icon import make_icon
 
+    show_docker = _manages_docker() and companion.docker_available()
+
     failed = threading.Event()
+    # "running", "stopped", "starting" or "stopping"; "" until the first check. Checks run off the
+    # menu's thread, since `docker info` can take seconds while the engine boots.
+    docker = {"state": ""}
+
+    def docker_job(state: str, work) -> None:
+        def run():
+            docker["state"] = state
+            tray.update_menu()
+            work()
+            docker["state"] = "running" if companion.docker_running() else "stopped"
+            tray.update_menu()
+        threading.Thread(target=run, daemon=True).start()
+
+    def docker_label(item) -> str:
+        return {"starting": "Docker is starting…", "stopping": "Docker is stopping…",
+                "running": "Stop Docker"}.get(docker["state"], "Start Docker")
+
+    def docker_click(icon, item):
+        if docker["state"] == "running":
+            docker_job("stopping", companion.stop_docker)
+        else:
+            docker_job("starting", lambda: companion.start_container(settings.searxng_container))
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
@@ -123,11 +155,16 @@ def _run_tray(server: uvicorn.Server, thread: threading.Thread, restart: threadi
     def ready(icon):
         icon.visible = True
         threading.Thread(target=boot, daemon=True).start()
+        if show_docker:
+            # Follow the start main() began, or just learn whether the engine is up.
+            docker_job("starting" if docker_boot else "", docker_boot.join if docker_boot else lambda: None)
 
     menu = pystray.Menu(
         pystray.MenuItem("Open Archer", lambda: _show(_companion_url()), default=True),
         pystray.MenuItem("Search", lambda: webbrowser.open(settings.base_url + "/")),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem(docker_label, docker_click, visible=show_docker,
+                         enabled=lambda item: docker["state"] in ("running", "stopped")),
         pystray.MenuItem("Start with Windows", toggle_autostart, checked=lambda item: autostart.enabled()),
         pystray.MenuItem("Restart", restart_app),
         pystray.MenuItem("Quit", lambda icon, item: stop(icon)),
@@ -164,10 +201,15 @@ def main() -> None:
             autostart.refresh()  # older entries lack --startup; keep the registry pointing at this install
         except OSError:
             pass
-    if settings.searxng_container and settings.search_provider == "searxng":
-        from archer import companion
+    if _manages_docker():
+        from archer import autostart, companion
+        # Archer starts Docker hidden; Docker's own sign-in entry would open its dashboard too.
+        companion.quiet_docker_desktop(take_over_autostart=sys.platform == "win32" and autostart.enabled())
         # In the background: Docker can take a while, and the fallback covers searches meanwhile.
-        threading.Thread(target=companion.start_container, args=(settings.searxng_container,), daemon=True).start()
+        docker_boot = threading.Thread(target=companion.start_container, args=(settings.searxng_container,), daemon=True)
+        docker_boot.start()
+    else:
+        docker_boot = None
 
     # Search URLs contain private queries; do not write them into the tray app's log.
     server = uvicorn.Server(uvicorn.Config("archer.app:app", host=settings.host, port=settings.port, access_log=False))
@@ -187,7 +229,8 @@ def main() -> None:
             server.should_exit = True
     else:
         restart = threading.Event()
-        if not _run_tray(server, thread, restart, view, notify=args.startup and settings.startup_notify):
+        if not _run_tray(server, thread, restart, view, notify=args.startup and settings.startup_notify,
+                         docker_boot=docker_boot):
             _fail()
         thread.join(timeout=5)
         if restart.is_set():

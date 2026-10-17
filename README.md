@@ -7,15 +7,17 @@ OpenRouter, a local Ollama model, or nothing at all. See [concept-note.md](conce
 
 **[Download Archer for Windows](https://github.com/Jashith127/Archer-Search/releases/download/v0.1/ArcherSetup.exe)** · [Release notes](https://github.com/Jashith127/Archer-Search/releases/tag/v0.1)
 
-![Archer's custom Windows installer, with a full-background animation and guided setup](docs/screenshots/installer-welcome.png)
+![Archer Setup opening on its hero: the pixel Archer mark assembled from a dot field](docs/screenshots/installer-hero.png)
 
 ## Install (one time)
 
 Download **ArcherSetup.exe** from [v0.1](https://github.com/Jashith127/Archer-Search/releases/tag/v0.1), then double-click it. You need Windows 10 or 11, an internet connection and at least 1 GB of free space. Setup downloads Python and dependencies through uv automatically; no separate Python or uv installation is needed.
 
-The installer checks your PC, lets you choose the install folder and startup behavior, installs Archer, adds desktop and Start menu shortcuts, and opens the companion setup. If Docker Desktop is installed, it can set up a local SearXNG container; otherwise it uses DuckDuckGo. Docker is optional. Remove an installer-based installation through Windows **Installed apps → Archer → Uninstall**.
+Setup is one frameless window. Pick where results come from: SearXNG running on this PC (no Docker) or DuckDuckGo, both keyless, or Google (Serper) or Brave with an API key you can paste now or later. Optionally change the folder and whether Archer starts with Windows, then install. Afterwards you can try a search, open Archer's own setup and copy the details your browser needs. **Installed apps → Archer → Uninstall** opens the same window to remove Archer, keeping your settings and history unless you choose otherwise.
 
-![The installer hands configuration over to Archer's companion app](docs/screenshots/installer-configure.png)
+![Choosing where results come from](docs/screenshots/installer-welcome.png)
+
+![Archer installed, with a search box and the next steps](docs/screenshots/installer-done.png)
 
 ### Install from source
 
@@ -233,9 +235,9 @@ uv run archer --no-tray      # foreground server, Ctrl+C to stop
 uv run pytest
 ```
 
-Build the Windows installer with `powershell -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1`. It uses Windows' .NET Framework C# compiler and embeds the current application source, lockfile, installer UI and fonts into `installer/dist/ArcherSetup.exe`. Runtime dependencies are downloaded during installation.
+Build the Windows installer with `powershell -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1`. It uses Windows' .NET Framework C# compiler and embeds the current application source, lockfile, installer UI, fonts and Microsoft's WebView2 wrappers (fetched once from NuGet, pinned and checksummed, into `installer/.refs`) into `installer/dist/ArcherSetup.exe`. The window is WebView2 in a borderless form; on a PC without the WebView2 runtime it falls back to a Chromium `--app` window (force that with `--browser-window`). Runtime dependencies are downloaded during installation.
 
-For an isolated installer UI check, start `installer/dist/ArcherSetup.exe --dry --no-integrate --dev-port 4791 --dir C:\Archer` and the companion fixture below, then run `node tests/installer.browser.cjs` with Playwright available. The screenshots above were captured from this preview and a fresh test configuration.
+For an isolated installer UI check, start `installer/dist/ArcherSetup.exe --dry --no-integrate --dev-port 4791 --dir C:\Archer` (add `--uninstall` for the removal screens; `--dry` never changes anything) and the companion fixture below, then run `node tests/installer.browser.cjs` with Playwright available. The screenshots above were captured from this preview and a fresh test configuration.
 
 Offline browser checks (set `NODE_PATH` to a Playwright installation if needed):
 

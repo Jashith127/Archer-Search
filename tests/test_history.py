@@ -12,7 +12,7 @@ from archer.app import app
 from archer.config import settings
 from archer.embed import LEXICAL, words
 from archer.history import History
-from archer.personalize import Personalizer, closeness, site_pref
+from archer.personalize import Personalizer, average_linkage, closeness, site_pref
 from archer.searxng import Result, SearXNG
 
 from test_app import BASE, fake, offline, searx_handler
@@ -108,6 +108,27 @@ def test_delete_clear_and_prune(store):
     assert store.delete_query("nothing") == 0
 
 
+def test_clearing_a_range_takes_searches_repeated_in_it(store):
+    now = time.time()
+    repeated = store.record_search("rash on arm", now=now - 3 * 86400)
+    store.record_search("rash on arm", now=now - 600)  # the same search again today: a new entry
+    store._x("UPDATE searches SET last_at=? WHERE id=?", (now - 60, repeated))  # or an older one touched lately
+    kept = store.record_search("weather tomorrow", now=now - 3 * 86400)
+    store.mark_unrelated("weather tomorrow", "rash on arm")
+    store.clear(since=now - 3600)
+    assert [e["q"] for e in store.entries()] == ["weather tomorrow"] and store.search(kept)
+    assert store.unrelated_to("weather tomorrow") == set()
+
+
+def test_removed_history_is_overwritten_on_disk(store):
+    assert store.db.execute("PRAGMA secure_delete").fetchone()[0] == 1
+    sid = store.record_search("a very private search")
+    store.delete_search(sid)
+    store.scrub()
+    raw = b"".join(p.read_bytes() for p in store.path.parent.glob("h.sqlite3*"))
+    assert b"a very private search" not in raw
+
+
 def test_site_pref_covers_subdomains():
     prefs = {"example.com": 1, "pinterest.com": -2}
     assert site_pref("news.example.com", prefs) == 1
@@ -199,6 +220,30 @@ def test_topics_group_history(store):
     assert sizes == [2, 3]
 
 
+
+
+
+def test_topics_do_not_chain_through_a_shared_neighbour():
+    # a~b and b~c are close, a and c are not: a running centroid joins all three, average linkage doesn't.
+    sims = np.array([[1, .9, .1, 0], [.9, 1, .8, 0], [.1, .8, 1, 0], [0, 0, 0, 1]])
+    assert sorted(map(sorted, average_linkage(sims, 0.6))) == [[0, 1], [2], [3]]
+    assert average_linkage(np.zeros((0, 0)), 0.5) == []
+
+
+def test_topics_are_kept_until_history_changes(store, monkeypatch):
+    for q in ("1440p monitor", "monitor pixel density", "display resolution"):
+        store.record_search(q)
+    p = Personalizer(store, Concepts())
+    calls = []
+    clustered = average_linkage
+    monkeypatch.setattr("archer.personalize.average_linkage", lambda *a: calls.append(1) or clustered(*a))
+    first = run(p.topics())
+    assert run(p.topics()) == first and len(calls) == 1         # moving around the page: no regrouping
+    for q in ("pasta recipe", "carbonara cook"):
+        store.record_search(q, now=time.time() + 5)
+    assert sorted(t["size"] for t in run(p.topics())) == [2, 3] and len(calls) == 2
+
+
 # ------------------------------------------------------------------ HTTP
 
 @pytest.fixture
@@ -271,6 +316,25 @@ def test_history_page_and_guarded_changes(client):
     assert client.post("/api/history/forget", json={"q": "zendaya"}, headers=headers).status_code == 200
 
 
+def test_history_page_keeps_history_local(client, monkeypatch):
+    import archer.app as app_module
+    client.get("/search", params={"q": "zendaya"})
+    sid = app.state.history.entries()[0]["id"]
+    app.state.history.record_click(sid, "https://en.wikipedia.org/wiki/Zendaya", "Zendaya")
+    app.state.history._x("INSERT INTO clicks(search_id, url, title, host, at) VALUES (?,?,?,?,?)",
+                         (sid, "javascript:alert(1)", "Odd", "", time.time()))
+    response = client.get("/history")
+    html = response.text
+    assert response.headers["cross-origin-opener-policy"] == "same-origin" and response.headers["cache-control"] == "no-store"
+    assert 'href="javascript:' not in html and ">Odd<" in html
+    assert "/api/favicon/en.wikipedia.org?cached=1" in html
+    # A cached-only icon lookup never reaches an icon service.
+    app_module._favicons._data.clear()
+    called = []
+    monkeypatch.setattr(app.state, "ext", fake(lambda request: called.append(request.url) or offline(request)))
+    assert client.get("/api/favicon/en.wikipedia.org", params={"cached": 1}).status_code == 404 and called == []
+
+
 def test_history_page_search(client):
     client.get("/search", params={"q": "zendaya"})
     client.get("/search", params={"q": "weather tomorrow"})
@@ -295,10 +359,11 @@ def test_chosen_meaning_is_remembered(client, monkeypatch):
     assert seen[-1] == ""
 
 
-def test_home_lists_recent_searches(client):
+def test_home_and_results_leave_history_out(client):
     client.get("/search", params={"q": "zendaya"})
     html = client.get("/").text
-    assert "home-recent" in html and "zendaya" in html
+    assert "home-recent" not in html and "/search?q=zendaya" not in html
+    assert 'href="/history"' not in client.get("/search", params={"q": "zendaya"}).text.split("</header>")[0]
 
 
 def test_static_model_loads_from_the_data_folder(tmp_path):
@@ -423,3 +488,10 @@ def test_not_related_is_remembered_both_ways(client):
     assert "zendaya movies" in app.state.history.unrelated_to("zendaya euphoria")
     html = client.get("/search", params={"q": "zendaya movies"}).text
     assert 'data-unrelate="zendaya euphoria"' not in html
+
+
+def test_suggest_keeps_relevance_aligned_with_past_searches(client):
+    client.get("/search", params={"q": "zendaya euphoria"})
+    data = client.get("/suggest", params={"q": "zen"}).json()
+    relevance = data[4]["google:suggestrelevance"]
+    assert len(relevance) == len(data[1]) <= 8 and relevance[0] == max(relevance)

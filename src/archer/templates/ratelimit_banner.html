@@ -1,21 +1,17 @@
-{# Rate-limit marquee: shown on every results page while an engine or provider is (or was, within the hour)
-   rate-limited, until dismissed. Dismissal is remembered per set of engines, so a new limit shows again. #}
+{# Rate-limit marquee: one flat brand-colour bar with scrolling text and an X, shown while a search provider
+   that is set up is (or was, within the hour) rate-limited. It names only those providers. Dismissal is
+   remembered per set of providers, so a new limit shows again. #}
 {% set limits = rate_limits() %}
 {% if limits %}
-{% set inside = limits|selectattr("provider", "in", ["", "searxng"])|list %}
-{% set headline = ("SearXNG" if inside else limits[0].label) ~ " rate limit reached" %}
-{% set using = provider_label if v.response and v.response.notice else "" %}
+{% set names = limits|map(attribute="label")|list %}
+{% set who = names|join(" and ") if names|length < 3 else names[:-1]|join(", ") ~ " and " ~ names[-1] %}
+{% set using = provider_label if v.response and v.response.notice and v.response.provider not in limits|map(attribute="key")|list else "" %}
+{% set message = who ~ (" is" if names|length == 1 else " are") ~ " rate-limited" ~ (" · Searching with " ~ using ~ " for now" if using else " · Archer will try again in a few minutes") %}
 <div class="rl-banner" data-rl-banner data-rl-key="{{ limits|map(attribute='key')|sort|join(',') }}" style="--rl: {{ limits[0].color }}" role="status" hidden>
   <div class="rl-track" aria-hidden="true">
-    {% for _ in range(2) %}
-    <div class="rl-run">
-      <span class="rl-headline"><svg viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6v3.6M8 11.6v.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{{ headline }}</span>
-      {% for e in limits %}<span class="rl-engine" style="--c: {{ e.color }}"><i></i>{{ e.label }}<small>{{ e.reason }}</small></span>{% endfor %}
-      <span class="rl-next">{% if using %}Searching with {{ using }} for now{% else %}Archer switches to the next free search provider automatically{% endif %}</span>
-    </div>
-    {% endfor %}
+    {% for _ in range(4) %}<span class="rl-run">{{ message }}</span>{% endfor %}
   </div>
-  <p class="sr-only">{{ headline }}: {% for e in limits %}{{ e.label }} ({{ e.reason }}){% if not loop.last %}, {% endif %}{% endfor %}. {% if using %}Searching with {{ using }} for now.{% endif %}</p>
+  <p class="sr-only">{{ message }}.</p>
   <button type="button" class="rl-close" data-rl-close aria-label="Dismiss rate limit notice" title="Dismiss"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
 </div>
 {% endif %}

@@ -73,7 +73,7 @@ namespace ArcherSetup
                 DataReceivedEventHandler handler = (s, e) =>
                 {
                     if (e.Data == null) return;
-                    // Docker and uv redraw progress with carriage returns; keep the last frame.
+                    // uv redraws progress with carriage returns; keep the last frame.
                     string line = e.Data;
                     int cr = line.LastIndexOf('\r');
                     if (cr >= 0) line = line.Substring(cr + 1);
