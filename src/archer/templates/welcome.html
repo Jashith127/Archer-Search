@@ -1,41 +1,44 @@
 {% extends "companion_base.html" %}
 {% from "pixel_mark.html" import pixel_mark %}
-{% from "companion_fields.html" import field, named, switch, action_row, copy_rows, browser_list %}
+{% from "companion_fields.html" import field, named, switch, feature, action_row, group_head, browser_list, browser_guides, icon %}
 {% block title %}Set up Archer{% endblock %}
 {% block body_class %}c-welcome{% endblock %}
 {% block content %}
+{#- Setup is laid out like Archer's home page: the mark, a greeting in white and grey, mono step
+    labels with the composer's dotted underline under the current one, and the dot field below. -#}
 {% set steps = [("hello", "Welcome"), ("search", "Search"), ("ai", "AI"), ("personal", "Personal"), ("startup", "Startup"), ("browser", "Browser"), ("done", "Done")] %}
 {% macro step_head(n, title, text) -%}
 <header class="w-head"><p class="w-kicker">Step {{ n }} of {{ steps|length }}</p><h1>{{ title }}</h1><p>{{ text }}</p></header>
 {%- endmacro %}
+<canvas class="c-field c-field--home w-field" aria-hidden="true"></canvas>
 <div class="w-shell">
   <header class="w-top">
-    <span class="c-brand">{{ pixel_mark(18) }}<b>Archer</b><small>Setup</small></span>
+    <span class="brand">{{ pixel_mark(28) }}</span>
+    <ol class="w-steps" aria-label="Setup steps">
+      {% for key, label in steps %}<li data-step-dot="{{ key }}"><span>{{ label }}</span></li>{% endfor %}
+    </ol>
     <a class="w-skip" href="/app" data-skip>Skip setup</a>
   </header>
-  {# One segment per step; the current one is filled, earlier ones dimmer. Labels are for screen readers. #}
-  <ol class="w-steps" aria-label="Setup steps">
-    {% for key, label in steps %}<li data-step-dot="{{ key }}"><span class="c-sr">{{ label }}</span></li>{% endfor %}
-  </ol>
 
   <main class="w-main">
     {# ------------------------------------------------------------- hello #}
-    <section class="w-step" data-step="hello">
-      {{ pixel_mark(40, 'w-mark') }}
-      <header class="w-head"><h1>Welcome to Archer</h1><p>A search engine that runs on your computer. Clean results, answer cards, and AI only when you want it. This takes about two minutes, and you can change everything later.</p></header>
-      <dl class="c-list c-facts">
-        <div><dt>Private</dt><dd>No account, no history, no tracking. Settings stay in a file on this computer.</dd></div>
-        <div><dt>Results</dt><dd>DuckDuckGo with no setup, your own SearXNG, Google or Brave.</dd></div>
-        <div><dt>AI</dt><dd>DeepSeek, OpenAI, Claude, OpenRouter, local models with Ollama, or none at all.</dd></div>
-      </dl>
+    <section class="w-step w-step--hello" data-step="hello">
+      {{ pixel_mark(56, 'w-mark') }}
+      <h1 class="w-greeting">Welcome to Archer. <span>A search engine that runs on your computer.</span></h1>
+      <p class="w-lede">Clean results, answer cards, and AI only when you want it. This takes about two minutes, and you can change everything later.</p>
+      <div class="w-facts">
+        <div class="tile w-fact"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#c-lock"/></svg>Private</span><p>No account and no tracking. Settings and history stay in files on this computer.</p></div>
+        <div class="tile w-fact"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#c-search"/></svg>Results</span><p>DuckDuckGo with no setup, your own SearXNG, Google or Brave.</p></div>
+        <div class="tile w-fact w-fact--ai"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#u-sparkle"/></svg>AI</span><p>DeepSeek, OpenAI, Claude, OpenRouter, local models with Ollama, or none at all.</p></div>
+      </div>
     </section>
 
     {# ------------------------------------------------------------ search #}
     <section class="w-step" data-step="search" hidden>
       {{ step_head(2, "Where should results come from?", "DuckDuckGo works right away. Pick another provider if you have one.") }}
-      <p class="w-found" data-searxng-found hidden><span class="c-dot is-ok" aria-hidden="true"></span>Found SearXNG running at <code data-searxng-url></code>.</p>
-      <div class="c-list">
-        {{ named("search_provider", intro, items, "-w") }}
+      <p class="w-found" data-searxng-found hidden><span class="c-live" aria-hidden="true"></span>Found SearXNG running at <code data-searxng-url></code>.</p>
+      {{ named("search_provider", intro, items, "-w") }}
+      <div class="c-list c-list--attached">
         {% for name in ("searxng_url", "google_backend", "serper_api_key", "google_api_key", "google_cx", "brave_api_key", "search_fallback") %}{{ named(name, intro, items, "-w") }}{% endfor %}
       </div>
     </section>
@@ -43,24 +46,25 @@
     {# ---------------------------------------------------------------- ai #}
     <section class="w-step" data-step="ai" hidden>
       {{ step_head(3, "Choose an AI for answers", "DeepSeek is recommended: fast, cited, and a typical answer costs a fraction of a cent. You can skip AI entirely.") }}
-      <div class="c-list">
-        <div class="c-row c-row--switch">
-          <div class="c-label"><label for="w-no-ai">Skip AI for now</label><p>Archer works as a normal search engine. Turn AI on later in the companion app.</p></div>
-          <div class="c-control"><input type="checkbox" role="switch" class="c-switch" id="w-no-ai" data-no-ai></div>
-        </div>
-      </div>
-      <div class="c-list" data-ai-fields>
-        {{ named("ai_provider", intro, items, "-w") }}
+      {{ feature("w-no-ai", "Skip AI for now", "Archer works as a normal search engine. Turn AI on later in the companion app.", "", 'data-no-ai') }}
+      {{ named("ai_provider", intro, items, "-w") }}
+      <div class="c-list c-list--attached" data-ai-fields>
         {% for name in ("deepseek_api_key", "openai_api_key", "anthropic_api_key", "openrouter_api_key", "ai_api_key", "ai_model", "ollama_context") %}{{ named(name, intro, items, "-w") }}{% endfor %}
         {% for spec in intro.ai[2] if spec.name == "ai_base_url" %}{{ field(spec, items, "-w") }}{% endfor %}
-        <div class="c-row" data-ai-mode-row>
-          <div class="c-label"><span class="c-label-text" id="w-mode-label">When should AI answer?</span><p>Only when you ask, or automatically for searches that read like questions.</p></div>
-          <div class="c-control">
-            <div class="c-segment" role="radiogroup" aria-labelledby="w-mode-label">
-              <label><input type="radio" name="ai-mode" value="classic"{% if state.ai.mode != 'balanced' %} checked{% endif %}><span>When I ask</span></label>
-              <label><input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}><span>Automatically</span></label>
-            </div>
-          </div>
+      </div>
+      <div data-ai-fields-mode>
+        {{ group_head("When should AI answer?", "Only when you ask, or automatically for searches that read like questions.") }}
+        <div class="c-modes" role="radiogroup" aria-label="When should AI answer?" data-ai-mode-row>
+          <label class="c-mode">
+            <input type="radio" name="ai-mode" value="classic"{% if state.ai.mode != 'balanced' %} checked{% endif %}>
+            <span class="c-mode-art" aria-hidden="true"><i class="c-art-bar"></i><i class="c-art-prompt"></i><i class="c-art-line"></i><i class="c-art-line is-short"></i><i class="c-art-line"></i><i class="c-art-line is-short"></i></span>
+            <span class="c-mode-text"><b><svg aria-hidden="true"><use href="#u-list"/></svg>When I ask</b><small>Results only, with Quick answer and AI Mode a click away.</small></span>
+          </label>
+          <label class="c-mode c-mode--ai">
+            <input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}>
+            <span class="c-mode-art" aria-hidden="true"><i class="c-art-bar"></i><i class="c-art-answer"><i></i><i class="is-short"></i></i><i class="c-art-line"></i><i class="c-art-line is-short"></i></span>
+            <span class="c-mode-text"><b><svg aria-hidden="true"><use href="#u-scale"/></svg>Automatically</b><small>A short answer above the results for questions.</small></span>
+          </label>
         </div>
       </div>
     </section>
@@ -70,17 +74,17 @@
       {{ step_head(4, "Make it yours", "Used for weather, local time, prices and regional results when a search doesn't say. Suggested from this computer's time zone and language.") }}
       <div class="c-list">
         {% for name in ("home_location", "home_country", "home_currency", "search_language", "safesearch") %}{{ named(name, intro, items, "-w") }}{% endfor %}
-        {% call action_row("Detect again", "Nothing is looked up online.") %}<button type="button" class="c-button" data-detect>Detect</button>{% endcall %}
+        {% call action_row("Detect again", "Nothing is looked up online.") %}<button type="button" class="c-button" data-detect><svg aria-hidden="true"><use href="#c-wand"/></svg>Detect</button>{% endcall %}
       </div>
     </section>
 
     {# ----------------------------------------------------------- startup #}
     <section class="w-step" data-step="startup" hidden>
       {{ step_head(5, "Start with Windows", "Your address bar needs Archer running to search. It sits quietly in the tray and uses very little memory.") }}
+      {% if state.autostart.available %}
+      {{ feature("w-autostart", "Start Archer when I sign in", "Recommended. No admin rights needed; turn it off any time.", "", 'data-autostart data-autostart-setup', true, "ok") }}
+      {% endif %}
       <div class="c-list">
-        {% if state.autostart.available %}
-        {{ switch("w-autostart", "Start Archer when I sign in", "Recommended. No admin rights needed; turn it off any time.", 'data-autostart data-autostart-setup', true) }}
-        {% endif %}
         {% for name in ("startup_open", "startup_notify") %}{{ named(name, intro, items, "-w") }}{% endfor %}
         <div data-when="search_provider=searxng">{{ named("searxng_container", intro, items, "-w") }}</div>
       </div>
@@ -90,33 +94,19 @@
     <section class="w-step" data-step="browser" hidden>
       {{ step_head(6, "Search from your address bar", "Browsers don't let apps change their search engine, so this takes a few clicks. Archer opens the right page for you.") }}
       {{ browser_list(state.app.browsers) }}
-      <div class="c-group-head"><h2>Helium</h2></div>
-      <div class="c-list c-guide">
-        <ol class="c-steps">
-          <li>In <b>Search engine → Manage search engines and site search</b>, find <b>Site search</b> and click <b>Add</b>. Already added? Open Archer's <b>⋮</b> menu and choose <b>Edit</b>.</li>
-          <li>Copy in the values below, including the suggestions URL.</li>
-          <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
-        </ol>
-        {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL with %s in place of query", suggest_url)]) }}
-      </div>
-      <div class="c-group-head"><h2>Other Chromium browsers</h2><p>Chrome, Edge, Brave and Opera. Their Add dialog has no suggestions field, so let the browser find Archer instead.</p></div>
-      <div class="c-list c-guide">
-        <ol class="c-steps">
-          <li>Open <a href="/" target="_blank" rel="noopener">Archer's home page</a> once in the browser. It picks Archer up from there, with its suggestions.</li>
-          <li>In <b>Search engine → Manage search engines and site search</b>, find Archer under <b>Inactive shortcuts</b> and click <b>Activate</b>.</li>
-          <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>. You can edit its shortcut to <code>ar</code>.</li>
-        </ol>
-        <p class="c-foot">Don't use <b>Add</b> here: a hand-added Archer has no suggestions and stops the browser from picking up the real one. If you added it by hand, delete that entry and start again.</p>
-      </div>
+      {{ group_head("Add Archer") }}
+      {{ browser_guides(state.app.browsers, search_url, suggest_url) }}
     </section>
 
     {# -------------------------------------------------------------- done #}
-    <section class="w-step" data-step="done" hidden>
-      <header class="w-head"><h1>You're all set</h1><p>Archer is running in the tray, near the clock. Right-click its icon to open this app or quit.</p></header>
-      <ul class="c-list w-summary" data-summary></ul>
+    <section class="w-step w-step--hello" data-step="done" hidden>
+      {{ pixel_mark(56, 'w-mark') }}
+      <h1 class="w-greeting">You're all set. <span>Archer is running in the tray, near the clock.</span></h1>
+      <p class="w-lede">Right-click its icon to open this app or quit.</p>
+      <ul class="w-summary" data-summary></ul>
       <div class="w-actions-final">
-        <a class="c-button c-button--primary" href="/" target="_blank" rel="noopener">Start searching</a>
-        <a class="c-button" href="/app">Open the companion app</a>
+        <a class="c-button c-button--primary c-button--lg" href="/" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-search"/></svg>Start searching</a>
+        <a class="c-button c-button--lg" href="/app">Open the companion app</a>
       </div>
     </section>
 

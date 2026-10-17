@@ -1,77 +1,86 @@
 {% extends "companion_base.html" %}
 {% from "pixel_mark.html" import pixel_mark %}
-{% from "companion_fields.html" import field, named, section_fields, switch, action_row, copy_rows, browser_list %}
+{% from "companion_fields.html" import field, named, section_fields, switch, feature, action_row, group_head, copy_rows, browser_list, browser_guides, logo, icon %}
 {% block title %}Archer{% endblock %}
 {% block body_class %}c-app{% endblock %}
 {% block content %}
 {% set p = state.providers %}
-{# A pane opens with a title and one line; groups are a small heading over an inset list. #}
-{% macro head(key, title, text="") -%}
-<header class="c-head"><h1 id="h-{{ key }}">{{ title }}</h1>{% if text %}<p>{{ text }}</p>{% endif %}</header>
-{%- endmacro %}
-{% macro group_head(title, text="") -%}
-<div class="c-group-head"><h2>{{ title }}</h2>{% if text %}<p>{{ text }}</p>{% endif %}</div>
+{#- Laid out like a results page: the same header (mark, search bar, icon tabs), then each section
+    opens with a hero — a mono badge and the setting's current value set large — over flat rows
+    divided by hairlines. Panels are kept for the few things that are panels on the results page. -#}
+{% macro hero(key, badge, glyph, title, sub="", live="", extra="") -%}
+<header class="hero c-hero">
+  <span class="hero-badge"><span class="hero-badge-icon"><svg aria-hidden="true"><use href="{{ glyph }}"/></svg></span>{{ badge }}{% if extra %}<span class="hero-badge-extra">{{ extra }}</span>{% endif %}</span>
+  <h1 class="hero-title" id="h-{{ key }}"{% if live %} data-live="{{ live }}"{% endif %}>{{ title }}</h1>
+  {% if sub %}<p class="hero-sub">{{ sub }}</p>{% endif %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</header>
 {%- endmacro %}
 {% set tabs = [("overview", "Home", "#c-home"), ("search", "Search", "#c-search"), ("ai", "AI", "#u-sparkle"), ("personal", "Personal", "#u-user"),
   ("startup", "Startup", "#c-power"), ("browser", "Browser", "#c-browser"), ("connections", "Connections", "#u-link"), ("data", "Privacy", "#u-shield")] %}
+{% set ready_in = state.app.browsers|selectattr("archer")|selectattr("archer.state", "equalto", "ready")|list %}
+{% set suggest_names = {"searxng": "Your SearXNG", "duckduckgo": "DuckDuckGo", "google": "Google", "off": "Nowhere"} %}
 
-<header class="c-toolbar">
-  <div class="c-toolbar-row">
-    <span class="c-brand">{{ pixel_mark(18) }}<b>Archer</b><small>Companion</small></span>
-    <p class="c-running"><span class="c-dot is-ok" aria-hidden="true"></span><span data-running-url>{{ state.system.running_url|replace('http://', '') }}</span></p>
+<header class="top c-top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#overview" aria-label="Companion home">{{ pixel_mark(32) }}</a>
+    <form class="searchbar" action="/search" method="get" target="_blank" role="search">
+      <svg class="searchbar-lead" aria-hidden="true"><use href="#i-search"/></svg>
+      <input name="q" placeholder="Search with Archer" autocomplete="off" spellcheck="false" aria-label="Search with Archer">
+      <button type="submit" class="searchbar-go"><svg aria-hidden="true"><use href="#i-search"/></svg>Search</button>
+    </form>
+    <p class="c-running" title="Archer is running at this address"><span class="c-live" aria-hidden="true"></span><span data-running-url>{{ state.system.running_url|replace('http://', '') }}</span></p>
   </div>
-  <nav class="c-tabs" aria-label="Sections">
-    {% for key, label, ic in tabs %}
-    <a href="#{{ key }}" data-nav="{{ key }}"><span class="c-tab-icon"><svg aria-hidden="true"><use href="{{ ic }}"/></svg>{% if key in ("search", "ai") %}<i class="c-nav-dot" data-nav-dot="{{ key }}" aria-hidden="true"></i>{% endif %}</span>{{ label }}</a>
-    {% endfor %}
+  <nav class="wrap tabs" aria-label="Sections">
+    <div class="tabs-list">
+      {% for key, label, ic in tabs %}
+      <a class="tab" href="#{{ key }}" data-nav="{{ key }}"><svg class="tab-icon" aria-hidden="true"><use href="{{ ic }}"/></svg>{{ label }}{% if key in ("search", "ai") %}<i class="c-nav-dot" data-nav-dot="{{ key }}" aria-hidden="true"></i>{% endif %}</a>
+      {% endfor %}
+    </div>
+    <span class="c-top-note">Companion · Archer {{ state.system.version }}</span>
   </nav>
 </header>
 
+<div class="wrap">
 <main class="c-main">
   <div class="c-banner" data-restart-banner{% if not state.system.restart_pending %} hidden{% endif %} role="status">
+    <svg aria-hidden="true"><use href="#c-restart"/></svg>
     <p><strong>Restart to finish.</strong> Archer will move to <span data-saved-url>{{ state.system.saved_url|replace('http://', '') }}</span>.</p>
     <button type="button" class="c-button" data-restart>Restart now</button>
   </div>
 
   {# --------------------------------------------------------------- home #}
   <section class="c-pane" data-pane="overview" aria-labelledby="h-overview">
-    {{ head("overview", "Home", "Archer is running on this computer. Changes here apply straight away unless they say otherwise.") }}
-    <form class="c-quick" action="/search" method="get" target="_blank" role="search">
-      <svg aria-hidden="true"><use href="#c-search"/></svg>
-      <input name="q" type="search" placeholder="Search with Archer" aria-label="Search with Archer" autocomplete="off">
-    </form>
-
-    {{ group_head("Status") }}
-    <div class="c-list">
-      <a class="c-status" href="#search" data-tile="search">
-        <span class="c-status-key">Search</span>
-        <span class="c-status-val"><b data-tile-title>{{ p.search.label }}</b><span data-tile-text>{% if p.search.ready %}{{ "Falls back to DuckDuckGo if it fails" if p.search.fallback and p.search.id != 'duckduckgo' else "Ready" }}{% else %}{{ p.search.missing }}{% endif %}</span></span>
-        <span class="c-state {{ 'is-ok' if p.search.ready else 'is-warn' }}" data-tile-badge>{{ "Ready" if p.search.ready else "Needs setup" }}</span>
-        <svg class="c-go" aria-hidden="true"><use href="#c-next"/></svg>
+    <header class="c-greet">
+      {{ pixel_mark(48, 'c-greet-mark') }}
+      <h1 id="h-overview"><span data-greeting>Hello.</span> <span class="c-greet-ask" data-greet-status>Here's how Archer is set up.</span></h1>
+    </header>
+    <div class="c-tiles">
+      <a class="tile c-tile" href="#search" data-tile="search">
+        <span class="c-tile-top"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#c-search"/></svg>Search</span><span class="c-state {{ 'is-ok' if p.search.ready else 'is-warn' }}" data-tile-badge>{{ "Ready" if p.search.ready else "Needs setup" }}</span></span>
+        <b class="tile-value" data-tile-title>{{ p.search.label }}</b>
+        <span class="tile-sub" data-tile-text>{% if p.search.ready %}{{ "Falls back to DuckDuckGo if it fails" if p.search.fallback and p.search.id != 'duckduckgo' else "Ready" }}{% else %}{{ p.search.missing }}{% endif %}</span>
       </a>
-      <a class="c-status" href="#ai" data-tile="ai">
-        <span class="c-status-key">AI answers</span>
-        <span class="c-status-val"><b data-tile-title>{{ p.ai.label }}{% if p.ai.model %} · {{ p.ai.model }}{% endif %}</b><span data-tile-text>{% if not p.ai.ready %}{{ p.ai.missing }}{% elif not state.ai.consent %}Ready · turned off until you enable it{% else %}{{ "Balanced answers on" if state.ai.mode == "balanced" else "Answers when you ask" }}{% endif %}</span></span>
-        <span class="c-state {{ 'is-warn' if not p.ai.ready else 'is-ok' if state.ai.consent else '' }}" data-tile-badge>{{ "Needs setup" if not p.ai.ready else "On" if state.ai.consent else "Off" }}</span>
-        <svg class="c-go" aria-hidden="true"><use href="#c-next"/></svg>
+      <a class="tile c-tile c-tile--ai" href="#ai" data-tile="ai">
+        <span class="c-tile-top"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#u-sparkle"/></svg>AI answers</span><span class="c-state {{ 'is-warn' if not p.ai.ready else 'is-ok' if state.ai.consent else '' }}" data-tile-badge>{{ "Needs setup" if not p.ai.ready else "On" if state.ai.consent else "Off" }}</span></span>
+        <b class="tile-value" data-tile-title>{{ p.ai.label }}{% if p.ai.model %} · {{ p.ai.model }}{% endif %}</b>
+        <span class="tile-sub" data-tile-text>{% if not p.ai.ready %}{{ p.ai.missing }}{% elif not state.ai.consent %}Ready · turned off until you enable it{% else %}{{ "Balanced answers on" if state.ai.mode == "balanced" else "Answers when you ask" }}{% endif %}</span>
       </a>
-      <a class="c-status" href="#startup" data-tile="startup">
-        <span class="c-status-key">Startup</span>
-        <span class="c-status-val"><b data-tile-title>{{ "Starts with Windows" if state.autostart.enabled else "Starts when you open it" }}</b><span data-tile-text>{{ "Search works as soon as you sign in" if state.autostart.enabled else "Turn on Start with Windows so searches always work" }}</span></span>
-        <span class="c-state {{ 'is-ok' if state.autostart.enabled else '' }}" data-tile-badge>{{ "On" if state.autostart.enabled else "Off" }}</span>
-        <svg class="c-go" aria-hidden="true"><use href="#c-next"/></svg>
+      <a class="tile c-tile" href="#startup" data-tile="startup">
+        <span class="c-tile-top"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#c-power"/></svg>Startup</span><span class="c-state {{ 'is-ok' if state.autostart.enabled else '' }}" data-tile-badge>{{ "On" if state.autostart.enabled else "Off" }}</span></span>
+        <b class="tile-value" data-tile-title>{{ "Starts with Windows" if state.autostart.enabled else "Starts when you open it" }}</b>
+        <span class="tile-sub" data-tile-text>{{ "Search works as soon as you sign in" if state.autostart.enabled else "Turn on Start with Windows so searches always work" }}</span>
       </a>
-      <a class="c-status" href="#browser">
-        <span class="c-status-key">Browser</span>
-        <span class="c-status-val"><b>Default search engine</b><span>Make Archer the search in your address bar</span></span>
-        <span class="c-state"></span>
-        <svg class="c-go" aria-hidden="true"><use href="#c-next"/></svg>
+      <a class="tile c-tile" href="#browser">
+        <span class="c-tile-top"><span class="tile-label"><svg class="tile-icon" aria-hidden="true"><use href="#c-browser"/></svg>Browser</span>{% if ready_in %}<span class="c-state is-ok">Default</span>{% else %}<span class="c-state">Set up</span>{% endif %}</span>
+        <b class="tile-value">{% if ready_in %}Default in {{ ready_in|map(attribute="name")|join(", ") }}{% else %}Default search engine{% endif %}</b>
+        <span class="tile-sub">{{ "Address-bar suggestions come from Archer" if ready_in else "Make Archer the search in your address bar" }}</span>
       </a>
     </div>
 
     {{ group_head("AI use today", "Daily limits are under AI.") }}
-    <div class="c-list c-usage" data-usage>
-      <div class="c-meter"><span class="c-meter-label">Spend</span><strong data-usage-usd>—</strong><span class="c-bar"><span data-usage-usd-bar></span></span></div>
+    <div class="c-usage" data-usage>
+      <div class="c-meter"><span class="c-meter-label">Spent</span><strong data-usage-usd>—</strong><span class="c-bar"><span data-usage-usd-bar></span></span></div>
       <div class="c-meter"><span class="c-meter-label">Tokens</span><strong data-usage-tokens>—</strong><span class="c-bar"><span data-usage-tokens-bar></span></span></div>
       <p class="c-usage-note" data-usage-note></p>
     </div>
@@ -86,16 +95,26 @@
 
   {# ------------------------------------------------------------- search #}
   <section class="c-pane" data-pane="search" aria-labelledby="h-search" hidden>
-    {{ head("search", "Search", intro.search[1]) }}
+    {% call hero("search", "Search", "#c-search", p.search.label, intro.search[1], "search_provider") %}
+    <div class="c-chain" data-when="search_fallback=true;search_provider=searxng,google,brave" aria-label="Fallback order">
+      <span class="c-chain-node"><span class="c-chain-n">1</span><b data-chain-provider>{{ p.search.label }}</b></span>
+      <span class="c-chain-line" aria-hidden="true"><em>if it fails</em></span>
+      <span class="c-chain-node"><span class="c-chain-n">2</span><b>DuckDuckGo</b></span>
+    </div>
+    {% endcall %}
     {{ group_head("Provider", "DuckDuckGo works with no setup. The others need an address or a key.") }}
-    <div class="c-list">
-      {{ named("search_provider", intro, items, "-search") }}
+    {{ named("search_provider", intro, items, "-search") }}
+    <div class="c-list c-list--attached">
       {% for name in ("searxng_url", "google_backend", "serper_api_key", "google_api_key", "google_cx", "brave_api_key") %}{{ named(name, intro, items, "-search") }}{% endfor %}
       {% call action_row("Check DuckDuckGo", "Runs one search to make sure DuckDuckGo is answering this computer.", "search_provider=duckduckgo", true) %}<button type="button" class="c-button c-test" data-test="duckduckgo">Test</button>{% endcall %}
     </div>
+
     {{ group_head("Results") }}
-    <div class="c-list">{% for name in ("search_fallback", "safesearch", "search_language") %}{{ named(name, intro, items, "-search") }}{% endfor %}</div>
-    {{ group_head("Suggestions") }}
+    <div class="c-list">
+      {% for name in ("search_fallback", "safesearch", "search_language") %}{{ named(name, intro, items, "-search") }}{% endfor %}
+    </div>
+
+    {{ group_head("Suggestions", "What appears under the address bar as you type.") }}
     <div class="c-list">
       {{ named("suggest_provider", intro, items, "-search") }}
       <details class="c-advanced"><summary>Advanced</summary>
@@ -106,124 +125,154 @@
 
   {# ----------------------------------------------------------------- ai #}
   <section class="c-pane" data-pane="ai" aria-labelledby="h-ai" hidden>
-    {{ head("ai", "AI", intro.ai[1]) }}
-    {{ group_head("Answers") }}
+    {{ hero("ai", "AI answers", "#u-sparkle", p.ai.label ~ (" · " ~ p.ai.model if p.ai.model else ""), intro.ai[1], "", "Ready" if p.ai.ready else "Needs a key") }}
+    {{ feature("ai-consent", "Use AI", "When you ask, Archer sends your question, the sources it found and earlier turns to your provider. Search works fully without it.", "", 'data-ai-consent', state.ai.consent, "ai") }}
+
+    {{ group_head("Default level", "Balanced answers searches that read like questions, automatically. AI Mode always starts with a click.") }}
+    <div class="c-modes" role="radiogroup" aria-label="Default level" data-ai-mode-row>
+      <label class="c-mode">
+        <input type="radio" name="ai-mode" value="classic"{% if state.ai.mode == 'classic' %} checked{% endif %}>
+        <span class="c-mode-art" aria-hidden="true"><i class="c-art-bar"></i><i class="c-art-prompt"></i><i class="c-art-line"></i><i class="c-art-line is-short"></i><i class="c-art-line"></i><i class="c-art-line is-short"></i></span>
+        <span class="c-mode-text"><b><svg aria-hidden="true"><use href="#u-list"/></svg>Classic</b><small>Results only. AI starts when you click Quick answer or AI Mode.</small></span>
+      </label>
+      <label class="c-mode c-mode--ai">
+        <input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}>
+        <span class="c-mode-art" aria-hidden="true"><i class="c-art-bar"></i><i class="c-art-answer"><i></i><i class="is-short"></i></i><i class="c-art-line"></i><i class="c-art-line is-short"></i></span>
+        <span class="c-mode-text"><b><svg aria-hidden="true"><use href="#u-scale"/></svg>Balanced</b><small>A short answer above the results when a search reads like a question.</small></span>
+      </label>
+    </div>
     <div class="c-list">
-      {{ switch("ai-consent", "Use AI", "When you ask, Archer sends your question, the sources it found and earlier turns to your provider. Search works fully without it.", 'data-ai-consent', state.ai.consent) }}
-      <div class="c-row" data-ai-mode-row>
-        <div class="c-label"><span class="c-label-text" id="mode-label">Default level</span><p>Balanced answers searches that read like questions, automatically. AI Mode always starts with a click.</p></div>
-        <div class="c-control">
-          <div class="c-segment" role="radiogroup" aria-labelledby="mode-label">
-            <label><input type="radio" name="ai-mode" value="classic"{% if state.ai.mode == 'classic' %} checked{% endif %}><span>Classic</span></label>
-            <label><input type="radio" name="ai-mode" value="balanced"{% if state.ai.mode == 'balanced' %} checked{% endif %}><span>Balanced</span></label>
-          </div>
-        </div>
-      </div>
       {{ switch("ai-small", "Start Balanced answers small", "Shows a few lines and images with a “Show full answer” button. Saved in this window.", 'data-local="archer-ai-small" data-local-default="1"') }}
     </div>
+
     {{ group_head("Provider", "Keys are saved in .env on this computer.") }}
-    <div class="c-list">
-      {{ named("ai_provider", intro, items, "-ai") }}
+    {{ named("ai_provider", intro, items, "-ai") }}
+    <div class="c-list c-list--attached">
       {% for spec in intro.ai[2] if spec.kind != "cards" and not spec.advanced %}{{ field(spec, items, "-ai") }}{% endfor %}
       <details class="c-advanced"><summary>Research and address</summary>
         {% for spec in intro.ai[2] if spec.advanced %}{{ field(spec, items, "-ai") }}{% endfor %}
         {% for spec in intro.ai_advanced[2] %}{{ field(spec, items, "-ai_advanced") }}{% endfor %}
       </details>
     </div>
+
     {{ group_head(intro.limits[0], intro.limits[1]) }}
-    <div class="c-list c-usage" data-usage>
+    <div class="c-usage" data-usage>
       <div class="c-meter"><span class="c-meter-label">Spent today</span><strong data-usage-usd>—</strong><span class="c-bar"><span data-usage-usd-bar></span></span></div>
       <div class="c-meter"><span class="c-meter-label">Tokens today</span><strong data-usage-tokens>—</strong><span class="c-bar"><span data-usage-tokens-bar></span></span></div>
       <p class="c-usage-note" data-usage-note></p>
     </div>
-    <div class="c-list">{{ section_fields("limits", intro, items, "Pricing") }}</div>
+    <div class="c-limit-tiles">
+      {% for spec in intro.limits[2] if not spec.advanced %}{{ field(spec, items, "-limits", true) }}{% endfor %}
+    </div>
+    <div class="c-list">
+      <details class="c-advanced"><summary>Pricing</summary>
+        {% for spec in intro.limits[2] if spec.advanced %}{{ field(spec, items, "-limits") }}{% endfor %}
+      </details>
+    </div>
   </section>
 
   {# ----------------------------------------------------------- personal #}
   <section class="c-pane" data-pane="personal" aria-labelledby="h-personal" hidden>
-    {{ head("personal", "Personal", intro.personal[1]) }}
-    <div class="c-list">
-      {{ section_fields("personal", intro, items) }}
-      {% call action_row("Detect from this computer", "Fills location, country, currency and language from your time zone and language settings. Nothing is looked up online.") %}<button type="button" class="c-button" data-detect>Detect</button>{% endcall %}
-    </div>
+    {% call hero("personal", "Home", "#u-pin", items.home_location.value or "No home set", intro.personal[1], "home_location") %}
+    <dl class="c-facts" data-persona>
+      <div><dt>Country</dt><dd><span class="c-fact-mark" data-persona-code>··</span><span data-persona-country>—</span></dd></div>
+      <div><dt>Prices in</dt><dd><span class="c-fact-mark c-fact-mark--sym" data-persona-symbol>¤</span><span data-persona-currency>—</span></dd></div>
+      <div class="c-facts-act"><dt>From this computer</dt><dd><button type="button" class="c-button" data-detect title="Nothing is looked up online"><svg aria-hidden="true"><use href="#c-wand"/></svg>Detect</button></dd></div>
+    </dl>
+    {% endcall %}
+    <div class="c-list">{{ section_fields("personal", intro, items) }}</div>
+    <p class="c-foot">Detect fills location, country, currency and language from this computer's time zone and language settings. Nothing is looked up online.</p>
   </section>
 
   {# ------------------------------------------------------------ startup #}
   <section class="c-pane" data-pane="startup" aria-labelledby="h-startup" hidden>
-    {{ head("startup", "Startup", "Archer lives in the tray. Starting it with Windows means your address bar always has a search engine.") }}
+    {% call hero("startup", "Startup", "#c-power", "Starts with Windows" if state.autostart.enabled else "Starts when you open it", "Archer lives in the tray. Starting it with Windows means your address bar always has a search engine.") %}
+    <ol class="c-timeline" data-timeline aria-label="What happens when you sign in">
+      <li><span class="c-tl-dot"><svg aria-hidden="true"><use href="#c-user-in"/></svg></span><b>You sign in</b><small>Windows</small></li>
+      <li data-tl-wait><span class="c-tl-dot"><svg aria-hidden="true"><use href="#c-hourglass"/></svg></span><b data-tl-delay>No wait</b><small>Delay</small></li>
+      <li><span class="c-tl-dot c-tl-dot--mark">{{ pixel_mark(16) }}</span><b>Archer starts</b><small>Tray</small></li>
+      <li data-tl-notify><span class="c-tl-dot"><svg aria-hidden="true"><use href="#c-bell"/></svg></span><b>Notification</b><small>Ready</small></li>
+      <li><span class="c-tl-dot"><svg aria-hidden="true"><use href="#c-window" data-tl-open-icon/></svg></span><b data-tl-open>Stays in the tray</b><small>Then</small></li>
+    </ol>
+    {% endcall %}
+    {% if state.autostart.available %}
+    {{ feature("autostart", "Start with Windows", "Archer starts in the tray when you sign in. No admin rights needed.", "", 'data-autostart', state.autostart.enabled, "ok") }}
+    {% else %}
+    <p class="c-empty">Start with Windows is available when Archer runs on Windows.</p>
+    {% endif %}
     <div class="c-list">
-      {% if state.autostart.available %}
-      {{ switch("autostart", "Start with Windows", "Archer starts in the tray when you sign in. No admin rights needed.", 'data-autostart', state.autostart.enabled) }}
-      {% else %}
-      <p class="c-empty">Start with Windows is available when Archer runs on Windows.</p>
-      {% endif %}
       {% for name in ("startup_open", "startup_delay", "startup_notify") %}{{ named(name, intro, items, "-startup") }}{% endfor %}
     </div>
+
     {{ group_head("SearXNG", "Only matters if you run SearXNG in Docker." if state.app.docker else "Docker isn't installed, so this only matters if you add it later.") }}
     <div class="c-list">{{ named("searxng_container", intro, items, "-startup") }}</div>
+
     {{ group_head("Running", intro.system[1]) }}
+    <p class="c-address" aria-label="Archer's address"><span class="c-address-dim">http://</span><b data-address-host>archer.localhost</b><span class="c-address-dim">:</span><b data-address-port>4747</b><span class="c-address-dim">/search?q=</span></p>
     <div class="c-list">
-      {% call action_row("Restart Archer", "Reloads everything, including settings that can't change while running.") %}<button type="button" class="c-button" data-restart{% if not state.system.restart_available %} disabled title="Restart is available when Archer runs from its tray icon"{% endif %}>Restart</button>{% endcall %}
       {% for spec in intro.system[2] %}{{ field(spec, items, "-system") }}{% endfor %}
+      {% call action_row("Restart Archer", "Reloads everything, including settings that can't change while running.") %}<button type="button" class="c-button" data-restart{% if not state.system.restart_available %} disabled title="Restart is available when Archer runs from its tray icon"{% endif %}>Restart</button>{% endcall %}
     </div>
   </section>
 
   {# ------------------------------------------------------------ browser #}
   <section class="c-pane" data-pane="browser" aria-labelledby="h-browser" hidden>
-    {{ head("browser", "Browser", "Browsers don't let apps change their search engine, so this takes a few clicks. Archer opens the right settings page for you.") }}
+    {{ hero("browser", "Browser", "#c-browser", ("Default in " ~ ready_in|map(attribute="name")|join(", ")) if ready_in else "Search from your address bar", "Browsers don't let apps change their search engine, so this takes a few clicks. Archer opens the right settings page for you.") }}
     {{ group_head("Installed browsers") }}
     {{ browser_list(state.app.browsers) }}
-    {{ group_head("Helium") }}
-    <div class="c-list c-guide">
-      <ol class="c-steps">
-        <li>In <b>Search engine → Manage search engines and site search</b>, find <b>Site search</b> and click <b>Add</b>. Already added? Open Archer's <b>⋮</b> menu and choose <b>Edit</b>.</li>
-        <li>Copy in the values below, including the suggestions URL.</li>
-        <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>.</li>
-      </ol>
-      {{ copy_rows([("Name", "Archer"), ("Shortcut", "ar"), ("URL with %s in place of query", search_url), ("Suggestions URL with %s in place of query", suggest_url)]) }}
-    </div>
-    {{ group_head("Other Chromium browsers", "Chrome, Edge, Brave and Opera. Their Add dialog has no suggestions field, so let the browser find Archer instead.") }}
-    <div class="c-list c-guide">
-      <ol class="c-steps">
-        <li>Open <a href="/" target="_blank" rel="noopener">Archer's home page</a> once in the browser. It picks Archer up from there, with its suggestions.</li>
-        <li>In <b>Search engine → Manage search engines and site search</b>, find Archer under <b>Inactive shortcuts</b> and click <b>Activate</b>.</li>
-        <li>Open the <b>⋮</b> menu next to Archer and choose <b>Make default</b>. You can edit its shortcut to <code>ar</code>.</li>
-      </ol>
-      <p class="c-foot">Don't use <b>Add</b> here: a hand-added Archer has no suggestions and stops the browser from picking up the real one. If you added it by hand, delete that entry and start again.</p>
-    </div>
-    <p class="c-foot">If searches don't reach Archer, use <code>{{ fallback_search_url }}</code> instead.</p>
-    {{ group_head("Firefox") }}
-    <div class="c-list c-guide">
-      <ol class="c-steps">
-        <li>Open <a href="/" target="_blank" rel="noopener">Archer's home page</a> in Firefox.</li>
-        <li>Right-click the address bar and choose <b>Add “Archer”</b>.</li>
-        <li>In <b>Settings → Search</b>, choose Archer as the default search engine.</li>
-      </ol>
-    </div>
+    {{ group_head("Add Archer", "Only Helium's dialog has a suggestions field, so the steps differ.") }}
+    {{ browser_guides(state.app.browsers, search_url, suggest_url, fallback_search_url) }}
   </section>
 
   {# -------------------------------------------------------- connections #}
   <section class="c-pane" data-pane="connections" aria-labelledby="h-connections" hidden>
-    {{ head("connections", "Connections", intro.connections[1]) }}
+    {% call hero("connections", "Connections", "#u-link", "The Movie Database", "Optional. Film and TV cards already work from Wikidata; a free TMDB key makes them sharper.", "", "TMDB") %}
+    <div class="hero-links c-adds">
+      <span class="link-chip"><svg aria-hidden="true"><use href="#u-tv"/></svg>Where to watch in your country</span>
+      <span class="link-chip"><svg aria-hidden="true"><use href="#u-users"/></svg>Fuller cast and crew</span>
+    </div>
+    {% endcall %}
     <div class="c-list">{{ section_fields("connections", intro, items) }}</div>
   </section>
 
   {# --------------------------------------------------------------- data #}
   <section class="c-pane" data-pane="data" aria-labelledby="h-data" hidden>
-    {{ head("data", "Privacy & data", "This is everything that leaves the computer, and everything Archer stores on it.") }}
-    {{ group_head(intro.history[0], intro.history[1]) }}
-    <div class="c-list">
-      {{ section_fields("history", intro, items) }}
-      {% call action_row("Your history", state.history.searches ~ " searches and " ~ state.history.clicks ~ " opened results · matching with " ~ state.history.model.label ~ {"loading": " (loading)", "failed": " (unavailable, using word matching)"}.get(state.history.model.state, "")) %}<a class="c-button" href="/history" target="_blank" rel="noopener">Open</a> <button type="button" class="c-button c-button--danger" data-history-clear-all>Clear</button>{% endcall %}
+    {% call hero("data", "Privacy", "#u-shield", "Your history stays here", "This is everything that leaves the computer, and everything Archer stores on it.") %}
+    <div class="c-stats">
+      <div class="c-stat"><strong>{{ "{:,}".format(state.history.searches) }}</strong><span>searches</span></div>
+      <div class="c-stat"><strong>{{ "{:,}".format(state.history.clicks) }}</strong><span>opened results</span></div>
+      <div class="c-stat c-stat--model"><span class="c-stat-k">Matching with</span><span class="c-stat-v">{{ state.history.model.label }}{% if state.history.model.state == "loading" %} · loading{% elif state.history.model.state == "failed" %} · unavailable, using word matching{% endif %}</span></div>
     </div>
+    <div class="c-stat-actions"><a class="c-button" href="/history" target="_blank" rel="noopener">Open history ↗</a><button type="button" class="c-button c-button--danger" data-history-clear-all>Clear</button></div>
+    {% endcall %}
+
+    {{ group_head(intro.history[0], intro.history[1]) }}
+    <div class="c-list">{{ section_fields("history", intro, items) }}</div>
+
     {{ group_head("What leaves this computer") }}
-    <dl class="c-list c-facts">
-      <div><dt>Searches</dt><dd>Go to <span data-provider-name>{{ p.search.label }}</span>{% if p.search.fallback and p.search.id != 'duckduckgo' %}, and DuckDuckGo if it fails{% endif %}.</dd></div>
-      <div><dt>Suggestions</dt><dd>Come from {{ {"searxng": "your SearXNG", "duckduckgo": "DuckDuckGo", "google": "Google", "off": "nowhere (they're off)"}[p.search.suggest] }} as you type.</dd></div>
-      <div><dt>AI questions</dt><dd>Go to {{ p.ai.label }} only after you ask{% if p.ai.id == 'ollama' %}, and stay on this computer{% endif %}.</dd></div>
-      <div><dt>Cards</dt><dd>Read public sources like Wikipedia, Open-Meteo and OpenStreetMap, without cookies.</dd></div>
-      <div><dt>History</dt><dd>Never leaves it. The matching model is downloaded once; your searches are never sent to make vectors{% if items.semantic_model.value == 'ollama' %} (Ollama runs locally){% endif %}.</dd></div>
-    </dl>
+    <div class="c-flows">
+      <div class="c-flow">
+        <span class="c-flow-what">{{ icon("#c-search") }}<b>Searches</b></span><span class="c-flow-line" aria-hidden="true"></span>
+        <span class="c-flow-to">{{ logo(p.search.id, p.search.label, "sm") }}<span><span data-provider-name>{{ p.search.label }}</span>{% if p.search.fallback and p.search.id != 'duckduckgo' %}<small>and DuckDuckGo if it fails</small>{% endif %}</span></span>
+      </div>
+      <div class="c-flow{% if p.search.suggest == 'off' %} is-off{% endif %}">
+        <span class="c-flow-what">{{ icon("#u-list") }}<b>Suggestions</b></span><span class="c-flow-line" aria-hidden="true"></span>
+        <span class="c-flow-to">{% if p.search.suggest != "off" %}{{ logo(p.search.suggest, suggest_names[p.search.suggest], "sm") }}{% else %}{{ icon("#c-off") }}{% endif %}<span>{{ suggest_names[p.search.suggest] }}<small>{{ "they're off" if p.search.suggest == "off" else "as you type" }}</small></span></span>
+      </div>
+      <div class="c-flow c-flow--ai">
+        <span class="c-flow-what">{{ icon("#u-sparkle") }}<b>AI questions</b></span><span class="c-flow-line" aria-hidden="true"></span>
+        <span class="c-flow-to">{{ logo(p.ai.id, p.ai.label, "sm") }}<span>{{ p.ai.label }}<small>only after you ask{% if p.ai.id == 'ollama' %}, and stay on this computer{% endif %}</small></span></span>
+      </div>
+      <div class="c-flow">
+        <span class="c-flow-what">{{ icon("#u-layers") }}<b>Cards</b></span><span class="c-flow-line" aria-hidden="true"></span>
+        <span class="c-flow-to">{{ icon("#u-globe") }}<span>Public sources<small>Wikipedia, Open-Meteo, OpenStreetMap · no cookies</small></span></span>
+      </div>
+      <div class="c-flow c-flow--local">
+        <span class="c-flow-what">{{ icon("#u-clock") }}<b>History</b></span><span class="c-flow-line" aria-hidden="true"></span>
+        <span class="c-flow-to">{{ icon("#c-lock") }}<span>Never leaves<small>The matching model downloads once; your searches are never sent to make vectors{% if items.semantic_model.value == 'ollama' %} (Ollama runs locally){% endif %}</small></span></span>
+      </div>
+    </div>
+
     {{ group_head("Stored on this computer") }}
     <div class="c-list">
       <div class="c-row c-row--action">
@@ -235,17 +284,24 @@
         <div class="c-control"><button type="button" class="c-button" data-open="data">Open</button></div>
       </div>
       <div class="c-row c-row--action">
-        <div class="c-label"><span class="c-label-text">AI conversations</span><p>Kept in memory for 30 minutes. <span data-conversations>{{ state.system.conversations }}</span> right now.</p></div>
-        <div class="c-control"><button type="button" class="c-button c-button--danger" data-clear>Clear</button></div>
+        <div class="c-label"><span class="c-label-text">AI conversations</span><p>Kept in memory for 30 minutes, then forgotten.</p></div>
+        <div class="c-control"><span class="c-count"><b data-conversations>{{ state.system.conversations }}</b> now</span><button type="button" class="c-button c-button--danger" data-clear>Clear</button></div>
       </div>
     </div>
-    <p class="c-about">Archer {{ state.system.version }} · runs only on this computer</p>
   </section>
+
+  <footer class="status c-status">
+    <p>Archer {{ state.system.version }} · runs only on this computer · settings in <code>.env</code> · <a href="/" target="_blank" rel="noopener">Open Archer ↗</a></p>
+  </footer>
 </main>
+</div>
+<canvas class="serp-field c-field" aria-hidden="true"></canvas>
 
 <div class="c-savebar" data-savebar hidden role="region" aria-label="Unsaved changes">
-  <div class="c-savebar-row">
+  <div class="ai-prompt c-savebar-row">
+    {{ pixel_mark(18, 'ai-prompt-mark') }}
     <p><span data-dirty-count>1 change</span> not saved</p>
+    <span class="kbd" aria-hidden="true">Ctrl S</span>
     <button type="button" class="c-button c-button--quiet" data-discard>Discard</button>
     <button type="button" class="c-button c-button--primary" data-save>Save changes</button>
   </div>

@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------------------------------------------- field values
   const valueOf = row => {
     const kind = row.dataset.kind;
-    if (kind === "cards") return $("[data-input]:checked", row)?.value ?? "";
+    if (kind === "cards" || kind === "choice") return $("[data-input]:checked", row)?.value ?? "";
     if (kind === "switch") return $("[data-input]", row).checked ? "true" : "false";
     const input = $("[data-input]", row);
     if (kind === "secret") {
@@ -80,7 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const setValue = (name, value) => {
     for (const row of rows.filter(r => r.dataset.field === name)) {
-      if (row.dataset.kind === "cards") {
+      if (row.dataset.kind === "cards" || row.dataset.kind === "choice") {
         const radio = $(`[data-input][value="${CSS.escape(value)}"]`, row);
         if (radio) radio.checked = true;
       } else if (row.dataset.kind === "switch") {
@@ -101,6 +101,69 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   const applyWhen = () => {
     for (const node of $$("[data-when]")) node.hidden = !matches(node.dataset.when);
+  };
+
+  // ------------------------------------------------------------ live previews
+  // Small pictures of what the settings mean, redrawn on every edit.
+  const optionText = name => {
+    const row = rows.find(r => r.dataset.field === name && !r.closest("[hidden]")) || rows.find(r => r.dataset.field === name);
+    if (!row) return "";
+    if (row.dataset.kind === "cards" || row.dataset.kind === "choice") return $("[data-input]:checked", row)?.dataset.label || "";
+    const select = $("select", row);
+    return select ? select.options[select.selectedIndex]?.text || "" : "";
+  };
+  const symbolFor = code => {
+    try {
+      return new Intl.NumberFormat("en", { style: "currency", currency: code.toUpperCase(), currencyDisplay: "narrowSymbol" })
+        .formatToParts(0).find(part => part.type === "currency")?.value || code.toUpperCase();
+    } catch { return "¤"; }
+  };
+  const OPEN = { none: ["Stays in the tray", "#c-tray"], app: ["Opens this app", "#c-window"], search: ["Opens search", "#c-search"] };
+  const renderLive = () => {
+    for (const prefix of $$("[data-prefix]")) {
+      const value = $("select", prefix.parentElement)?.value || "";
+      prefix.textContent = prefix.dataset.prefix === "symbol" ? symbolFor(value) : value.toUpperCase();
+    }
+    for (const box of $$("[data-persona]")) {
+      const currency = current("home_currency"), country = current("home_country");
+      $("[data-persona-symbol]", box).textContent = symbolFor(currency || "usd");
+      $("[data-persona-currency]", box).textContent = optionText("home_currency").split(" · ")[1] || currency.toUpperCase();
+      $("[data-persona-code]", box).textContent = country.toUpperCase() || "··";
+      $("[data-persona-country]", box).textContent = optionText("home_country") || country;
+    }
+    // Hero titles show the value being chosen: a provider's name, the home town.
+    for (const title of $$("[data-live]")) {
+      const name = title.dataset.live;
+      const row = rows.find(r => r.dataset.field === name);
+      const text = row && ["cards", "choice", "select"].includes(row.dataset.kind) ? optionText(name) : current(name);
+      title.textContent = text || (name === "home_location" ? "No home set" : title.textContent);
+      title.classList.toggle("is-empty", !text);
+    }
+    const auto = $("[data-autostart]:not([data-autostart-setup])"), startupTitle = $("#h-startup");
+    if (auto && startupTitle) startupTitle.textContent = auto.checked ? "Starts with Windows" : "Starts when you open it";
+    for (const line of $$("[data-timeline]")) {
+      const delay = Number(current("startup_delay") || 0);
+      const [text, href] = OPEN[current("startup_open")] || OPEN.none;
+      $("[data-tl-delay]", line).textContent = delay ? `Waits ${delay >= 60 ? `${Math.floor(delay / 60)} min${delay % 60 ? ` ${delay % 60} s` : ""}` : `${delay} s`}` : "No wait";
+      $("[data-tl-wait]", line).classList.toggle("is-skipped", !delay);
+      $("[data-tl-notify]", line).classList.toggle("is-skipped", current("startup_notify") !== "true");
+      $("[data-tl-open]", line).textContent = text;
+      $("[data-tl-open-icon]", line)?.setAttribute("href", href);
+      const auto = $("[data-autostart]");
+      line.classList.toggle("is-off", Boolean(auto) && !auto.checked);
+    }
+    for (const node of $$("[data-address-host]")) node.textContent = current("public_host") || "archer.localhost";
+    for (const node of $$("[data-address-port]")) node.textContent = current("port") || "4747";
+    for (const node of $$("[data-chain-provider]")) node.textContent = optionText("search_provider");
+    for (const range of $$("[data-range]")) {
+      const input = $("[data-input]", range.closest("[data-field]"));
+      if (input.value !== "" && document.activeElement !== range) range.value = input.value;
+      range.style.setProperty("--c-fill", ((range.value - range.min) / (range.max - range.min) * 100) + "%");
+    }
+    for (const button of $$("[data-preset]")) {
+      const input = $("[data-input]", button.closest("[data-field]"));
+      button.classList.toggle("is-on", Number(input.value) === Number(button.dataset.preset));
+    }
   };
 
   // ------------------------------------------------------- provider details
@@ -163,6 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const savebar = $("[data-savebar]");
   const refreshDirty = () => {
     applyWhen();
+    renderLive();
     if (!savebar) return;
     const dirty = rows.filter(isDirty);
     rows.forEach(row => row.classList.toggle("is-dirty", dirty.includes(row)));
@@ -222,6 +286,17 @@ document.addEventListener("DOMContentLoaded", () => {
       event.currentTarget.setAttribute("aria-label", shown ? "Show key" : "Hide key");
     });
   }
+  // A slider and its number box are one setting: the box holds the value that is saved.
+  for (const range of $$("[data-range]")) {
+    const input = $("[data-input]", range.closest("[data-field]"));
+    range.addEventListener("input", () => { input.value = range.value; input.dispatchEvent(new Event("input")); });
+    range.addEventListener("change", () => input.dispatchEvent(new Event("change")));
+  }
+  for (const button of $$("[data-preset]")) {
+    const input = $("[data-input]", button.closest("[data-field]"));
+    button.addEventListener("click", () => { input.value = button.dataset.preset; input.dispatchEvent(new Event("input")); });
+  }
+
   // In setup, an unset key opens ready to paste.
   if (isSetup) {
     for (const row of rows.filter(r => r.dataset.kind === "secret" && !fieldState(r.dataset.field).set && !r.hasAttribute("data-locked"))) {
@@ -377,6 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.autostart = body;
     for (const box of $$("[data-autostart]")) box.checked = body.enabled;
     renderTiles();
+    renderLive();
     return body;
   };
   for (const box of $$("[data-autostart]:not([data-autostart-setup])")) {
@@ -543,7 +619,20 @@ document.addEventListener("DOMContentLoaded", () => {
     paint("startup", on ? "Starts with Windows" : "Starts when you open it",
       on ? "Search works as soon as you sign in" : "Turn on Start with Windows so searches always work", on ? "On" : "Off", on ? "ok" : "");
   }
+  // Home opens like Archer's home page: a greeting, then what needs a look, in grey.
+  function renderGreeting() {
+    const hello = $("[data-greeting]"), status = $("[data-greet-status]");
+    if (!hello) return;
+    const hour = new Date().getHours();
+    hello.textContent = hour < 5 ? "Good night." : hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.";
+    const p = state.providers, todo = [];
+    if (!p.search.ready) todo.push("search");
+    if (!p.ai.ready && state.ai.consent) todo.push("AI");
+    if (state.autostart?.available && !state.autostart.enabled) todo.push("startup");
+    status.textContent = !todo.length ? "Archer is running and set up." : `Archer is running. ${todo.join(" and ").replace(/^./, c => c.toUpperCase())} could use a look.`;
+  }
   function renderState() {
+    renderGreeting();
     syncAI();
     renderCardStatus();
     renderTiles();
@@ -576,9 +665,83 @@ document.addEventListener("DOMContentLoaded", () => {
     if (conversations) conversations.textContent = String(state.system.conversations);
   }
 
+  // The dot field from the foot of Archer's pages (dotField in archer.js, without the cursor glow or
+  // tint): rounded-square cells, thinning toward a curved horizon, stepping their ink at ~15fps.
+  const dotField = (canvas, { pitch = 10, sq = 7.5, density = 0.55, curve = 0.55, ink = 0.8 } = {}) => {
+    const ctx = canvas.getContext("2d");
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const LEVELS = [0.05, 0.12, 0.24, 0.42, 0.7];
+    let cols, fade, level, next, sprite, dpr, last = 0, visible = true, looping = false;
+    const layout = () => {
+      dpr = devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight, now = performance.now();
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      cols = Math.ceil(w / pitch);
+      const rows = Math.ceil(h / pitch);
+      fade = new Float32Array(cols * rows); level = new Float32Array(cols * rows); next = new Float64Array(cols * rows);
+      for (let c = 0; c < cols; c++) {
+        const u = ((c + 0.5) / cols) * 2 - 1, horizon = curve * (1 - u * u);
+        for (let r = 0; r < rows; r++) {
+          const depth = ((r + 1) / rows - horizon) / (1 - horizon);
+          if (depth <= 0) continue;
+          const k = r * cols + c;
+          fade[k] = Math.random() < density * depth ** 1.1 ? ink * depth ** 1.8 : 0;
+          level[k] = LEVELS[(Math.random() * LEVELS.length) | 0];
+          next[k] = now + Math.random() * 3000;
+        }
+      }
+      sprite = document.createElement("canvas");
+      sprite.width = sprite.height = Math.ceil(sq * dpr);
+      const g = sprite.getContext("2d");
+      g.scale(dpr, dpr); g.fillStyle = "#ededed"; g.beginPath(); g.roundRect(0, 0, sq, sq, sq * 0.25); g.fill();
+    };
+    const draw = now => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const off = (pitch - sq) / 2, size = sprite.width;
+      for (let k = 0; k < fade.length; k++) {
+        if (!fade[k]) continue;
+        if (!still && now >= next[k]) {
+          const i = Math.random() < 0.08 ? LEVELS.length - 1 : (Math.random() * (LEVELS.length - 1)) | 0;
+          level[k] = LEVELS[i];
+          next[k] = now + (i === LEVELS.length - 1 ? 180 + Math.random() * 400 : 600 + Math.random() * 2800);
+        }
+        ctx.globalAlpha = level[k] * fade[k];
+        ctx.drawImage(sprite, Math.round(((k % cols) * pitch + off) * dpr), Math.round(((k / cols | 0) * pitch + off) * dpr), size, size);
+      }
+    };
+    const tick = now => {
+      if (!visible) { looping = false; return; }
+      if (now - last > 66) { draw(now); last = now; }
+      requestAnimationFrame(tick);
+    };
+    const start = () => { if (!still && visible && !looping) { looping = true; requestAnimationFrame(tick); } };
+    new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; start(); }).observe(canvas);
+    addEventListener("resize", () => { layout(); draw(performance.now()); });
+    layout(); draw(performance.now()); start();
+  };
+  for (const canvas of $$("canvas.c-field")) {
+    dotField(canvas, canvas.classList.contains("c-field--home") ? { pitch: 12, sq: 9, density: 0.7, curve: 0.45, ink: 1 } : {});
+  }
+
+  // Browser guides: one tab per way of adding Archer.
+  for (const box of $$("[data-guides]")) {
+    const tabs = $$("[data-guide-tab]", box);
+    const pick = key => {
+      tabs.forEach(tab => {
+        tab.setAttribute("aria-selected", String(tab.dataset.guideTab === key));
+        tab.classList.toggle("is-active", tab.dataset.guideTab === key);
+      });
+      $$("[data-guide]", box).forEach(panel => { panel.hidden = panel.dataset.guide !== key; });
+    };
+    tabs.forEach(tab => tab.addEventListener("click", () => pick(tab.dataset.guideTab)));
+    pick(box.dataset.guides);
+  }
+
   renderModelHints();
   renderState();
   applyWhen();
+  renderLive();
   if (isSetup) setupWizard(); else appNavigation();
 
   // ------------------------------------------------------------- app: panes
@@ -590,7 +753,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const id = (location.hash || "#overview").slice(1).split("/")[0];
       const pane = panes.find(p => p.dataset.pane === id) || panes[0];
       panes.forEach(p => { p.hidden = p !== pane; });
-      links.forEach(link => link.setAttribute("aria-current", String(link.dataset.nav === pane.dataset.pane)));
+      links.forEach(link => {
+        const on = link.dataset.nav === pane.dataset.pane;
+        link.setAttribute("aria-current", String(on));
+        link.classList.toggle("is-active", on);
+      });
       scrollTo(0, 0);
     };
     addEventListener("hashchange", show);
@@ -735,6 +902,7 @@ document.addEventListener("DOMContentLoaded", () => {
     noAI.addEventListener("change", () => {
       $("[data-ai-fields]").classList.toggle("is-off", noAI.checked);
       $("[data-step='ai'] .c-cards").classList.toggle("is-off", noAI.checked);
+      $("[data-ai-fields-mode]")?.classList.toggle("is-off", noAI.checked);
     });
     noAI.checked = !state.ai.consent && fieldState("search_provider").explicit && state.app.onboarded;
     noAI.dispatchEvent(new Event("change"));
