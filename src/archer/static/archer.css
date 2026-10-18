@@ -747,7 +747,9 @@ body.serp:not(:has(> main)) .top::after { opacity: 1; animation: px-scan var(--s
 body.serp:not(:has(> main)) .pxmark { --wave: var(--serp-cycle); --step: 40ms; }
 .serp-wait { padding-top: 28px; }
 .serp-wait:has(~ main) { display: none; }
-.serp-wait ~ main.page { animation: serp-in .32s cubic-bezier(.2, .7, .2, 1) both; }
+/* backwards, not both: a forwards fill would keep a transform on <main> for good, and a transformed
+   ancestor makes it the containing block of fixed children, which collapses AI Mode's full-screen panel. */
+.serp-wait ~ main.page { animation: serp-in .32s cubic-bezier(.2, .7, .2, 1) backwards; }
 @keyframes serp-in { from { opacity: 0; transform: translateY(6px); } }
 .serp-wait-status { height: 20px; margin: 0 0 4px; font: 400 12px/20px var(--mono); color: var(--text-3); opacity: .6; }
 /* Honest progress: the message only changes when the search is genuinely taking a while. */
