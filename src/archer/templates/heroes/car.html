@@ -1,0 +1,66 @@
+{% from "macros.html" import hero_badge, link_chip, spec_grid %}
+{# Car panel. Wikidata gives the manufacturer, production run, class and top speed; the picture is the
+   article's own, matted to fit rather than cropped, because cropping a car photo crops the car out.
+   The bento carries every figure the item has, not the five the generic entity cap allows, so the panel
+   doesn't turn into an empty box on a sparse model. #}
+{% set e = v.hero.data %}
+{% set c = e.car or {} %}
+<section class="hero hero-entity hero-car">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, extra=(c.production if c.production else "")) }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+    <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
+  </div>
+
+  {# One hero picture, shown whole. It is the largest thing on the page, so it is fetched eagerly.
+     An SVG wordmark is a logo rather than a photograph, so it is scaled to fill the mat. #}
+  <div class="ms-stage ms-stage--car{% if e.image_logo %} is-logo{% endif %}">
+    {% if e.image %}
+    <img class="ms-shot" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+    {% else %}
+    <div class="ms-blank"><svg><use href="#u-car"/></svg><span>No picture of this model yet</span></div>
+    {% endif %}
+  </div>
+
+  {{ spec_grid(e.specs) }}
+
+  {# The first body style is already a tile; the chips carry the rest. #}
+  {% if c.styles[1:] or c.series %}
+  <div class="ms-chips">
+    {% for s in c.styles[1:] %}<span class="tag-chip ms-chip"><svg><use href="#u-car"/></svg>{{ s }}</span>{% endfor %}
+    {% if c.series %}<a class="tag-chip" href="/search?q={{ c.series|qs }}"><svg><use href="#u-layers"/></svg>{{ c.series }}</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {# One generation back and forward, which is how a model is actually looked up. #}
+  {% if c.previous or c.next %}
+  <nav class="ms-series" aria-label="Generations">
+    {% if c.previous %}<a class="meaning-chip" href="/search?q={{ c.previous|qs }}"><small>Previous</small>{{ c.previous }}</a>{% endif %}
+    {% if c.next %}<a class="meaning-chip" href="/search?q={{ c.next|qs }}"><small>Next</small>{{ c.next }}</a>{% endif %}
+  </nav>
+  {% endif %}
+
+  {% if e.extract or e.facts %}
+  <details class="about" open>
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">
+      {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+      {% if e.facts %}<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <p class="hero-source">Facts from Wikipedia and Wikidata. A model's own figures, where Wikidata has none, are in the About text.</p>
+</section>

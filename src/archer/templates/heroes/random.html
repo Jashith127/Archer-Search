@@ -2,6 +2,14 @@
 {% set r = v.hero.data %}
 <section class="hero hero-random" data-random="{{ r.tool }}" data-min="{{ r.min or '' }}" data-max="{{ r.max or '' }}">
   {{ hero_badge("dice", {"coin": "Coin flip", "dice": "Dice roll", "number": "Random number"}[r.tool], (r.min ~ "–" ~ r.max) if r.tool == "number" else "") }}
-  <p class="random-value" data-random-out>…</p>
+  <div class="random-stage">
+    {% if r.tool == "dice" %}
+    {# The face as pips on a 3 × 3 pixel grid; archer.js steps through faces before it settles. #}
+    <span class="die" data-die aria-hidden="true">{% for _ in range(9) %}<i></i>{% endfor %}</span>
+    {% elif r.tool == "coin" %}
+    <span class="coin" data-coin aria-hidden="true"></span>
+    {% endif %}
+    <p class="random-value" data-random-out aria-live="polite">…</p>
+  </div>
   <button type="button" class="btn" data-random-again>{{ "Flip again" if r.tool == "coin" else "Roll again" if r.tool == "dice" else "Again" }}</button>
 </section>

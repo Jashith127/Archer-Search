@@ -1,12 +1,14 @@
 {% from "macros.html" import hero_badge %}
 {% set t = v.hero.data %}
-<section class="hero hero-time">
-  <div>
-    {{ hero_badge("clock", "Unix timestamp") }}
+<section class="hero hero-time hero-timestamp">
+  <div class="time-now">
+    {{ hero_badge("clock", "Unix timestamp", t.epoch|ago if t.input != "now" else "Right now") }}
     <p class="clock clock--sm">{{ t.epoch }}</p>
+    <p class="clock-date">Seconds since 1 January 1970, 00:00 UTC</p>
   </div>
-  <dl class="kv-grid">
-    <div><dt>UTC</dt><dd>{{ t.utc }}</dd></div>
-    <div><dt>Your time</dt><dd>{{ t.local }}</dd></div>
+  <dl class="readout readout--stack">
+    <div><dt>UTC</dt><dd>{{ t.utc }}<button type="button" class="icon-btn icon-btn--sm" data-copy="{{ t.utc }}" aria-label="Copy UTC time"><svg><use href="#i-copy"/></svg></button></dd></div>
+    <div><dt>Your time</dt><dd>{{ t.local }}<button type="button" class="icon-btn icon-btn--sm" data-copy="{{ t.local }}" aria-label="Copy your time"><svg><use href="#i-copy"/></svg></button></dd></div>
+    <div><dt>Milliseconds</dt><dd class="is-mono">{{ t.epoch }}000<button type="button" class="icon-btn icon-btn--sm" data-copy="{{ t.epoch }}000" aria-label="Copy milliseconds"><svg><use href="#i-copy"/></svg></button></dd></div>
   </dl>
 </section>

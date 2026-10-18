@@ -1946,6 +1946,794 @@ function gamePanel(panel) {
 }
 $$("[data-game]").forEach(gamePanel);
 
+// ------------------------------------------------- Formula One and circuits
+// Driver, team, Grand Prix and circuit panels. The page arrives with skeletons of the right size; the
+// live half lands from /api/f1* and is drawn in the brand's own vocabulary: rounded-square dots at a few
+// stepped ink levels, DM Mono labels, and one accent — the team's colour, or plain ink when there is none.
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgNode(tag, attrs = {}, ...kids) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) node.setAttribute(k, v);
+  for (const c of kids) if (c) node.append(c);
+  return node;
+}
+const f1Num = (n) => Number(n || 0).toLocaleString("en-US");
+const f1When = (iso, opts) => { const d = new Date(iso); return Number.isNaN(+d) ? "" : d.toLocaleString(undefined, opts); };
+const f1Day = (iso) => f1When(iso, { weekday: "short", day: "numeric", month: "short" });
+const f1Clock = (iso) => f1When(iso, { hour: "2-digit", minute: "2-digit" });
+const f1Plural = (n, one, many = one + "s") => `${f1Num(n)} ${Number(n) === 1 ? one : many}`;
+const F1_SESSION_LABEL = { FirstPractice: "Practice 1", SecondPractice: "Practice 2", ThirdPractice: "Practice 3",
+  SprintQualifying: "Sprint qualifying", SprintShootout: "Sprint shootout", Sprint: "Sprint", Qualifying: "Qualifying", Race: "Race" };
+
+function f1Label(text, iconName) {
+  return el("p", { class: "f1-label" }, icon(iconName), el("span", { text }));
+}
+
+// "2008 · 2014–15 · 2017–20": championship years with runs folded together.
+function f1Years(years) {
+  const runs = [];
+  for (const y of [...years].sort((a, b) => a - b)) {
+    const last = runs[runs.length - 1];
+    if (last && y === last[1] + 1) last[1] = y; else runs.push([y, y]);
+  }
+  return runs.map(([a, b]) => (a === b ? String(a) : `${a}–${String(b).slice(String(a).slice(0, 2) === String(b).slice(0, 2) ? 2 : 0)}`)).join(" · ");
+}
+
+// A tooltip that follows whatever it is pinned to inside a card. One per card, reused.
+function f1Tip(host) {
+  let tip = $(".f1-tip", host);
+  if (!tip) { tip = el("div", { class: "f1-tip", role: "status", hidden: "" }); host.append(tip); }
+  return {
+    show(x, y, ...lines) {
+      tip.replaceChildren(...lines.filter(Boolean).map((t, i) => el(i ? "span" : "strong", { text: t })));
+      tip.hidden = false;
+      const box = host.getBoundingClientRect(), w = tip.offsetWidth;
+      tip.style.left = `${Math.max(4, Math.min(box.width - w - 4, x - w / 2))}px`;
+      tip.style.top = `${y}px`;
+    },
+    hide() { tip.hidden = true; },
+  };
+}
+
+// Laps run clockwise or anticlockwise: the sign of the outline's area, with y running down the screen.
+function lapDirection(points) {
+  let area = 0;
+  for (let i = 0; i < points.length - 2; i += 2) {
+    const j = (i + 2) % points.length;
+    area += points[i] * points[j + 1] - points[j] * points[i + 1];
+  }
+  return area > 0 ? "Clockwise" : "Anticlockwise";
+}
+
+// ------------------------------------------- the track map
+// The circuit drawn as the pixel mark draws everything: the lap traced in rounded-square dots on a faint
+// dot grid, with a soft shoulder either side. A car — a short comet in the accent colour — runs the lap
+// in the racing direction at the stepped ~15fps the rest of the brand moves at, and the start/finish line
+// is a chequer across the track. Hovering reads off how far round the lap a point is. An OpenStreetMap
+// outline arrives unordered, so it is drawn without the car, the line or the distances.
+// map: { points: [x, y, …] in a 1000 box, length (m) } from the start line, or { segments: [[x, y, …]] }.
+function trackMap(box, map, { accent = "", label = "" } = {}) {
+  const canvas = el("canvas", { class: "trk-canvas", role: "img", "aria-label": label });
+  const tip = el("span", { class: "trk-tip", hidden: "" });
+  box.replaceChildren(canvas, tip);
+  const ctx = canvas.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const LAP = 9000, TAIL = 0.055, INK = "#ededed";
+  const BODY = [[0, 0], [0.45, 0.45], [-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45]];
+  let PITCH = 7, SQ = 5;
+  const TAIL_LEVELS = [1, 0.85, 0.7, 0.55, 0.42, 0.32];
+  const ordered = Array.isArray(map.points);
+  const lines = ordered ? [map.points] : (map.segments || []);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const line of lines) for (let i = 0; i < line.length; i += 2) {
+    minX = Math.min(minX, line[i]); maxX = Math.max(maxX, line[i]);
+    minY = Math.min(minY, line[i + 1]); maxY = Math.max(maxY, line[i + 1]);
+  }
+  if (!Number.isFinite(minX) || maxX - minX <= 0) return null;
+  let dpr = 1, W = 0, H = 0, cells = [], samples = [], layer = null, ink = null, lit = null, hover = -1, visible = true, looping = false, last = 0;
+  const born = performance.now();
+
+  const sprite = (colour) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = Math.ceil(SQ * dpr);
+    const g = c.getContext("2d");
+    g.scale(dpr, dpr); g.fillStyle = colour;
+    g.beginPath(); g.roundRect(0, 0, SQ, SQ, SQ * 0.28); g.fill();
+    return c;
+  };
+
+  const layout = () => {
+    dpr = devicePixelRatio || 1;
+    W = box.clientWidth; H = box.clientHeight;
+    if (!W || !H) return false;
+    // About 120 dots across whatever the size, so tight sections (Monaco's harbour, Suzuka's esses) stay
+    // apart and the curves read as curves rather than steps.
+    PITCH = Math.max(3.4, Math.min(4.6, Math.min(W, H * 1.4) / 120)); SQ = PITCH * 0.74;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    const cols = Math.floor(W / PITCH), rows = Math.floor(H / PITCH);
+    const x0 = (W - cols * PITCH) / 2, y0 = (H - rows * PITCH) / 2;
+    // Fit the outline inside the grid with a margin of a few cells for the shoulder and the S/F label.
+    const k = Math.min((cols - 10) * PITCH / (maxX - minX), (rows - 10) * PITCH / (maxY - minY));
+    const ox = (W - (maxX - minX) * k) / 2 - minX * k, oy = (H - (maxY - minY) * k) / 2 - minY * k;
+    const cellAt = (px, py) => [Math.round((px - x0 - PITCH / 2) / PITCH), Math.round((py - y0 - PITCH / 2) / PITCH)];
+    const track = new Map();
+    samples = [];
+    for (const line of lines) {
+      let total = 0;
+      for (let i = 2; i < line.length; i += 2) total += Math.hypot(line[i] - line[i - 2], line[i + 1] - line[i - 1]);
+      const step = PITCH / 3 / k;
+      let run = 0;
+      for (let i = 2; i < line.length; i += 2) {
+        const ax = line[i - 2], ay = line[i - 1], bx = line[i], by = line[i + 1];
+        const seg = Math.hypot(bx - ax, by - ay);
+        for (let t = 0; t < seg; t += step) {
+          const x = (ax + (bx - ax) * (t / seg)) * k + ox, y = (ay + (by - ay) * (t / seg)) * k + oy;
+          const s = ordered ? (run + t) / total : NaN;
+          // The road is about two dots wide: every cell within half a pitch either side of the line.
+          let key = -1;
+          for (const [dx, dy] of BODY) {
+            const [c, r] = cellAt(x + dx * PITCH, y + dy * PITCH);
+            const k2 = r * cols + c;
+            if (key < 0) key = k2;
+            if (!track.has(k2)) track.set(k2, { c, r, s });
+          }
+          samples.push({ x, y, s, key });
+        }
+        run += seg;
+      }
+    }
+    cells = [...track.values()];
+    // The static layer: paper, shoulder, the lap itself and the chequered line, drawn once per layout.
+    layer = document.createElement("canvas");
+    layer.width = canvas.width; layer.height = canvas.height;
+    const g = layer.getContext("2d");
+    ink = sprite(INK); lit = sprite(accent || INK);
+    const size = ink.width;
+    const at = (c, r) => [Math.round((x0 + c * PITCH + (PITCH - SQ) / 2) * dpr), Math.round((y0 + r * PITCH + (PITCH - SQ) / 2) * dpr)];
+    const shoulder = new Set();
+    for (const { c, r } of cells) for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const key = (r + dr) * cols + c + dc;
+      if (!track.has(key)) shoulder.add(key);
+    }
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const key = r * cols + c;
+      g.globalAlpha = track.has(key) ? 0.56 : shoulder.has(key) ? 0.11 : 0.045;
+      g.drawImage(ink, ...at(c, r), size, size);
+    }
+    if (ordered && samples.length > 8) {
+      // The start/finish line: one solid stroke across the track, square-ended, at the first point of the lap.
+      const p0 = samples[0], p1 = samples[Math.min(samples.length - 1, 6)];
+      const len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+      const nx = -(p1.y - p0.y) / len, ny = (p1.x - p0.x) / len, reach = PITCH * 2.8;
+      g.globalAlpha = 1;
+      g.strokeStyle = INK;
+      g.lineWidth = Math.max(2, PITCH * 0.55) * dpr;
+      g.lineCap = "butt";
+      g.beginPath();
+      g.moveTo((p0.x - nx * reach) * dpr, (p0.y - ny * reach) * dpr);
+      g.lineTo((p0.x + nx * reach) * dpr, (p0.y + ny * reach) * dpr);
+      g.stroke();
+    }
+    canvas._at = at;
+    return true;
+  };
+
+  const draw = (now) => {
+    if (!layer) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(layer, 0, 0);
+    const size = lit.width, at = canvas._at;
+    if (ordered && !still) {
+      // The car: the head at full strength, the tail stepping down through a few ink levels.
+      const head = ((now - born) % LAP) / LAP;
+      for (const cell of cells) {
+        const behind = (head - cell.s + 1) % 1;
+        if (behind > TAIL) continue;
+        ctx.globalAlpha = TAIL_LEVELS[Math.min(TAIL_LEVELS.length - 1, Math.floor((behind / TAIL) * TAIL_LEVELS.length))];
+        ctx.drawImage(lit, ...at(cell.c, cell.r), size, size);
+      }
+    }
+    if (hover >= 0) {
+      const cell = cells.find((c) => c.r * Math.floor(W / PITCH) + c.c === hover);
+      if (cell) {
+        const [x, y] = at(cell.c, cell.r);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = accent || INK; ctx.lineWidth = 1.5 * dpr;
+        ctx.beginPath(); ctx.roundRect(x - 2.5 * dpr, y - 2.5 * dpr, size + 5 * dpr, size + 5 * dpr, 3 * dpr); ctx.stroke();
+        ctx.drawImage(lit, x, y, size, size);
+      }
+    }
+  };
+
+  if (ordered && map.length) {
+    canvas.addEventListener("pointermove", (e) => {
+      const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      let best = null, bestD = Infinity;
+      for (const p of samples) { const d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bestD) { bestD = d; best = p; } }
+      if (!best || bestD > Math.max(14, PITCH * 3) ** 2) { hover = -1; tip.hidden = true; if (still) draw(0); return; }
+      hover = best.key;
+      tip.textContent = `${(best.s * map.length / 1000).toFixed(1)} km`;
+      tip.style.left = `${best.x}px`; tip.style.top = `${best.y}px`;
+      tip.hidden = false;
+      if (still) draw(0);
+    });
+    canvas.addEventListener("pointerleave", () => { hover = -1; tip.hidden = true; if (still) draw(0); });
+  }
+
+  const tick = (now) => {
+    if (!visible || !box.isConnected) { looping = false; return; }
+    if (now - last > 66) { draw(now); last = now; }
+    requestAnimationFrame(tick);
+  };
+  const start = () => { if (!looping && visible) { looping = true; requestAnimationFrame(tick); } };
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (!still) start(); }).observe(box);
+  new ResizeObserver(() => { if (layout()) draw(performance.now()); }).observe(box);
+  if (layout()) draw(performance.now());
+  if (!still) start();
+  return { direction: ordered ? lapDirection(map.points) : "" };
+}
+
+// An outline the panel didn't have bundled, from OpenStreetMap: SVG path data in a 100 box, unordered.
+function osmSegments(path) {
+  return path.split("M").filter(Boolean).map((part) => part.trim().split(/\s+/).map(Number)).filter((s) => s.length >= 4);
+}
+
+// The track box: sized to the outline's own proportions within sensible limits, then drawn.
+function mountTrack(box, map, opts) {
+  const ratio = map.w && map.h ? map.w / map.h : 1.4;
+  box.style.setProperty("--trk-ratio", String(Math.min(1.9, Math.max(1.05, ratio * 1.08))));
+  box.classList.add("trk");
+  return trackMap(box, map, opts);
+}
+
+// ------------------------------------------- driver and team cards
+function f1Ladder(rows) {
+  const top = Math.max(...rows.map((r) => Number(r.points) || 0), 1);
+  const list = el("ol", { class: "f1-ladder" });
+  for (const row of rows) {
+    if (row.gap) list.append(el("li", { class: "f1-ladder-gap", "aria-hidden": "true" }, el("span", { text: "···" })));
+    const bar = el("span", { class: "f1-ladder-bar" }, el("i"));
+    bar.firstChild.style.width = `${Math.max(2, (Number(row.points) / top) * 100)}%`;
+    if (row.color) bar.style.setProperty("--c", row.color);
+    list.append(el("li", { class: "f1-ladder-row" + (row.me ? " is-me" : "") },
+      el("span", { class: "f1-ladder-pos", text: "P" + row.position }),
+      el("a", { class: "f1-ladder-name", href: searchHref(row.name), title: row.team || row.name, text: row.code || row.name }),
+      bar,
+      el("span", { class: "f1-ladder-pts", text: f1Num(row.points) })));
+  }
+  return list;
+}
+
+function f1Standing(card, d) {
+  const s = d.standing || {};
+  const body = $(".f1-standing-body", card);
+  if (!s.position) { card.remove(); return false; }
+  const labelText = $("[data-f1-standing-label]", card);
+  if (labelText) labelText.textContent = `${d.season} championship`;
+  const second = (s.ladder || []).find((r) => r.position === 2);
+  const behind = s.position > 1 ? `${f1Num(s.to_leader)} behind the leader` : second ? `Leads by ${f1Num(Number(s.points) - Number(second.points))}` : "";
+  const head = el("div", { class: "f1-pos-row" },
+    el("span", { class: "f1-pos", text: "P" + s.position }),
+    el("div", { class: "f1-pos-meta" },
+      el("span", { class: "f1-pos-pts" }, el("strong", { text: f1Num(s.points) }), " pts"),
+      el("span", { class: "muted", text: [f1Plural(s.wins, "win"), behind].filter(Boolean).join(" · ") })));
+  const parts = [head];
+  if (d.role === "team" && d.lineup?.length) {
+    const team = el("ul", { class: "f1-lineup" });
+    for (const p of d.lineup) {
+      team.append(el("li", {},
+        el("span", { class: "f1-lineup-num", text: p.number ? "#" + p.number : "" }),
+        el("a", { href: searchHref(p.name), text: p.name }),
+        el("span", { class: "f1-lineup-pts", text: `P${p.position} · ${f1Num(p.points)} pts` })));
+    }
+    parts.push(team);
+  }
+  parts.push(f1Ladder(s.ladder || []));
+  body.replaceChildren(...parts);
+  return true;
+}
+
+// A driver's season, round by round: a column of faint dots per round and one lit dot where they
+// finished, P1 at the top. A thin stem runs from the grid slot to the finish, so a recovery drive reads
+// as a long stem; retirements drop to their own row. Rounds still to come stay faint.
+function driverForm(card, d) {
+  const results = d.results || [];
+  const body = $(".f1-form-body", card);
+  if (!results.length) { card.remove(); return; }
+  $("[data-f1-form-label]", card).textContent = `${d.season} season · round by round`;
+  const rounds = Math.max(d.rounds || 0, ...results.map((r) => r.round));
+  const field = Math.max(20, d.standing?.of || 0, ...results.map((r) => r.position || 0), ...results.map((r) => r.grid || 0));
+  const byRound = new Map(results.map((r) => [r.round, r]));
+  const wrap = el("div", { class: "f1-chart" });
+  const tip = f1Tip(wrap);
+  const draw = () => {
+    const width = wrap.clientWidth;
+    if (!width) return;
+    const LEFT = 28, RH = 6.5, TOP = 6, GAP = 12, CW = (width - LEFT) / rounds;
+    const height = TOP + field * RH + GAP + RH + 18;
+    const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "f1-chart-svg", "aria-hidden": "true" });
+    const cx = (round) => LEFT + (round - 0.5) * CW, cy = (pos) => TOP + (pos - 0.5) * RH;
+    const dnfY = TOP + field * RH + GAP + RH / 2;
+    const dot = (x, y, cls, size = 4.2) => svgNode("rect", { x: x - size / 2, y: y - size / 2, width: size, height: size, rx: size * 0.28, class: cls });
+    // Paper: every slot of every round, so the chart is a block of the brand's dots.
+    for (let round = 1; round <= rounds; round++) {
+      const done = byRound.has(round);
+      for (let pos = 1; pos <= field; pos++) svg.append(dot(cx(round), cy(pos), done ? "f1-paper" : "f1-paper is-future", 3));
+      svg.append(dot(cx(round), dnfY, done ? "f1-paper" : "f1-paper is-future", 3));
+    }
+    // The points line: below P10 nobody scores.
+    svg.append(svgNode("line", { x1: LEFT - 4, x2: width, y1: TOP + 10 * RH, y2: TOP + 10 * RH, class: "f1-cut" }));
+    for (const [pos, text] of [[1, "P1"], [10, "P10"], [field, "P" + field]]) {
+      svg.append(svgNode("text", { x: 0, y: cy(pos) + 3, class: "f1-axis" }, text));
+    }
+    svg.append(svgNode("text", { x: 0, y: dnfY + 3, class: "f1-axis" }, "DNF"));
+    const every = CW >= 18 ? 1 : CW >= 10 ? 2 : 5;
+    for (let round = 1; round <= rounds; round++) {
+      if (round === 1 || round % every === 0 || round === rounds) {
+        svg.append(svgNode("text", { x: cx(round), y: height - 3, class: "f1-axis f1-axis--x" + (byRound.has(round) ? "" : " is-future") }, String(round)));
+      }
+    }
+    // The finishing order as one thin line through the season.
+    const line = results.filter((r) => r.classified).map((r) => `${cx(r.round)},${cy(r.position)}`);
+    if (line.length > 1) svg.append(svgNode("polyline", { points: line.join(" "), class: "f1-trace" }));
+    for (const r of results) {
+      const x = cx(r.round);
+      if (r.grid && r.classified && r.grid !== r.position) {
+        svg.append(svgNode("line", { x1: x, x2: x, y1: cy(r.grid), y2: cy(r.position), class: "f1-stem" + (r.grid > r.position ? " is-up" : "") }));
+        svg.append(dot(x, cy(r.grid), "f1-grid", 3.4));
+      }
+      if (!r.classified) { svg.append(dot(x, dnfY, "f1-dnf", 5)); continue; }
+      const tier = r.position === 1 ? "is-win" : r.position <= 3 ? "is-podium" : r.points ? "is-points" : "";
+      svg.append(dot(x, cy(r.position), "f1-res " + tier, r.position <= 3 ? 5.6 : 4.8));
+      if (r.fastest) svg.append(svgNode("circle", { cx: x, cy: cy(r.position), r: 5.2, class: "f1-fl" }));
+    }
+    // Hover targets, one per round that has been run.
+    for (const r of results) {
+      const hit = svgNode("rect", { x: cx(r.round) - CW / 2, y: 0, width: CW, height: height - 14, class: "f1-hit" });
+      hit.addEventListener("pointerenter", () => {
+        const where = r.classified ? `P${r.position}${r.grid ? ` from P${r.grid}` : ""}` : `${r.status}${r.grid ? ` from P${r.grid}` : ""}`;
+        tip.show(cx(r.round), Math.max(0, (r.classified ? cy(r.position) : dnfY) - 52), `R${r.round} · ${r.name}`,
+          `${where} · ${f1Plural(r.points, "pt")}${r.fastest ? " · fastest lap" : ""}`);
+        hit.classList.add("is-on");
+      });
+      hit.addEventListener("pointerleave", () => { tip.hide(); hit.classList.remove("is-on"); });
+      svg.append(hit);
+    }
+    $(".f1-chart-svg", wrap)?.remove();
+    wrap.prepend(svg);
+  };
+  const f = d.form || {};
+  const facts = el("div", { class: "f1-form-facts" });
+  const fact = (label, value) => { if (value !== "" && value != null) facts.append(el("span", {}, el("small", { text: label }), el("strong", { text: String(value) }))); };
+  if (f.best?.position) fact("Best", `P${f.best.position} · ${f.best.name.replace(/ Grand Prix$/, "")}`);
+  fact("Podiums", f.podiums);
+  fact("In the points", `${f.points_finishes} of ${f.races}`);
+  if (f.average) fact("Average finish", f.average);
+  fact("Retirements", f.dnf);
+  if (f.fastest) fact("Fastest laps", f.fastest);
+  if (f.gained) fact("Places gained", (f.gained > 0 ? "+" : "") + f.gained);
+  body.replaceChildren(wrap, facts);
+  new ResizeObserver(draw).observe(wrap);
+  draw();
+}
+
+// A team's season: each round a stack of dots, one dot per few points, the first driver in the team
+// colour and the second in a lighter shade of it, so a weekend where both scored is a tall two-tone stack.
+function teamForm(card, d) {
+  const rounds = d.rounds || [];
+  const body = $(".f1-form-body", card);
+  if (!rounds.length) { card.remove(); return; }
+  $("[data-f1-form-label]", card).textContent = `${d.season} season · points per round`;
+  const total = Math.max(d.total_rounds || 0, ...rounds.map((r) => r.round));
+  const codes = (d.lineup || []).map((p) => p.code).filter(Boolean).slice(0, 2);
+  const most = Math.max(...rounds.map((r) => Number(r.points) || 0), 1);
+  const unit = Math.max(1, Math.ceil(most / 16));
+  const byRound = new Map(rounds.map((r) => [r.round, r]));
+  const wrap = el("div", { class: "f1-chart" });
+  const tip = f1Tip(wrap);
+  const draw = () => {
+    const width = wrap.clientWidth;
+    if (!width) return;
+    const LEFT = 28, RH = 6.5, ROWS = Math.ceil(most / unit), TOP = 4, CW = (width - LEFT) / total;
+    const height = TOP + ROWS * RH + 20;
+    const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "f1-chart-svg", "aria-hidden": "true" });
+    const cx = (round) => LEFT + (round - 0.5) * CW, cy = (row) => TOP + (ROWS - row + 0.5) * RH;
+    const dot = (x, y, cls, size) => svgNode("rect", { x: x - size / 2, y: y - size / 2, width: size, height: size, rx: size * 0.28, class: cls });
+    for (const [row, text] of [[ROWS, f1Num(ROWS * unit)], [1, String(unit)]]) svg.append(svgNode("text", { x: 0, y: cy(row) + 3, class: "f1-axis" }, text));
+    const every = CW >= 18 ? 1 : CW >= 10 ? 2 : 5;
+    for (let round = 1; round <= total; round++) {
+      const r = byRound.get(round);
+      let row = 1;
+      const stack = (points, cls) => { for (let i = 0; i < Math.round(points / unit); i++, row++) svg.append(dot(cx(round), cy(row), cls, 4.6)); };
+      if (r) {
+        const first = r.cars.filter((c) => c.code === codes[0]).reduce((n, c) => n + Number(c.points), 0);
+        const second = r.cars.filter((c) => c.code === codes[1]).reduce((n, c) => n + Number(c.points), 0);
+        const other = Number(r.points) - first - second;
+        stack(first, "f1-res is-points"); stack(second, "f1-res is-second"); stack(other, "f1-res is-other");
+      }
+      for (; row <= ROWS; row++) svg.append(dot(cx(round), cy(row), r ? "f1-paper" : "f1-paper is-future", 3));
+      if (round === 1 || round % every === 0 || round === total) {
+        svg.append(svgNode("text", { x: cx(round), y: height - 3, class: "f1-axis f1-axis--x" + (r ? "" : " is-future") }, String(round)));
+      }
+    }
+    for (const r of rounds) {
+      const hit = svgNode("rect", { x: cx(r.round) - CW / 2, y: 0, width: CW, height: height - 14, class: "f1-hit" });
+      hit.addEventListener("pointerenter", () => {
+        const split = r.cars.map((c) => `${c.code || c.driver} ${c.classified ? "P" + c.position : c.status}`).join(" · ");
+        tip.show(cx(r.round), 0, `R${r.round} · ${r.name}`, `${f1Plural(r.points, "pt")} · ${split}`);
+        hit.classList.add("is-on");
+      });
+      hit.addEventListener("pointerleave", () => { tip.hide(); hit.classList.remove("is-on"); });
+      svg.append(hit);
+    }
+    $(".f1-chart-svg", wrap)?.remove();
+    wrap.prepend(svg);
+  };
+  const legend = el("div", { class: "f1-form-facts" });
+  codes.forEach((code, i) => legend.append(el("span", { class: "f1-key" + (i ? " is-second" : "") }, el("i"), el("strong", { text: code }))));
+  legend.append(el("span", {}, el("small", { text: "One dot" }), el("strong", { text: f1Plural(unit, "pt") })));
+  const best = rounds.reduce((a, b) => (Number(b.points) > Number(a.points) ? b : a));
+  legend.append(el("span", {}, el("small", { text: "Best round" }), el("strong", { text: `${f1Num(best.points)} · ${best.name.replace(/ Grand Prix$/, "")}` })));
+  body.replaceChildren(wrap, legend);
+  new ResizeObserver(draw).observe(wrap);
+  draw();
+}
+
+// The career as one card, laid out by what the numbers mean rather than as six equal tiles: the titles
+// on the left, large, with the years they came in; beside them how often a start turned into a win, a
+// podium or a pole, as pixel bars against the starts; and along the foot every season from the first
+// to the last as a cell, the title years lit, so the shape of a career (when it peaked) reads at a glance.
+// A team's results count every car, so it gets its wins and poles per season instead of a share of starts.
+function f1Career(box, d) {
+  const c = d.career || {};
+  if (!c.seasons) { box.remove(); return; }
+  const driver = d.role === "driver";
+  const titles = c.titles || [];
+  const span = c.first === c.last ? String(c.first) : `${c.first}–${c.last}`;
+  const head = el("p", { class: "f1-label" }, icon("award"),
+    el("span", { text: ["Career", span, f1Plural(c.seasons, "season"), driver && c.starts != null ? f1Plural(c.starts, "start") : ""].filter(Boolean).join(" · ") }));
+
+  const what = driver ? (titles.length === 1 ? "World title" : "World titles")
+    : (titles.length === 1 ? "Constructors' title" : "Constructors' titles");
+  const crown = el("div", { class: "f1-cv-titles" + (titles.length ? " is-lit" : "") },
+    el("span", { class: "f1-cv-big", text: f1Num(titles.length) }),
+    el("span", { class: "f1-cv-what", text: what }),
+    el("span", { class: "f1-cv-years", text: titles.length ? f1Years(titles) : "Not yet" }));
+
+  // Rates: a bar of 5px dots for each, filled to its share of starts (a team's to its share of the larger).
+  const rows = (driver
+    ? [["Wins", c.wins], ["Podiums", c.podiums], ["Poles", c.poles]]
+    : [["Wins", c.wins], ["Poles", c.poles]]).filter(([, n]) => n != null);
+  const scale = driver && c.starts ? c.starts : Math.max(1, ...rows.map(([, n]) => n));
+  const rates = el("div", { class: "f1-cv-rates" });
+  for (const [label, n] of rows) {
+    const bar = el("span", { class: "f1-cv-bar" }, el("i"));
+    bar.firstChild.style.width = `${Math.max(1.5, Math.min(100, (n / scale) * 100))}%`;
+    const share = driver && c.starts ? `${Math.round((n / c.starts) * 100)}%` : `${(n / c.seasons).toFixed(1)}/yr`;
+    rates.append(el("div", { class: "f1-cv-row" },
+      el("span", { class: "f1-cv-label", text: label }), bar,
+      el("strong", { class: "f1-cv-n", text: f1Num(n) }),
+      el("span", { class: "f1-cv-share", text: share, title: driver ? `${share} of starts` : `${share} per season` })));
+  }
+
+  // Every season as a cell across the full width: raced, champion, or a year away.
+  const raced = new Set(c.years || []), won = new Set(titles);
+  const strip = el("div", { class: "f1-cv-seasons" });
+  const cells = el("span", { class: "f1-cv-cells" });
+  for (let y = c.first; y <= c.last; y++) {
+    cells.append(el("i", { class: won.has(y) ? "is-title" : raced.has(y) ? "is-raced" : "",
+      title: `${y}${won.has(y) ? " · champion" : raced.has(y) ? "" : " · did not race"}` }));
+  }
+  strip.append(el("span", { class: "f1-cv-year", text: String(c.first) }), cells, el("span", { class: "f1-cv-year", text: String(c.last) }));
+  if (titles.length) strip.append(el("span", { class: "f1-cv-key" }, el("i"), driver ? "Champion" : "Title"));
+
+  box.replaceChildren(head, el("div", { class: "f1-cv-body" }, crown, rates), strip);
+}
+
+// ------------------------------------------- the weekend
+function f1Countdown(target) {
+  const out = el("p", { class: "f1-countdown" });
+  const start = new Date(target);
+  const tick = () => {
+    const ms = start - Date.now();
+    if (Number.isNaN(ms)) { out.remove(); return; }
+    if (ms <= 0) { out.replaceChildren(el("span", { class: "f1-live-dot" }), "Lights out"); return; }
+    const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
+    out.replaceChildren(el("small", { text: "Race in" }), el("strong", { text: d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m` }));
+    if (out.isConnected || !out.dataset.armed) { out.dataset.armed = "1"; setTimeout(tick, 30000); }
+  };
+  tick();
+  return out;
+}
+
+function f1Sessions(schedule) {
+  const now = Date.now();
+  const rows = Object.entries(schedule || {}).filter(([k]) => F1_SESSION_LABEL[k]).sort((a, b) => (a[1] < b[1] ? -1 : 1));
+  const next = rows.find(([, at]) => new Date(at) > now);
+  const list = el("ol", { class: "f1-sessions" });
+  for (const [key, at] of rows) {
+    const past = new Date(at) <= now;
+    list.append(el("li", { class: (past ? "is-past" : "") + (next && key === next[0] ? " is-next" : "") },
+      el("span", { class: "f1-session-name", text: F1_SESSION_LABEL[key] }),
+      el("time", { datetime: at, text: `${f1Day(at)} · ${f1Clock(at)}` })));
+  }
+  return rows.length ? list : null;
+}
+
+function f1Calendar(rounds, current) {
+  if (!rounds?.length) return null;
+  const run = rounds.filter((r) => r.done).length;
+  const strip = el("div", { class: "f1-calendar" });
+  strip.append(el("span", { class: "f1-calendar-label", text: `Season · ${run} of ${rounds.length} run` }));
+  const dots = el("ol", { class: "f1-calendar-dots" });
+  for (const r of rounds) {
+    dots.append(el("li", { class: (r.done ? "is-done" : "") + (r.round === current ? " is-current" : "") + (r.sprint ? " is-sprint" : ""),
+      title: `Round ${r.round} · ${r.name} · ${f1Day(r.date + "T12:00:00Z")}${r.sprint ? " · sprint" : ""}` },
+      el("a", { href: searchHref(r.name), "aria-label": r.name })));
+  }
+  strip.append(dots);
+  return strip;
+}
+
+// The track box plus what to say under it: length, direction, the year of its first Grand Prix.
+function f1TrackBlock(map, accent, label) {
+  const box = el("div", { class: "trk" });
+  const block = el("div", { class: "f1-trk" }, box);
+  if (!map?.points) return null;
+  requestAnimationFrame(() => {
+    const drawn = mountTrack(box, map, { accent, label });
+    const facts = el("p", { class: "f1-trk-facts" });
+    const fact = (k, v) => { if (v) facts.append(el("span", {}, el("small", { text: k }), el("strong", { text: v }))); };
+    fact("Lap", map.length ? `${(map.length / 1000).toFixed(3)} km` : "");
+    fact("Direction", drawn?.direction || "");
+    fact("First GP", map.first_gp ? String(map.first_gp) : "");
+    block.append(facts);
+  });
+  return block;
+}
+
+function f1Weekend(card, race, { accent = "", title = "Next round", podium = [] } = {}) {
+  const body = $(".f1-weekend-body", card);
+  if (!race || (!race.name && !race.calendar?.length)) { card.remove(); return; }
+  card.hidden = false;
+  if (!race.name) {   // the season is over: just the strip
+    body.replaceChildren(...[el("p", { class: "muted", text: `The ${race.season} season is complete.` }), f1Calendar(race.calendar)].filter(Boolean));
+    return;
+  }
+  const flagImg = race.flag ? img(race.flag, "") : null;
+  if (flagImg) flagImg.className = "f1-flag";
+  const info = el("div", { class: "f1-weekend-info" },
+    el("p", { class: "f1-round" }, el("span", { text: `Round ${race.round}${race.rounds ? ` of ${race.rounds}` : ""}` }),
+      race.sprint ? el("span", { class: "f1-sprint" }, icon("bolt"), "Sprint weekend") : null),
+    el("h3", { class: "f1-race-name" }, flagImg, el("span", { text: race.name })),
+    el("p", { class: "f1-race-where" },
+      el("a", { href: searchHref(race.circuit), text: race.circuit }),
+      el("span", { text: [race.locality, race.country].filter(Boolean).join(", ") })));
+  if (race.done) {
+    info.append(el("p", { class: "f1-race-date", text: `Raced ${f1Day(race.start)}` }));
+    if (podium.length) {
+      const list = el("ol", { class: "f1-podium" });
+      for (const p of podium) {
+        const swatch = el("i");
+        if (p.color) swatch.style.background = p.color;
+        list.append(el("li", {}, el("span", { class: "f1-podium-pos", text: "P" + p.position }), swatch,
+          el("a", { href: searchHref(p.driver), text: p.driver }), el("small", { text: p.team })));
+      }
+      info.append(list);
+    }
+  } else {
+    info.append(f1Countdown(race.start));
+    const sessions = f1Sessions(race.schedule);
+    if (sessions) info.append(sessions);
+  }
+  const map = f1TrackBlock(race.map, accent, `${race.circuit}, track map`);
+  body.replaceChildren(el("div", { class: "f1-weekend-grid" + (map ? "" : " is-plain") }, map, info));
+  const strip = f1Calendar(race.calendar, race.round);
+  if (strip) body.append(strip);
+  $("[data-f1-gp-label]", card)?.replaceChildren(document.createTextNode(title));
+}
+
+function f1Winners(card, winners, held, title = "Recent winners") {
+  if (!card || !winners?.length) return;
+  card.hidden = false;
+  const list = el("ol", { class: "f1-winners-list" });
+  // Silverstone also held the 70th Anniversary Grand Prix: name the race when they aren't all the same one.
+  const mixed = new Set(winners.map((w) => w.name)).size > 1;
+  for (const w of winners) {
+    const swatch = el("i");
+    if (w.color) swatch.style.background = w.color;
+    list.append(el("li", {},
+      el("span", { class: "f1-win-year", text: w.season }),
+      el("span", { class: "f1-win-driver" }, el("a", { href: searchHref(w.driver), text: w.driver }),
+        mixed ? el("small", { text: w.name }) : null),
+      el("span", { class: "f1-win-team" }, swatch, w.team),
+      el("span", { class: "f1-win-time", text: w.time || "" })));
+  }
+  card.replaceChildren(f1Label(held ? `${title} · ${f1Plural(held, "Grand Prix", "Grands Prix")} held` : title, "trophy"), list);
+}
+
+// The last qualifying session, behind a button: nothing of the grid is drawn until it is asked for.
+// It is only offered for the weekend it belongs to; after that the season chart has the story.
+function f1Qualifying(panel, quali) {
+  const card = $("[data-f1-quali]", panel), body = $("[data-f1-quali-body]", panel);
+  if (!card || !body || !quali?.grid?.length) return;
+  const at = new Date(quali.session || `${quali.date}T${quali.time || "12:00:00Z"}`);
+  const age = Date.now() - at;
+  if (Number.isNaN(age) || age < 75 * 60 * 1000 || age > 4 * 864e5) return;
+  card.hidden = false;
+  const reveal = el("button", { type: "button", class: "f1-reveal" }, icon("eye"), "Show the grid");
+  reveal.addEventListener("click", () => {
+    const list = el("ol", { class: "f1-quali-grid" });
+    for (const row of quali.grid) {
+      const swatch = el("i");
+      if (row.color) swatch.style.background = row.color;
+      list.append(el("li", { class: row.times?.Q3 ? "" : "is-out" },
+        el("span", { class: "f1-q-pos", text: "P" + row.position }), swatch,
+        el("a", { href: searchHref(row.name), text: row.name }),
+        el("small", { text: row.team }),
+        el("span", { class: "f1-q-time", text: row.best })));
+    }
+    body.replaceChildren(list);
+  });
+  body.replaceChildren(el("div", { class: "f1-quali-head" },
+    el("span", { text: `${quali.name} · ${f1Day(at.toISOString())} · results hidden` }), reveal));
+}
+
+function f1Plate(panel, d) {
+  const plate = $("[data-f1-plate]", panel);
+  if (!plate || d.role !== "driver" || !(d.number || d.code)) return;
+  plate.replaceChildren(el("span", { class: "f1-plate-num", text: d.number || "" }), el("span", { class: "f1-plate-code", text: d.code || "" }));
+  plate.hidden = false;
+}
+
+// The team's own logo on a light chip in the picture's corner (logos are drawn for white backgrounds).
+// A team whose picture already is its logo doesn't get it twice.
+function f1Logo(panel, d) {
+  const stage = $(".f1-stage", panel);
+  const name = d.role === "driver" ? d.team : d.name;
+  if (!stage || !isHttp(d.logo) || stage.classList.contains("is-logo")) return;
+  const pic = img(d.logo, `${name} logo`);
+  pic.loading = "eager";
+  const chip = d.role === "driver"
+    ? el("a", { class: "f1-team-logo", href: searchHref(name), title: name }, pic)
+    : el("span", { class: "f1-team-logo", title: name }, pic);
+  pic.addEventListener("error", () => chip.remove());
+  stage.append(chip);
+}
+
+function f1Panel(panel) {
+  const role = panel.dataset.f1Role;
+  getJSON(`/api/f1?title=${encodeURIComponent(panel.dataset.f1Title || "")}`).then((d) => {
+    if (!d || !d.role) {
+      // Jolpica is down or this isn't someone it knows: the Wikidata half stands on its own.
+      for (const sel of ["[data-f1-standing]", "[data-f1-form]", "[data-f1-career]", "[data-f1-next]"]) $(sel, panel)?.remove();
+      panel.classList.add("is-offline");
+      return;
+    }
+    if (d.color) panel.style.setProperty("--team", d.color);
+    f1Plate(panel, d);
+    f1Logo(panel, d);
+    // Wikidata's idea of the current seat can lag a transfer; the standings can't.
+    const badge = $(".hero-badge", panel);
+    if (badge && d.role === "driver" && d.team) {
+      const extra = $(".hero-badge-extra", badge) || badge.appendChild(el("span", { class: "hero-badge-extra" }));
+      extra.textContent = d.team;
+    }
+    const live = f1Standing($("[data-f1-standing]", panel), d);
+    // A retired driver has no standing: the career totals take its place beside the picture.
+    if (!live) { panel.classList.add("is-retired"); $(".f1-top", panel)?.append($("[data-f1-career]", panel)); }
+    (role === "team" ? teamForm : driverForm)($("[data-f1-form]", panel), d);
+    f1Career($("[data-f1-career]", panel), d);
+    // The weekend and the grid belong to whoever is racing this season; a retired driver gets neither.
+    const card = $("[data-f1-next]", panel);
+    if (!d.active) { card?.remove(); return; }
+    if (card) getJSON("/api/f1/next").then((race) => f1Weekend(card, race, { accent: d.color || "" }));
+    getJSON("/api/f1/qualifying").then((quali) => f1Qualifying(panel, quali));
+  });
+}
+
+function gpPanel(panel) {
+  getJSON(`/api/f1/gp?title=${encodeURIComponent(panel.dataset.f1Gp)}`).then((gp) => {
+    if (!gp?.name) return;
+    // The circuit becomes the picture: the generic stage and discipline cards step aside.
+    if (gp.map?.points) panel.classList.add("has-gp");
+    f1Weekend($("[data-f1-gp-card]", panel), gp, { title: `${gp.season} · round ${gp.round}`, podium: gp.podium || [] });
+    f1Winners($("[data-f1-winners]", panel), gp.winners, gp.held, "Winners here");
+  });
+}
+
+function circuitPanel(panel) {
+  const stage = $("[data-trk-stage]", panel), facts = $("[data-f1-circuit-facts]", panel);
+  const photo = $(".trk-photo", panel);
+  const { lat, lon } = panel.dataset;
+  const showPhoto = () => { $(".trk-wait", stage)?.remove(); if (photo) photo.hidden = false; else stage.append(el("div", { class: "ms-blank" }, icon("map"), el("span", { text: "No outline of this circuit yet" }))); };
+  getJSON(`/api/f1/circuit?title=${encodeURIComponent(panel.dataset.f1Circuit)}&lat=${encodeURIComponent(lat || "")}&lon=${encodeURIComponent(lon || "")}`).then((c) => {
+    c = c && !Array.isArray(c) ? c : {};
+    let direction = "";
+    if (c.map?.points) {
+      const box = el("div", { class: "trk trk--stage" });
+      stage.replaceChildren(box);
+      direction = mountTrack(box, c.map, { label: `${c.name || panel.dataset.f1Circuit}, track map` })?.direction || "";
+      stage.classList.add("has-map");
+      if (photo) { const side = el("figure", { class: "f1-card trk-photo-card" }, photo); photo.hidden = false; $(".f1-side", panel)?.prepend(side); }
+    } else if (lat && lon) {
+      getJSON(`/api/f1/track?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&id=${encodeURIComponent(panel.dataset.f1Circuit)}`).then((t) => {
+        const segments = t?.path ? osmSegments(t.path) : [];
+        if (!segments.length) { showPhoto(); return; }
+        const box = el("div", { class: "trk trk--stage" });
+        stage.replaceChildren(box);
+        mountTrack(box, { segments }, { label: `${panel.dataset.f1Circuit}, outline` });
+        stage.classList.add("has-map");
+        if (photo) { const side = el("figure", { class: "f1-card trk-photo-card" }, photo); photo.hidden = false; $(".f1-side", panel)?.prepend(side); }
+      });
+    } else showPhoto();
+
+    // What the circuit is, in a few tiles: the lap, its direction, its Grands Prix.
+    const rows = [];
+    const row = (k, v, sub) => { if (v) rows.push(el("div", { class: "f1-kv" }, el("small", { text: k }), el("strong", { text: v }), sub ? el("span", { class: "muted", text: sub }) : null)); };
+    if (c.map?.length) row("Lap length", `${(c.map.length / 1000).toFixed(3)} km`);
+    row("Direction", direction);
+    if (c.held) row("Grands Prix", f1Num(c.held), c.map?.first_gp ? `since ${c.map.first_gp}` : "");
+    if (c.map?.opened) row("Opened", String(c.map.opened));
+    if (c.locality || c.country) row("Where", [c.locality, c.country].filter(Boolean).join(", "));
+    if (rows.length) $(".f1-circuit-body", facts).replaceChildren(el("div", { class: "f1-kvs" }, ...rows));
+    else facts.remove();
+
+    const raceCard = $("[data-f1-circuit-race]", panel);
+    if (c.race?.name && raceCard) {
+      raceCard.hidden = false;
+      raceCard.replaceChildren(...[f1Label(`${c.race.season} · round ${c.race.round}`, "flag"),
+        el("a", { class: "f1-race-name f1-race-name--sm", href: searchHref(c.race.name), text: c.race.name }),
+        c.race.done ? el("p", { class: "f1-race-date", text: `Raced ${f1Day(c.race.start)}` }) : f1Countdown(c.race.start),
+        c.race.done ? null : f1Sessions(c.race.schedule)].filter(Boolean));
+    }
+    f1Winners($("[data-f1-winners]", panel), c.winners, c.held);
+  });
+}
+
+$$("[data-f1]").forEach(f1Panel);
+$$("[data-f1-gp]").forEach(gpPanel);
+$$("[data-f1-circuit]").forEach(circuitPanel);
+
+// The stage shows its picture whole rather than cropped, so nothing needs re-fitting when it lands; a
+// dead original falls back to the thumbnail Wikipedia also offered.
+for (const shot of $$(".ms-shot, .f1-shot")) {
+  shot.addEventListener("error", () => {
+    if (shot.dataset.fallback && shot.src !== shot.dataset.fallback) shot.src = shot.dataset.fallback;
+  });
+}
+
+// Motorsport bento: every cell gets the same width, so the grid reads as one block rather than as rows
+// of different sizes. The column count is chosen to leave the fewest empty cells in the last row while
+// keeping a cell near the width it should occupy; a short last row is fine, a ragged one is not.
+function layoutSpecs(grid) {
+  const cells = [...grid.children];
+  if (!cells.length) return;
+  const fit = () => {
+    const width = grid.clientWidth;
+    if (!width) return;
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 10;
+    const ideal = width / 220;                      // how many cells would sit at the right width
+    let cols = cells.length, score = Infinity;
+    for (let c = 2; c <= Math.min(7, cells.length); c++) {
+      const rows = Math.ceil(cells.length / c);
+      const waste = rows * c - cells.length;
+      // Straying from the width a cell should have costs more than an empty slot, but a last row
+      // holding a single cell is the one shape that really reads as broken.
+      const s = Math.abs(c - ideal) * 2 + waste * 1.5 + (rows > 1 && cells.length % c === 1 ? 4 : 0);
+      if (s < score) { score = s; cols = c; }
+    }
+    // Half a pixel spare, so rounding never wraps the last cell onto a line of its own.
+    cells.forEach((cell) => cell.style.setProperty("--cell-w", `calc((100% - ${(cols - 1) * gap}px) / ${cols} - 0.5px)`));
+    grid.classList.add("is-laid");
+  };
+  new ResizeObserver(fit).observe(grid);
+  fit();
+}
+$$("[data-specs]").forEach((grid) => layoutSpecs(grid));
+
 // Bento rows: as many columns as fit (tiles at least `min` wide, at most six), then the tiles shared out
 // evenly across the rows, shorter rows first, each row's tiles splitting its width. No row is left short.
 function balanceBento(grid, min = 160) {
@@ -2554,13 +3342,28 @@ function randInt(min, max) {
   return min + (buf[0] % span);
 }
 for (const hero of $$("[data-random]")) {
-  const out = $("[data-random-out]", hero);
-  const roll = () => {
-    const { random, min, max } = hero.dataset;
-    out.textContent = random === "coin" ? (randInt(0, 1) ? "Heads" : "Tails")
-      : String(randInt(Number(min), Number(max)));
+  const out = $("[data-random-out]", hero), die = $("[data-die]", hero), coin = $("[data-coin]", hero);
+  const { random, min, max } = hero.dataset;
+  const pick = () => (random === "coin" ? randInt(0, 1) : randInt(Number(min), Number(max)));
+  const show = (n) => {
+    out.textContent = random === "coin" ? (n ? "Heads" : "Tails") : String(n);
+    if (die) die.dataset.face = n;
+    if (coin) coin.textContent = n ? "H" : "T";
   };
-  roll();
+  let spin = 0;
+  // The die and the coin step through a few faces before they settle, like the rest of Archer's motion.
+  const roll = () => {
+    clearInterval(spin);
+    const result = pick();
+    if (!(die || coin) || matchMedia("(prefers-reduced-motion: reduce)").matches) return show(result);
+    let steps = 6;
+    hero.classList.add("is-rolling");
+    spin = setInterval(() => {
+      if (--steps <= 0) { clearInterval(spin); hero.classList.remove("is-rolling"); return show(result); }
+      show(pick());
+    }, 70);
+  };
+  show(pick());
   $("[data-random-again]", hero).addEventListener("click", roll);
 }
 
@@ -2620,13 +3423,14 @@ const pad = (n) => String(Math.floor(n)).padStart(2, "0");
 const clockText = (s) => (s >= 3600 ? `${pad(s / 3600)}:` : "") + `${pad((s % 3600) / 60)}:${pad(s % 60)}`;
 
 for (const hero of $$("[data-timer]")) {
-  const display = $("[data-timer-display]", hero), startBtn = $("[data-timer-start]", hero);
+  const display = $("[data-timer-display]", hero), startBtn = $("[data-timer-start]", hero), bar = $("[data-timer-bar]", hero);
   let mode = hero.dataset.timer, preset = Number(hero.dataset.seconds) || 300;
   let running = false, started = 0, banked = 0, raf = 0, audio = null;
   const elapsed = () => banked + (running ? (performance.now() - started) / 1000 : 0);
   const render = () => {
     const t = mode === "timer" ? Math.max(preset - elapsed(), 0) : elapsed();
     display.textContent = mode === "stopwatch" && t < 3600 ? `${clockText(t)}.${String(Math.floor((t % 1) * 10))}` : clockText(Math.ceil(t));
+    if (bar) bar.style.setProperty("--p", mode === "timer" ? Math.min(elapsed() / preset, 1).toFixed(4) : 0);
     if (mode === "timer" && running && t <= 0) {
       running = false; banked = preset; startBtn.textContent = "Start";
       display.classList.add("is-done");
@@ -2648,6 +3452,7 @@ for (const hero of $$("[data-timer]")) {
   const sync = () => {
     for (const b of $$("[data-timer-mode]", hero)) b.classList.toggle("is-active", b.dataset.timerMode === mode);
     $("[data-timer-presets]", hero).hidden = mode !== "timer";
+    if (bar) bar.hidden = mode !== "timer";
   };
   for (const b of $$("[data-timer-mode]", hero)) b.addEventListener("click", () => { mode = b.dataset.timerMode; sync(); reset(); });
   sync(); render();
@@ -2683,12 +3488,15 @@ const FINANCE = {
   emi: ({ principal, rate, years }) => {
     const n = Math.round(years * 12), r = rate / 1200;
     const emi = r ? (principal * r * (1 + r) ** n) / ((1 + r) ** n - 1) : principal / n;
-    return { emi: money(emi), interest: money(emi * n - principal), total: money(emi * n) };
+    const share = principal / (emi * n);
+    return { emi: money(emi), interest: money(emi * n - principal), total: money(emi * n), bar: share,
+             principalShare: Number.isFinite(share) ? `${Math.round(share * 100)}%` : "", interestShare: Number.isFinite(share) ? `${100 - Math.round(share * 100)}%` : "" };
   },
   bmi: ({ height, weight }) => {
     const m = height / 100, bmi = weight / (m * m);
     const category = bmi < 18.5 ? "Underweight" : bmi < 25 ? "Healthy" : bmi < 30 ? "Overweight" : "Obese";
-    return { bmi: Number.isFinite(bmi) ? bmi.toFixed(1) : "—", category, range: `${(18.5 * m * m).toFixed(1)}–${(24.9 * m * m).toFixed(1)} kg` };
+    return { bmi: Number.isFinite(bmi) ? bmi.toFixed(1) : "—", category, range: `${(18.5 * m * m).toFixed(1)}–${(24.9 * m * m).toFixed(1)} kg`,
+             bar: (bmi - 15) / 25 };
   },
   tip: ({ bill, tip, people }) => {
     const tipAmount = (bill * tip) / 100, total = bill + tipAmount;
@@ -2699,7 +3507,11 @@ for (const hero of $$("[data-finance]")) {
   const calc = FINANCE[hero.dataset.finance];
   const update = () => {
     const values = Object.fromEntries($$("[data-fin]", hero).map((i) => [i.dataset.fin, parseFloat(i.value) || 0]));
-    for (const [key, value] of Object.entries(calc(values))) {
+    const out = calc(values);
+    const bar = $("[data-fin-bar]", hero);
+    if (bar && "bar" in out) bar.style.setProperty("--p", Number.isFinite(out.bar) ? Math.min(Math.max(out.bar, 0), 1).toFixed(4) : 0);
+    for (const [key, value] of Object.entries(out)) {
+      if (key === "bar") continue;
       const node = $(`[data-fin-out="${key}"]`, hero);
       if (node) node.textContent = value;
     }

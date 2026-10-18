@@ -1,4 +1,4 @@
-{% from "macros.html" import hero_badge %}
+{% from "macros.html" import hero_badge, range_bar %}
 {% set c = v.hero.data %}
 <section class="hero hero-crypto" data-converter="rate" data-rate="{{ c.price }}">
   <div class="cx-head">
@@ -18,9 +18,19 @@
     <figcaption class="muted">Last 7 days</figcaption>
   </figure>
   {% endif %}
-  <dl class="cx-stats">
-    {% for label, value in c.stats %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
-  </dl>
+  <div class="cx-stats">
+    {% if c.low and c.high and c.high > c.low %}
+    {# Where today's price sits between the day's low and high. #}
+    <div class="cx-range">
+      <span class="cx-range-label">Today’s range</span>
+      {{ range_bar(0, 1, at=(c.price - c.low) / (c.high - c.low), label="Price within today’s low and high") }}
+      <span class="cx-range-ends"><span>{{ c.stats[3][1] }}</span><span>{{ c.stats[2][1] }}</span></span>
+    </div>
+    {% endif %}
+    <dl class="readout">
+      {% for label, value in c.stats if not (c.low and c.high and label in ("24h high", "24h low")) %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+    </dl>
+  </div>
   <div class="convert-fields cx-convert">
     <label class="field"><input type="number" step="any" value="1" data-in><span>{{ c.symbol }}</span></label>
     <span class="convert-eq">=</span>

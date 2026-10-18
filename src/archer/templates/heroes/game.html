@@ -1,4 +1,4 @@
-{% from "macros.html" import hero_badge, link_chip, site_badge %}
+{% from "macros.html" import hero_badge, link_chip, site_badge, fact_tile %}
 {# Video game panel. Wikidata gives the facts, platforms, store links, critic scores and trailer; archer.js
    adds Steam's price, reviews, players, screenshots and PC requirements and CheapShark's PC deals from
    /api/game after the page is up. #}
@@ -59,13 +59,7 @@
   </div>
 
   <div class="tiles gm-tiles">
-    {% for t in e.tiles %}
-    <div class="tile">
-      <span class="tile-label"><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</span>
-      <span class="tile-value{% if t.value|length > 22 %} is-long{% endif %}">{{ t.value[:1]|upper }}{{ t.value[1:] }}</span>
-      {% if t.sub %}<span class="tile-sub">{{ t.sub }}</span>{% endif %}
-    </div>
-    {% endfor %}
+    {% for t in e.tiles %}{{ fact_tile(t) }}{% endfor %}
   </div>
 
   <div class="gm-chips">

@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import re
+from pathlib import Path
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -751,3 +754,462 @@ def test_game_api_without_steam_is_empty(client):
     games._appids._data.clear()
     app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"items": []})))
     assert client.get("/api/game", params={"title": "Some Console Exclusive"}).json() == {}
+
+
+# ------------------------------------------------------------ motorsport
+
+def when(value):
+    return {"mainsnak": {"snaktype": "value", "datavalue": {"type": "time",
+            "value": {"time": value, "precision": 11}}}, "rank": "normal"}
+
+
+def quantity(amount, unit="1"):
+    return {"mainsnak": {"snaktype": "value", "datavalue": {"type": "quantity",
+            "value": {"amount": amount, "unit": "http://www.wikidata.org/entity/" + unit}}}, "rank": "normal"}
+
+
+def article(title, qid, description, extract):
+    return {"query": {"pages": [{"title": title, "fullurl": "https://en.wikipedia.org/wiki/" + title.replace(" ", "_"),
+                                 "description": description, "extract": extract,
+                                 "pageprops": {"wikibase_item": qid},
+                                 "original": {"source": "https://upload.wikimedia.org/p.jpg", "width": 1200, "height": 800}}]}}
+
+
+# Real claim shapes: a car model typed Q3231690, a race typed only "recurring sporting event" and found by
+# its sport, an F1 driver typed "human" with the series as an occupation, and a team typed Q10497835.
+CAR_CLAIMS = {
+    "P31": [item("Q3231690")], "P176": [item("Q20195")],
+    "P279": [item("Q11030"), item("Q3231690")],              # "sports car" is kept, "car model" is not
+    "P571": [when("+1963-01-01T00:00:00Z")],
+    "P2052": [quantity("+340", "Q180154")],                  # km/h, not the "kilometre per hour" label
+    "P1092": [quantity("+1500000")], "P155": [item("Q177250")],
+}
+RACE_CLAIMS = {
+    "P31": [item("Q18608583")],                              # a recurring event, not an "automobile racing series"
+    "P641": [item("Q1805420")], "P279": [item("Q1805420")],  # endurance racing, three different ways below
+    "P571": [when("+1923-06-10T00:00:00Z")], "P17": [item("Q142")],
+    "P1346": [item("Q310687")],
+}
+F1_DRIVER_CLAIMS = {
+    "P31": [item("Q5")], "P106": [item("Q10349745"), item("Q10841764")],
+    "P54": [item("Q169898")], "P569": [when("+1997-09-30T00:00:00Z")], "P27": [item("Q55")],
+}
+F1_TEAM_CLAIMS = {
+    "P31": [item("Q10497835")], "P641": [item("Q5386")],
+    "P17": [item("Q38")], "P571": [when("+1929-01-01T00:00:00Z")], "P159": [item("Q9178")],
+}
+
+GP_CLAIMS = {"P31": [item("Q108886259")], "P641": [item("Q5367")], "P17": [item("Q235")],
+             "P571": [when("+1929-04-14T00:00:00Z")]}
+CIRCUIT_CLAIMS = {"P31": [item("Q2338524")], "P17": [item("Q145")],
+                  "P625": [{"mainsnak": {"snaktype": "value", "datavalue": {"type": "globecoordinate",
+                            "value": {"latitude": 52.0786, "longitude": -1.01694}}}, "rank": "normal"}],
+                  "P2043": [quantity("+5.891", "Q828224")], "P1619": [when("+1948-10-02T00:00:00Z")]}
+
+MOTORSPORT_PAGES = {
+    "Porsche 911": ("Q219357", "Sports car produced by Porsche", "The Porsche 911 is a sports car."),
+    "24 Hours of Le Mans": ("Q187579", "Annual sports car race held in France", "The 24 Hours of Le Mans is a race."),
+    "Max Verstappen": ("Q2239218", "Dutch and Belgian racing driver", "Max Verstappen is a Formula One driver."),
+    "Scuderia Ferrari": ("Q169898", "Formula One team", "Scuderia Ferrari is an Italian Formula One team."),
+    "Monaco Grand Prix": ("Q9102", "Formula One race in Monaco", "The Monaco Grand Prix is a Formula One race."),
+    "Silverstone Circuit": ("Q171402", "Motor racing circuit in England", "Silverstone Circuit is in England."),
+}
+MOTORSPORT_CLAIMS = {"Q219357": CAR_CLAIMS, "Q187579": RACE_CLAIMS, "Q2239218": F1_DRIVER_CLAIMS,
+                     "Q169898": F1_TEAM_CLAIMS, "Q9102": GP_CLAIMS, "Q171402": CIRCUIT_CLAIMS}
+MOTORSPORT_LABELS = {
+    "Q5": "human", "Q38": "Italy", "Q55": "Netherlands", "Q142": "France", "Q20195": "Porsche",
+    "Q11030": "sports car", "Q5386": "auto racing", "Q9178": "Maranello", "Q10349745": "racing automobile driver",
+    "Q10841764": "Formula One driver", "Q169898": "Scuderia Ferrari", "Q177250": "Porsche 356",
+    "Q1805420": "endurance racing", "Q18608583": "recurring sporting event", "Q310687": "Ferrari 499P",
+    "Q3231690": "car model", "Q108886259": "Formula One event", "Q5367": "motorsport", "Q235": "Monaco",
+    "Q2338524": "motorsport racing track", "Q145": "United Kingdom", "Q828224": "kilometre",
+}
+
+
+def motorsport_upstream(request: httpx.Request) -> httpx.Response:
+    host, params = request.url.host, request.url.params
+    # classify() lowercases the candidate before it reaches Wikipedia, and titles are matched here.
+    title = next((t for t in MOTORSPORT_PAGES if t.casefold() == params.get("titles", "").casefold()), "")
+    if host == "en.wikipedia.org":
+        if title:
+            qid, description, extract = MOTORSPORT_PAGES[title]
+            return httpx.Response(200, json=article(title, qid, description, extract))
+        return httpx.Response(200, json={"query": {"pages": []}})
+    if host == "www.wikidata.org":
+        if params.get("props", "").startswith("claims"):
+            if params.get("sites"):                       # the by-title guess made alongside the page lookup
+                qid = MOTORSPORT_PAGES.get(title, ("", "", ""))[0]
+            else:
+                qid = params.get("ids", "")
+            return httpx.Response(200, json={"entities": {qid: {"claims": MOTORSPORT_CLAIMS[qid]}} if qid in MOTORSPORT_CLAIMS else {}})
+        return httpx.Response(200, json={"entities": {q: {"labels": {"en": {"value": n}}} for q, n in MOTORSPORT_LABELS.items()}})
+    return upstream(request)
+
+
+def test_car_gets_a_car_centric_panel_with_one_matted_hero_picture(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(motorsport_upstream))
+    html = client.get("/search", params={"q": "Porsche 911"}).text
+    assert "hero-car" in html and ">Car<" in html and "hero-entity--product" not in html
+    assert 'class="ms-stage ms-stage--car"' in html and 'class="ms-shot"' in html
+    assert "sports car" in html and "340 km/h" in html and "1.5 million" in html
+    assert "Porsche 356" in html                          # the previous generation
+
+
+def test_car_model_is_not_filed_under_product():
+    from archer.sources.wiki import _kind
+    assert _kind({"claims": CAR_CLAIMS}) == "car"
+
+
+def test_racing_series_panel_tags_its_discipline(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(motorsport_upstream))
+    html = client.get("/search", params={"q": "24 hours of le mans"}).text
+    assert "hero-race" in html and "Racing series" in html
+    assert ">Endurance<" in html                            # one tag, not three overlapping spellings
+    assert "Ferrari 499P" in html and "1923" in html
+
+
+def test_discipline_tags_collapse_overlapping_names():
+    from archer.sources.wiki import _disciplines
+    assert _disciplines(["endurance racing", "sports car racing", "automobile endurance racing"]) == ["Endurance"]
+    assert _disciplines(["rallying", "world championship"]) == ["Rally"]
+    assert _disciplines(["rally raid race"]) == ["Rally raid"]
+    assert _disciplines(["motorsport racing", "sport", "recurring sporting event"]) == []
+
+
+def test_formula_one_driver_and_team_get_their_own_panels(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(motorsport_upstream))
+    driver = client.get("/search", params={"q": "max verstappen"}).text
+    assert 'class="hero hero-entity hero-f1 is-driver"' in driver and "Formula One driver" in driver
+    assert 'data-f1-title="Max Verstappen"' in driver and "Scuderia Ferrari" in driver
+    assert "30 September 1997" in driver
+    team = client.get("/search", params={"q": "scuderia ferrari"}).text
+    assert 'class="hero hero-entity hero-f1 is-team"' in team and "Formula One team" in team
+    assert "Maranello" in team and "1929" in team
+
+
+def test_a_racing_driver_without_formula_one_stays_a_person(client):
+    """The F1 occupation is the only thing that makes a driver an F1 panel; nobody else is promoted."""
+    from archer.sources.wiki import _kind
+    assert _kind({"claims": {"P31": [item("Q5")], "P106": [item("Q10349745")]}}) == "person"
+    assert _kind({"claims": F1_DRIVER_CLAIMS}) == "f1driver"
+    assert _kind({"claims": {"P31": [item("Q5")], "P54": [item("Q169898")]}}) == "person"
+
+
+def test_grand_prix_and_circuit_get_their_own_panels(client):
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(motorsport_upstream))
+    gp = client.get("/search", params={"q": "monaco grand prix"}).text
+    assert 'data-f1-gp="Monaco Grand Prix"' in gp and ">Grand Prix<" in gp and ">Formula One<" in gp
+    circuit = client.get("/search", params={"q": "silverstone circuit"}).text
+    assert "hero-circuit" in circuit and 'data-f1-circuit="Silverstone Circuit"' in circuit
+    assert 'data-lat="52.0786"' in circuit and "5.891 km" in circuit and "1948" in circuit
+
+
+def test_kinds_for_circuits_grands_prix_and_works_teams():
+    from archer.sources.wiki import _kind
+    assert _kind({"claims": CIRCUIT_CLAIMS}) == "circuit"
+    assert _kind({"claims": {"P31": [item("Q926439")]}}) == "circuit"            # a street circuit
+    assert _kind({"claims": {"P31": [item("Q18608583")], "P641": [item("Q5367")]}}) == "race"
+    assert _kind({"claims": {"P31": [item("Q21484471")]},
+                  "labels": {"en": {"value": "Mercedes-Benz in Formula One"}}}) == "f1team"
+
+
+# Real Jolpica responses for the 2026 season after round 17, shared with tests/motorsport_browser_server.py.
+JOLPICA_DIR = Path(__file__).with_name("fixtures") / "jolpica"
+SCHUMACHER = {"driverId": "michael_schumacher", "url": "https://en.wikipedia.org/wiki/Michael_Schumacher",
+              "givenName": "Michael", "familyName": "Schumacher", "code": "MSC", "nationality": "German"}
+
+
+def jolpica(request: httpx.Request) -> httpx.Response:
+    path = request.url.path.split("/ergast/f1/", 1)[-1].removesuffix(".json")
+    params = dict(request.url.params)
+    if path in ("drivers", "constructors"):
+        rows = [SCHUMACHER] if path == "drivers" else []
+        table = "DriverTable" if path == "drivers" else "ConstructorTable"
+        return httpx.Response(200, json={"MRData": {"total": str(len(rows)), table: {path.capitalize()[:-1] + "s": rows}}})
+    name = "_".join([path.replace("/", "_")] + [f"{k}_{params[k]}" for k in ("limit", "offset") if k in params])
+    file = JOLPICA_DIR / f"{name}.json"
+    return httpx.Response(200, content=file.read_bytes()) if file.exists() else httpx.Response(404)
+
+
+@pytest.fixture
+def f1_api(client, monkeypatch):
+    from datetime import datetime, timezone
+    from archer.sources import f1
+    f1._cache._data.clear()
+    f1._LOOKUP.clear()
+    f1._NAMES.clear()
+    f1._track._data.clear()
+    monkeypatch.setattr(f1, "_now", lambda: datetime(2026, 10, 18, 12, tzinfo=timezone.utc))
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(jolpica))
+    return client
+
+
+def test_f1_driver_gets_standing_season_and_career(f1_api):
+    d = f1_api.get("/api/f1", params={"title": "Lewis Hamilton"}).json()
+    assert d["role"] == "driver" and d["active"] and (d["code"], d["number"], d["team"]) == ("HAM", "44", "Ferrari")
+    assert d["color"] == "#E8002D"
+    s = d["standing"]
+    assert (s["position"], s["points"], s["wins"], s["to_leader"]) == (3, 229, 1, 111)
+    assert [r["position"] for r in s["ladder"]] == [1, 2, 3, 4, 5] and s["ladder"][2]["me"]
+    assert len(d["results"]) == 17 and d["rounds"] == 23
+    spain = next(r for r in d["results"] if r["round"] == 14)
+    assert not spain["classified"] and spain["status"] == "Retired" and spain["grid"] == 4
+    assert d["form"]["dnf"] == 1 and d["form"]["best"] == {"position": 1, "name": "Barcelona Grand Prix"}
+    c = d["career"]
+    assert (c["starts"], c["wins"], c["poles"], c["seasons"], c["first"]) == (397, 106, 119, 20, 2007)
+    assert c["titles"] == [2008, 2014, 2015, 2017, 2018, 2019, 2020]
+    assert c["podiums"] > c["wins"]                                     # wins, seconds and thirds
+    assert sum(1 for r in d["calendar"] if r["done"]) == 17
+
+
+def test_f1_team_gets_lineup_points_per_round_and_titles(f1_api):
+    t = f1_api.get("/api/f1", params={"title": "Scuderia Ferrari"}).json()
+    assert t["role"] == "team" and t["name"] == "Ferrari" and t["standing"]["position"] == 2
+    assert {p["name"] for p in t["lineup"]} == {"Lewis Hamilton", "Charles Leclerc"}
+    assert len(t["rounds"]) == 17 and all(len(r["cars"]) == 2 for r in t["rounds"])
+    assert t["rounds"][0]["points"] == sum(c["points"] for c in t["rounds"][0]["cars"])
+    assert len(t["career"]["titles"]) == 16 and "starts" not in t["career"]   # a team's results count every car
+
+
+def test_f1_retired_driver_is_found_in_the_full_list_with_career_only(f1_api):
+    d = f1_api.get("/api/f1", params={"title": "Michael Schumacher"}).json()
+    assert d["role"] == "driver" and not d["active"] and d["standing"] == {} and d["results"] == []
+    assert d["career"]["titles"] == [1994, 1995, 2000, 2001, 2002, 2003, 2004]
+    assert f1_api.get("/api/f1", params={"title": "Sunderland"}).json() == {}
+
+
+def test_f1_driver_is_found_when_jolpica_links_a_redirect(f1_api):
+    """Jolpica links Andrea_Kimi_Antonelli and Alexander_Albon; the articles are Kimi Antonelli and Alex Albon."""
+    from archer.sources import f1
+    assert f1_api.get("/api/f1", params={"title": "Kimi Antonelli"}).json()["standing"]["position"] == 1
+    assert f1_api.get("/api/f1", params={"title": "Alex Albon"}).json()["id"] == "albon"
+    assert f1._by_name("Carlos Sainz Jr.") == "sainz" and f1._by_name("Lewis Russell") == "" and f1._by_name("Max") == ""
+
+
+def test_a_search_naming_a_team_or_driver_in_its_own_words_finds_the_article(f1_api):
+    from archer.sources import f1
+    ext = httpx.AsyncClient(transport=httpx.MockTransport(jolpica))
+    title = lambda text: asyncio.run(f1.title_for_query(ext, text))   # noqa: E731
+    assert title("mercedes petronas amg f1 team") == "Mercedes-Benz in Formula One"
+    assert title("red bull f1") == "Red Bull Racing" and title("racing bulls") == "Racing Bulls"
+    assert title("aston martin f1 team") == "Aston Martin in Formula One"
+    assert title("hamilton f1") == "Lewis Hamilton"
+    assert title("mercedes") == "" and title("red bull") == ""          # no F1 cue: the brand, not the team
+
+
+def test_title_cased_spelling_finds_a_redirect_the_lowercase_query_missed():
+    from archer.sources.wiki import _find_page
+    asked = []
+
+    def reply(request):
+        titles = request.url.params.get("titles", "")
+        asked.append(titles or "search")
+        if titles == "Andrea Kimi Antonelli":
+            return httpx.Response(200, json={"query": {"pages": [{"title": "Kimi Antonelli", "pageprops": {"wikibase_item": "Q112073790"}}]}})
+        return httpx.Response(200, json={"query": {"pages": [{"title": titles, "missing": True}]}})
+    page, corrected = asyncio.run(_find_page(httpx.AsyncClient(transport=httpx.MockTransport(reply)), "andrea kimi antonelli"))
+    assert page["title"] == "Kimi Antonelli" and not corrected and asked == ["andrea kimi antonelli", "Andrea Kimi Antonelli"]
+
+
+def test_f1_api_is_empty_when_jolpica_is_down(client):
+    from archer.sources import f1
+    f1._cache._data.clear()
+    f1._LOOKUP.clear()
+    f1._NAMES.clear()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    assert client.get("/api/f1", params={"title": "Lewis Hamilton"}).json() == {}
+    assert client.get("/api/f1", params={"title": "   "}).json() == {}
+    assert client.get("/api/f1/next").json() == {}
+    assert client.get("/api/f1/gp", params={"title": "Monaco Grand Prix"}).json() == {}
+
+
+def test_f1_next_round_comes_from_the_calendar_with_its_circuit_drawn(f1_api):
+    d = f1_api.get("/api/f1/next").json()
+    assert (d["round"], d["name"], d["rounds"]) == (18, "United States Grand Prix", 23)
+    assert d["circuit"] == "Circuit of the Americas" and d["flag"] == "https://flagcdn.com/us.svg"
+    assert d["start"] == "2026-10-25T20:00:00Z" and d["schedule"]["Qualifying"] == "2026-10-24T21:00:00Z"
+    assert d["map"]["id"] == "us-2012" and d["map"]["length"] == 5514 and len(d["map"]["points"]) > 100
+    assert [r["done"] for r in d["calendar"]].count(True) == 17
+
+
+def test_f1_grand_prix_has_its_round_podium_and_winners_there(f1_api):
+    gp = f1_api.get("/api/f1/gp", params={"title": "Monaco Grand Prix"}).json()
+    assert gp["round"] == 6 and gp["done"] and gp["map"]["id"] == "mc-1929"
+    assert [p["position"] for p in gp["podium"]] == [1, 2, 3]
+    assert gp["held"] == 72 and len(gp["winners"]) == 8 and gp["winners"][0]["season"] == "2026"
+    assert gp["winners"][0]["season"] >= gp["winners"][-1]["season"]          # newest first
+    assert f1_api.get("/api/f1/gp", params={"title": "2026 Monaco Grand Prix"}).json()["round"] == 6
+    assert f1_api.get("/api/f1/gp", params={"title": "Indianapolis 500"}).json() == {}
+
+
+def test_f1_circuit_is_matched_by_article_with_outline_and_winners(f1_api):
+    c = f1_api.get("/api/f1/circuit", params={"title": "Silverstone Circuit", "lat": "52.0786", "lon": "-1.01694"}).json()
+    assert c["id"] == "silverstone" and c["map"]["id"] == "gb-1948" and c["held"] == 61
+    assert c["race"]["round"] == 9 and c["race"]["done"]
+    # A Grand Prix circuit long off the calendar has no bundled outline; the page asks OpenStreetMap instead.
+    brands = f1_api.get("/api/f1/circuit", params={"title": "Brands Hatch", "lat": "51.3569", "lon": "0.2631"}).json()
+    assert brands["id"] == "brands_hatch" and brands["map"] == {}
+    # Never a Grand Prix circuit at all.
+    assert f1_api.get("/api/f1/circuit", params={"title": "Mount Panorama Circuit", "lat": "-33.4475", "lon": "149.5582"}).json() == {"map": {}}
+    assert f1_api.get("/api/f1/circuit", params={"title": "X", "lat": "abc", "lon": "1"}).json() == {}
+
+
+def test_every_circuit_on_the_calendar_has_a_bundled_outline():
+    from archer.sources.f1 import circuit_map
+    races = json.loads((JOLPICA_DIR / "current_limit_40.json").read_bytes())["MRData"]["RaceTable"]["Races"]
+    for race in races:
+        where = race["Circuit"]["Location"]
+        assert circuit_map(where["lat"], where["long"]), race["raceName"]
+    assert circuit_map("0", "0") == {} and circuit_map("x", "1") == {}
+
+
+def test_a_season_finished_after_the_titles_table_is_asked_for_once(f1_api, monkeypatch):
+    from datetime import datetime, timezone
+    from archer.sources import f1
+    monkeypatch.setattr(f1, "_now", lambda: datetime(2027, 3, 1, tzinfo=timezone.utc))
+    monkeypatch.setitem(f1._CHAMPIONS, "driver", dict(f1.DRIVER_CHAMPIONS))
+    asked = []
+
+    def standings(request):
+        asked.append(request.url.path)
+        return httpx.Response(200, json={"MRData": {"StandingsTable": {"StandingsLists": [
+            {"season": "2026", "DriverStandings": [{"Driver": {"driverId": "antonelli"}}]}]}}})
+    ext = httpx.AsyncClient(transport=httpx.MockTransport(standings))
+    assert asyncio.run(f1._titles(ext, "driver", "antonelli")) == [2026]
+    assert asyncio.run(f1._titles(ext, "driver", "antonelli")) == [2026] and len(asked) == 1
+
+
+def quali_grid(driver_id, given, family, position):
+    return {"position": str(position), "number": "1", "Q1": "1:33.241", "Q2": "1:31.639", "Q3": "1:31.373",
+            "Driver": {"driverId": driver_id, "permanentNumber": "1", "givenName": given, "familyName": family,
+                       "code": family[:3].upper(), "url": f"https://en.wikipedia.org/wiki/{given}_{family}"},
+            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"}}
+
+
+def calendar(request: httpx.Request) -> httpx.Response:
+    """Jolpica's last grid, OpenStreetMap's raceways, and the usual Wikipedia/Wikidata behind them."""
+    if request.url.host == "overpass-api.de":
+        return httpx.Response(200, json={"elements": [
+            {"type": "way", "geometry": [{"lat": 30.10 + i / 100, "lon": -97.70 + i / 50} for i in range(40)],
+             "tags": {"highway": "raceway"}}]})
+    if request.url.path.endswith("/last/qualifying.json"):
+        return httpx.Response(200, json={"MRData": {"RaceTable": {"Races": [
+            {"season": "2026", "round": "17", "raceName": "Singapore Grand Prix", "date": "2026-10-11",
+             "time": "12:00:00Z", "Qualifying": {"date": "2026-10-10", "time": "13:00:00Z"}, "QualifyingResults": [
+                 quali_grid("max_verstappen", "Max", "Verstappen", 1),
+                 quali_grid("leclerc", "Charles", "Leclerc", 2)]}]}}})
+    if request.url.host in ("en.wikipedia.org", "www.wikidata.org"):
+        return motorsport_upstream(request)
+    return jolpica(request)
+
+
+def f1_caches():
+    from archer.sources import f1
+    f1._cache._data.clear()
+    f1._LOOKUP.clear()
+    f1._NAMES.clear()
+    f1._track._data.clear()
+
+
+def test_f1_qualifying_returns_the_grid_with_every_session_time(client):
+    f1_caches()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(calendar))
+    d = client.get("/api/f1/qualifying").json()
+    assert d["name"] == "Singapore Grand Prix" and len(d["grid"]) == 2 and d["session"] == "2026-10-10T13:00:00Z"
+    top = d["grid"][0]
+    assert (top["position"], top["name"], top["team"], top["best"]) == (1, "Max Verstappen", "Red Bull", "1:31.373")
+    assert top["times"] == {"Q1": "1:33.241", "Q2": "1:31.639", "Q3": "1:31.373"} and top["color"] == "#3671C6"
+
+
+def test_f1_panel_arrives_as_skeletons_with_nothing_live_or_spoiling_in_it(client):
+    """Standing, season, career and weekend are filled by archer.js; the qualifying grid is drawn only on a
+    click, so opening the page on the Saturday after a session cannot spoil it."""
+    f1_caches()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(calendar))
+    html = client.get("/search", params={"q": "max verstappen"}).text
+    for hook in ("data-f1-standing", "data-f1-form", "data-f1-career", "data-f1-next", "data-f1-quali", "data-f1-plate"):
+        assert hook in html, hook
+    assert "f1-quali-grid" not in html and "1:31.373" not in html
+    assert "flagcdn.com/nl.svg" in html                        # the nationality flag
+    car = client.get("/search", params={"q": "porsche 911"}).text
+    assert "ms-facts" in car and "#b-car-porsche" in car and "From 1963" in car
+
+
+def test_f1_track_draws_an_openstreetmap_outline_fitted_into_the_box(client):
+    f1_caches()
+    app.state.ext = httpx.AsyncClient(transport=httpx.MockTransport(calendar))
+    d = client.get("/api/f1/track", params={"lat": "30.1328", "lon": "-97.6411", "id": "americas"}).json()
+    assert d["path"].startswith("M")
+    points = [float(v) for v in re.findall(r"-?\d+\.?\d*", d["path"])]
+    xs, ys = points[0::2], points[1::2]
+    assert 0 <= min(xs) and max(xs) <= 100 and 0 <= min(ys) and max(ys) <= 100
+    assert client.get("/api/f1/track", params={"lat": "abc", "lon": "1"}).json() == {"path": ""}
+
+
+def test_circuit_outline_is_thinned_but_keeps_its_whole_shape():
+    from archer.sources.f1 import _outline
+    ways = [[(30.0 + i / 500, -97.7 + i / 900) for i in range(600)] for _ in range(2)]
+    path = _outline(ways)
+    points = [float(v) for v in re.findall(r"-?\d+\.?\d*", path)]
+    xs, ys = points[0::2], points[1::2]
+    assert len(xs) <= 260, "thinned to roughly the budget"
+    assert min(xs) > 2 and max(xs) < 98 and min(ys) > 2 and max(ys) < 98
+    assert _outline([[(1.0, 1.0)]]) == ""                       # too little geometry to draw
+
+
+def test_country_flags_map_from_names_and_nationalities():
+    from archer.sources.f1 import flag
+    assert flag("USA") == "https://flagcdn.com/us.svg" and flag("Dutch") == "https://flagcdn.com/nl.svg"
+    assert flag("Great Britain") == "https://flagcdn.com/gb.svg" and flag("Atlantis") == ""
+
+
+def test_facts_take_the_form_of_what_they_hold():
+    from datetime import date
+    from archer.facts import shape
+    today = date(2026, 10, 18)
+    released = shape({"label": "Released", "value": "2021", "sub": "22 October 2021"}, today)
+    assert released["shape"] == "when" and released["ago"] == "5 years ago" and released["detail"] == "22 October 2021"
+    aired = shape({"label": "Aired", "value": "2007–present", "sub": ""}, today)
+    assert aired["shape"] == "span" and aired["ongoing"] and aired["length"] == "20 years" and aired["cells"] == 20
+    long_run = shape({"label": "Production", "value": "1963–present"}, today)
+    assert long_run["cells"] <= 30                       # a long span steps several years per cell
+    height = shape({"label": "Height", "value": "178 cm"}, today)
+    assert (height["shape"], height["num"], height["unit"]) == ("measure", "178", "cm")
+    age = shape({"label": "Age", "value": "30 years", "sub": "1 September 1996"}, today)
+    assert (age["num"], age["unit"], age["sub"]) == ("30", "years", "Born 1 September 1996")
+    people = shape({"label": "Members", "value": "Ann Lee, Bo Ray, Cy Diaz, Di Fox"}, today)
+    assert [p["initials"] for p in people["people"]] == ["AL", "BR", "CD"] and people["more"] == 1
+    assert shape({"label": "Genre", "value": "drama, comedy"}, today)["tags"] == ["Drama", "Comedy"]
+    assert shape({"label": "Born in", "value": "Oakland"}, today)["shape"] == "place"
+    assert shape({"label": "Scientific name", "value": "Panthera leo"}, today)["shape"] == "text"
+
+
+def test_entity_facts_are_shaped(client):
+    html = client.get("/search", params={"q": "zendaya"}).text
+    assert "fact--measure" in html and "fact--place" in html and "fact--people" in html
+    assert 'class="monogram"' in html and ">TH<" in html                     # Tom Holland as a monogram link
+    assert 'href="/search?q=Tom+Holland"' in html
+
+
+def test_time_and_sun_draw_day_rails(client):
+    html = client.get("/search", params={"q": "sunrise bengaluru"}).text
+    rail = html.split('class="dayrails"')[1].split("</section>")[0]
+    assert rail.count('class="dayrail is-sun"') == 2 and "is-day" in rail and "dayrail-now" in rail
+    time = client.get("/search", params={"q": "time in bengaluru"}).text
+    assert 'class="dayrails"' in time and "is-now" in time
+
+
+def test_colour_has_shades_and_contrast(client):
+    html = client.get("/search", params={"q": "#1a73e8"}).text
+    assert html.count('class="swatch-step') == 9 and "swatch-step is-self" in html
+    assert "White text: 4.5:1 contrast" in html and "Black text: 4.6:1 contrast" in html                                 # white text on #1a73e8
+
+
+def test_weather_days_and_crypto_range_use_pixel_bars(client):
+    assert html_has(client, "weather bengaluru", 'class="rangebar"')
+    html = client.get("/search", params={"q": "bitcoin price"}).text
+    assert "cx-range" in html and "rangebar-at" in html and "24h high" not in html   # the range replaces the two tiles
+
+
+def html_has(client, q, marker):
+    return marker in client.get("/search", params={"q": q}).text

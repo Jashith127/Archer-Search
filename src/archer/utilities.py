@@ -343,9 +343,27 @@ def color(q: str) -> dict | None:
     else:
         return None
     hue, light, sat = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    lum = _luminance(r, g, b)
+    # The same hue and saturation from light to dark; the step nearest the colour itself is marked.
+    scale = []
+    for level in (0.95, 0.86, 0.76, 0.66, 0.56, 0.46, 0.36, 0.26, 0.16):
+        sr, sg, sb = (round(x * 255) for x in colorsys.hls_to_rgb(hue, level, sat))
+        scale.append({"hex": f"#{sr:02x}{sg:02x}{sb:02x}", "light": level > 0.6})
+    nearest = min(range(len(scale)), key=lambda i: abs((0.95, 0.86, 0.76, 0.66, 0.56, 0.46, 0.36, 0.26, 0.16)[i] - light))
+    scale[nearest]["self"] = True
     return {"hex": f"#{r:02x}{g:02x}{b:02x}", "rgb": f"rgb({r}, {g}, {b})",
             "hsl": f"hsl({round(hue * 360)}, {round(sat * 100)}%, {round(light * 100)}%)",
-            "light": (0.299 * r + 0.587 * g + 0.114 * b) > 150}
+            "light": (0.299 * r + 0.587 * g + 0.114 * b) > 150, "scale": scale,
+            # WCAG contrast of white and of black text on this colour, rounded down so 4.46 never reads as a pass.
+            "on_white": int(1.05 / (lum + 0.05) * 10) / 10, "on_black": int((lum + 0.05) / 0.05 * 10) / 10}
+
+
+def _luminance(r: int, g: int, b: int) -> float:
+    """WCAG relative luminance."""
+    def channel(c: int) -> float:
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
 
 
 # ---------------------------------------------------------------- timestamp

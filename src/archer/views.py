@@ -13,7 +13,7 @@ from archer.config import settings
 from archer.imagerank import rank_images
 from archer.query import PLACE_TYPES, Query, classify
 from archer.searxng import Result, SearchResponse, SearXNG, suggestion_terms
-from archer.sources import aimodels, crypto, dictionary, fx, modelprices, places, products, translate, weather, wiki
+from archer.sources import aimodels, crypto, dictionary, f1, fx, modelprices, places, products, translate, weather, wiki
 from archer.utilities import parse_currency_answer
 
 log = logging.getLogger("archer")
@@ -200,6 +200,11 @@ async def _settle_meaning(ext: httpx.AsyncClient, query: Query, hero: Hero | Non
     ranked = _ranked_titles(core, results)  # Wikipedia articles about this name, in the web's order
     picks = []
     if not about:
+        # A current F1 team or driver named in the search's own words ("mercedes petronas amg f1 team")
+        # comes first; Wikipedia's title rarely contains every one of those words.
+        racing = await _safe(f1.title_for_query(ext, query.text), "jolpica")
+        if racing and racing is not _FAILED:
+            picks.append(racing)
         if _brand_site_first(core, results):
             top = results[0]
             site = await _safe(wiki.title_for_site(ext, top.url, core), "wikidata site")

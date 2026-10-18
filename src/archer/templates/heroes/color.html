@@ -1,11 +1,23 @@
 {% from "macros.html" import hero_badge %}
 {% set c = v.hero.data %}
+{% macro contrast(ratio, ink, name) -%}
+<span class="swatch-ink" style="color: {{ ink }}" title="{{ name }} text: {{ ratio }}:1 contrast">Aa<small>{{ ratio }} · {{ "AAA" if ratio >= 7 else "AA" if ratio >= 4.5 else "Large only" if ratio >= 3 else "Fails" }}</small></span>
+{%- endmacro %}
 <section class="hero hero-color">
   {{ hero_badge("palette", "Colour", c.hex) }}
-  <div class="swatch" style="background: {{ c.hex }}; color: {{ '#111' if c.light else '#fff' }}">{{ c.hex }}</div>
-  <dl class="kv-grid">
+  <div class="swatch" style="background: {{ c.hex }}; color: {{ '#111' if c.light else '#fff' }}">
+    <span class="swatch-hex">{{ c.hex }}</span>
+    {# How white and black text read on it (WCAG contrast). #}
+    <span class="swatch-inks">{{ contrast(c.on_white, "#fff", "White") }}{{ contrast(c.on_black, "#000", "Black") }}</span>
+  </div>
+  <dl class="readout readout--stack">
     {% for label, value in [("HEX", c.hex), ("RGB", c.rgb), ("HSL", c.hsl)] %}
-    <div><dt>{{ label }}</dt><dd>{{ value }} <button type="button" class="icon-btn icon-btn--sm" data-copy="{{ value }}" aria-label="Copy {{ label }}"><svg><use href="#i-copy"/></svg></button></dd></div>
+    <div><dt>{{ label }}</dt><dd class="is-mono">{{ value }} <button type="button" class="icon-btn icon-btn--sm" data-copy="{{ value }}" aria-label="Copy {{ label }}"><svg><use href="#i-copy"/></svg></button></dd></div>
     {% endfor %}
   </dl>
+  {% if c.scale %}
+  <div class="swatch-scale" role="list" aria-label="Lighter and darker shades">
+    {% for s in c.scale %}<button type="button" role="listitem" class="swatch-step{% if s.self %} is-self{% endif %}" style="background: {{ s.hex }}; color: {{ '#111' if s.light else '#fff' }}" data-copy="{{ s.hex }}" title="Copy {{ s.hex }}"><span>{{ s.hex }}</span></button>{% endfor %}
+  </div>
+  {% endif %}
 </section>

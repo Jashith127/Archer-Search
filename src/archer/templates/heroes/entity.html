@@ -1,4 +1,4 @@
-{% from "macros.html" import hero_badge, link_chip %}
+{% from "macros.html" import hero_badge, link_chip, fact_tile %}
 {% set e = v.hero.data %}
 {% set poster = e.kind in ("film", "tv", "book") and e.image_tall %}
 {% set show_flag = e.kind == "country" and e.flag %}
@@ -8,16 +8,6 @@
 {# Films and series get a full cast section under the panel instead of name chips. #}
 {% set cast_chips = e.cast if not v.lazy.cast else [] %}
 {% set has_about = e.extract or e.facts or cast_chips %}
-
-{% macro tile_block(t, lead) -%}
-{% set longest = t.value.split()|map("length")|max %}
-<div class="tile{% if lead %} tile--lead{% endif %}">
-  <span class="tile-label"><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</span>
-  <span class="tile-value{% if t.value|length > 22 %} is-long{% endif %}" style="--chars: {{ [longest, 6]|max }}">
-    {%- if t.flag %}<img class="tile-flag" src="{{ t.flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ t.value }}</span>
-  {% if t.sub %}<span class="tile-sub">{{ t.sub }}</span>{% endif %}
-</div>
-{%- endmacro %}
 
 {% macro about_content() -%}
 {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
@@ -112,9 +102,9 @@
     <section class="about-side" aria-label="About {{ e.title }}">
       <p class="about-label"><svg><use href="#u-info"/></svg>About</p>
       {% if e.tiles %}
-      <dl class="about-stats">
+      <dl class="readout about-stats">
         {% for t in e.tiles %}
-        <div><dt><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</dt><dd>{{ t.value }}{% if t.sub %}<span class="muted"> · {{ t.sub }}</span>{% endif %}</dd></div>
+        <div><dt><svg class="tile-icon"><use href="#u-{{ t.icon }}"/></svg>{{ t.label }}</dt><dd>{{ t.value }}{% if t.sub %}<small>{{ t.sub }}</small>{% endif %}</dd></div>
         {% endfor %}
       </dl>
       {% endif %}
@@ -127,7 +117,7 @@
     {% endif %}
 
     <div class="tiles">
-      {% for t in (e.tiles[:4] if v.lazy.weather_at else e.tiles) %}{{ tile_block(t, loop.first) }}{% endfor %}
+      {% for t in (e.tiles[:4] if v.lazy.weather_at else e.tiles) %}{{ fact_tile(t, loop.first) }}{% endfor %}
       {% if v.lazy.weather_at %}
       <div class="tile tile-weather" data-weather-lat="{{ v.lazy.weather_at.lat }}" data-weather-lon="{{ v.lazy.weather_at.lon }}">
         <span class="tile-label"><svg class="tile-icon"><use href="#u-weather"/></svg>Right now</span>

@@ -410,6 +410,28 @@ def test_search_and_read_tools_count_and_preserve_unreadable_sources():
     asyncio.run(run())
 
 
+def test_read_url_tool_reads_github_repo_and_plain_pages(monkeypatch):
+    from archer.ai_service import question_urls
+    from archer.sources import github
+    assert question_urls("summarize this app https://github.com/Jashith127/Archer-Search.") == ["https://github.com/Jashith127/Archer-Search"]
+    assert question_urls("no link here") == [] and question_urls("see http://localhost:4747/x") == []
+    assert github.repo_of("https://github.com/a/b/tree/main/src") == ("a", "b") and github.repo_of("https://github.com/settings/x") is None
+    async def repo(client, owner, name):
+        return {"name": f"{owner}/{name}", "description": "Personal search", "language": "Python", "readme": "Archer is a search engine.", "url": "https://github.com/a/b"}
+    monkeypatch.setattr(github, "repo", repo)
+    async def read(url):
+        return "Docs title\n" + "body text " * 20
+    async def run():
+        box = Toolbox(None, None, SimpleNamespace(read=read), Settings(_env_file=None), [], lambda *args: None)
+        await box.call("read_url", '{"url":"https://github.com/a/b"}')
+        await box.call("read_url", '{"url":"https://example.com/docs"}')
+        assert box.evidence[0].kind == "page" and "Archer is a search engine." in box.evidence[0].text
+        assert box.evidence[1].title == "Docs title"
+        with pytest.raises(ValueError):
+            await box.call("read_url", '{"url":"ftp://example.com/x"}')
+    asyncio.run(run())
+
+
 def test_fetcher_rejects_compression_and_oversized_pages(monkeypatch):
     import archer.fetcher as fetcher
     original_client = httpx.AsyncClient

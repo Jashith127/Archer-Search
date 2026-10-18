@@ -1,0 +1,61 @@
+{% from "macros.html" import hero_badge, link_chip, spec_grid %}
+{# Circuit panel. The outline is the point of the page, so it is the stage: every Grand Prix circuit is
+   bundled (bacinger/f1-circuits) and drawn in the racing direction from the start/finish line; any other
+   circuit is drawn from OpenStreetMap's raceways, without a direction because those come unordered.
+   /api/f1/circuit adds the races held, the recent winners and this season's date. The photograph moves
+   to the side column, or takes the stage when there is no outline at all. #}
+{% set e = v.hero.data %}
+{% set c = e.circuit or {} %}
+<section class="hero hero-entity hero-circuit" data-f1-circuit="{{ e.title }}" data-lat="{{ c.lat }}" data-lon="{{ c.lon }}">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, extra=("Street circuit" if c.street else "")) }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+    <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
+  </div>
+
+  <div class="f1-top f1-top--circuit">
+    <div class="trk-stage" data-trk-stage>
+      {% if c.lat %}<div class="trk-wait" aria-hidden="true"></div>{% endif %}
+      {% if e.image %}
+      <img class="ms-shot trk-photo" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer"{% if c.lat %} hidden{% endif %}>
+      {% elif not c.lat %}
+      <div class="ms-blank"><svg><use href="#u-map"/></svg><span>No outline of this circuit yet</span></div>
+      {% endif %}
+    </div>
+    <aside class="f1-side">
+      <section class="f1-card f1-circuit-facts" aria-label="Circuit" data-f1-circuit-facts>
+        <p class="f1-label"><svg><use href="#u-map"/></svg>Circuit</p>
+        <div class="f1-circuit-body">{% for _ in range(4) %}<span class="skeleton-text f1-skel-row"></span>{% endfor %}</div>
+      </section>
+      <section class="f1-card f1-circuit-race" aria-label="This season" data-f1-circuit-race hidden></section>
+    </aside>
+  </div>
+
+  <section class="f1-card f1-winners" aria-label="Recent winners" data-f1-winners hidden></section>
+
+  {{ spec_grid(e.specs) }}
+
+  {% if e.extract or e.facts %}
+  <details class="about" open>
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">
+      {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+      {% if e.facts %}<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <p class="hero-source">Facts from Wikipedia and Wikidata. Grand Prix circuit outlines from bacinger/f1-circuits, others from OpenStreetMap. Races and winners from Jolpica (Ergast).</p>
+</section>

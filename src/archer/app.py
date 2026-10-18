@@ -4,6 +4,7 @@ from html import escape
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncio
 import logging
 import re
@@ -17,13 +18,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from archer import __version__, tls, views, websearch
+from archer import __version__, facts, tls, views, websearch
 from archer.fetcher import lead_image
 from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
 from archer.searxng import SearXNG, SUGGEST_LIMIT, SUGGEST_MIN, SUGGEST_MAX_LENGTH, active_limits, fallback_order
-from archer.sources import USER_AGENT, TTLCache, aimodels, credits, games, lyrics, products, watch, weather, wiki
+from archer.sources import USER_AGENT, TTLCache, aimodels, credits, f1, games, lyrics, products, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_provider import readiness
 from archer.ai_service import AIService
@@ -209,6 +210,30 @@ templates.env.filters["qs"] = quote_plus
 # Only web links become hrefs; anything else in stored history renders as plain text.
 templates.env.filters["web_url"] = lambda url: url if isinstance(url, str) and re.match(r"https?://", url, re.I) else ""
 templates.env.filters["money"] = aimodels.money
+templates.env.filters["fact"] = facts.shape
+
+
+def _hour_in(tz: str = "") -> float:
+    """The current hour of the day (fractional) in a time zone, or on this computer when none is given.
+    Drawn by the day rails (the time and sunrise panels)."""
+    try:
+        now = datetime.now(ZoneInfo(tz)) if tz else datetime.now().astimezone()
+    except (ZoneInfoNotFoundError, ValueError):
+        return -1.0
+    return now.hour + now.minute / 60
+
+
+def _hours(hhmm: str) -> float:
+    """"06:09" -> 6.15, for placing a time on a day rail."""
+    try:
+        h, m = str(hhmm)[:5].split(":")
+        return int(h) + int(m) / 60
+    except ValueError:
+        return -1.0
+
+
+templates.env.filters["hour_in"] = _hour_in
+templates.env.filters["hours"] = _hours
 
 
 # ------------------------------------------------------------------- pages
@@ -433,6 +458,60 @@ async def api_game(request: Request, appid: str = Query("", max_length=10, patte
     """Price, deals, reviews, players and requirements for a video game panel (Steam and CheapShark)."""
     return JSONResponse(await games.details(request.app.state.ext, appid, title.strip(), settings.home_country,
                                             settings.home_currency))
+
+
+_COORD = re.compile(r"-?\d{1,3}(\.\d{1,8})?")
+
+
+@app.get("/api/f1")
+async def api_f1(request: Request, title: str = Query("", max_length=120)) -> JSONResponse:
+    """A Formula One driver or team: standing, this season's results and career totals (Jolpica)."""
+    return JSONResponse(await f1.lookup(request.app.state.ext, title.strip()))
+
+
+@app.get("/api/f1/next")
+async def api_f1_next(request: Request) -> JSONResponse:
+    """The next round: circuit and outline, session times, sprint flag, and the season as a strip."""
+    try:
+        return JSONResponse(await f1.next_race(request.app.state.ext))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({})
+
+
+@app.get("/api/f1/qualifying")
+async def api_f1_qualifying(request: Request) -> JSONResponse:
+    """The last round's qualifying grid. Nothing is drawn until the reader asks to see it."""
+    try:
+        return JSONResponse(await f1.qualifying(request.app.state.ext))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({})
+
+
+@app.get("/api/f1/gp")
+async def api_f1_gp(request: Request, title: str = Query("", max_length=120)) -> JSONResponse:
+    """A Grand Prix: this season's round, its circuit's outline, and who has won there."""
+    return JSONResponse(await f1.grand_prix(request.app.state.ext, title.strip()))
+
+
+@app.get("/api/f1/circuit")
+async def api_f1_circuit(request: Request, title: str = Query("", max_length=120),
+                         lat: str = Query("", max_length=20), lon: str = Query("", max_length=20)) -> JSONResponse:
+    """A circuit: its outline, the races it has held, its winners and this season's date there."""
+    if not (_COORD.fullmatch(lat) and _COORD.fullmatch(lon)):
+        lat = lon = ""
+    return JSONResponse(await f1.circuit(request.app.state.ext, title.strip(), lat, lon))
+
+
+@app.get("/api/f1/track")
+async def api_f1_track(request: Request, lat: str = Query("", max_length=20), lon: str = Query("", max_length=20),
+                       id: str = Query("", max_length=60)) -> JSONResponse:
+    """OpenStreetMap's outline for a circuit that isn't bundled, as SVG path data. Slow when cold."""
+    if not _COORD.fullmatch(lat) or not _COORD.fullmatch(lon):
+        return JSONResponse({"path": ""})
+    try:
+        return JSONResponse({"path": await f1.track(request.app.state.ext, lat, lon, id[:60])})
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return JSONResponse({"path": ""})
 
 
 @app.get("/api/watch")

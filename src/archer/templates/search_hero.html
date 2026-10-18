@@ -13,7 +13,14 @@
   <p class="correction correction--quiet">Showing {{ v.hero.data.title }}, the meaning you picked last time. Other meanings are listed in the panel.</p>
   {% endif %}
 
-  {% if v.hero %}{% include "heroes/" ~ ("game" if v.hero.kind == "entity" and v.hero.data.kind == "game" else v.hero.kind) ~ ".html" %}{% endif %}
+  {# Most entity panels are drawn by entity.html; the ones with their own layout name their file here. #}
+  {% if v.hero %}
+  {% set panel = v.hero.data.kind if v.hero.kind == "entity" else v.hero.kind %}
+  {% set own = {"game": "game", "car": "car", "race": "race", "circuit": "circuit", "f1driver": "f1", "f1team": "f1"}.get(panel) %}
+  {# Manufacturer marks are far too big to send with every page, so they ride along only with a car. #}
+  {% if own == "car" %}{% include "motorsport_icons.html" %}{% endif %}
+  {% include "heroes/" ~ (own or v.hero.kind) ~ ".html" %}
+  {% endif %}
   {% if ai.snapshot %}{% include "ai_panel.html" %}{% endif %}
 
   {% if v.tab == "all" and v.lazy.cast %}{% include "screen_cast.html" %}{% endif %}

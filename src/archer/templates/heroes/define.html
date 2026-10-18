@@ -18,7 +18,7 @@
         <li>{{ def.text }}{% if def.example %}<span class="meaning-example">“{{ def.example }}”</span>{% endif %}</li>
         {% endfor %}
       </ol>
-      {% if m.synonyms %}<div class="chips chips--small">{% for s in m.synonyms %}<a class="chip" href="/search?q=define+{{ s|qs }}">{{ s }}</a>{% endfor %}</div>{% endif %}
+      {% if m.synonyms %}<p class="meaning-sub">Synonyms</p><div class="chips chips--small">{% for s in m.synonyms %}<a class="chip" href="/search?q=define+{{ s|qs }}">{{ s }}</a>{% endfor %}</div>{% endif %}
     </div>
     {% endfor %}
   </div>

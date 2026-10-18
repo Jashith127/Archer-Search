@@ -1,0 +1,88 @@
+{% from "macros.html" import hero_badge, link_chip, spec_grid %}
+{# Racing series panel: 24 Hours of Le Mans, the World Rally Championship, a Grand Prix and the rest.
+   Wikidata types most of them only as "recurring sporting event", so the panel is built from the sport
+   (P641) instead — which is also what gives the discipline tags: Endurance, Rally, Grand Prix. #}
+{% set e = v.hero.data %}
+{% set r = e.race or {} %}
+{# A Formula One Grand Prix also gets its live card: this season's round, the circuit drawn as a dot matrix
+   and who has won there. /api/f1/gp answers {} for anything that isn't on the calendar. #}
+{% set gp = "grand prix" in e.title|lower or "Formula One" in r.disciplines %}
+<section class="hero hero-entity hero-race"{% if gp %} data-f1-gp="{{ e.title }}"{% endif %}>
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, extra=(r.year|string if r.year else "")) }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+    <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
+  </div>
+
+  {% if gp %}
+  <section class="f1-card f1-weekend f1-gp" aria-label="This season" data-f1-gp-card hidden>
+    <p class="f1-label"><svg><use href="#u-flag"/></svg><span data-f1-gp-label>This season</span></p>
+    <div class="f1-weekend-body"></div>
+  </section>
+  <section class="f1-card f1-winners" aria-label="Recent winners" data-f1-winners hidden></section>
+  {% endif %}
+  <div class="ms-grid">
+    <div class="ms-stage ms-stage--race{% if e.image_logo %} is-logo{% endif %}">
+      {% if e.image %}
+      <img class="ms-shot" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+      {% else %}
+      <div class="ms-blank"><svg><use href="#u-flag"/></svg><span>No picture of this race yet</span></div>
+      {% endif %}
+    </div>
+
+    <aside class="ms-side">
+      {# What kind of racing this is: the tag the reader came for. #}
+      <section class="ms-card">
+        <p class="ms-label"><svg><use href="#u-trophy"/></svg>Discipline</p>
+        {% if r.disciplines %}
+        <div class="ms-chips ms-chips--card">
+          {% for d in r.disciplines %}<span class="tag-chip ms-chip"><svg><use href="#u-flag"/></svg>{{ d }}</span>{% endfor %}
+        </div>
+        {% else %}
+        <p class="ms-note">Motorsport</p>
+        {% endif %}
+        {% if r.sport %}<p class="ms-note">Filed under {{ r.sport }}</p>{% endif %}
+      </section>
+      {% if r.champion %}
+      <section class="ms-card">
+        <p class="ms-label"><svg><use href="#u-award"/></svg>Most recent winner</p>
+        <a class="ms-champion" href="/search?q={{ r.champion|qs }}">{{ r.champion }}</a>
+        {% if r.part_of %}<p class="ms-note">Part of {{ r.part_of }}</p>{% endif %}
+      </section>
+      {% endif %}
+    </aside>
+  </div>
+
+  {{ spec_grid(e.specs) }}
+
+  {% if r.editions %}
+  <div class="ms-chips">
+    <span class="ms-chips-label">Recent editions</span>
+    {% for ed in r.editions %}<a class="tag-chip" href="/search?q={{ ed|qs }}">{{ ed }}</a>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if e.extract or e.facts %}
+  <details class="about" open>
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">
+      {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+      {% if e.facts %}<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <p class="hero-source">Facts from Wikipedia and Wikidata. Discipline tags come from the sport the series belongs to.{% if gp %} Calendar and winners from Jolpica (Ergast); circuit outlines from bacinger/f1-circuits.{% endif %}</p>
+</section>

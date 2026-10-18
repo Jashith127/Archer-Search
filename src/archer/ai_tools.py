@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from archer import utilities, views
 from archer.evidence import add
-from archer.sources import weather, wiki, watch
+from archer.sources import github, weather, wiki, watch
 from archer.imagerank import relevant_images
 from archer.evidence import public_url
 
@@ -23,6 +23,10 @@ class Search(Arguments):
 
 class Read(Arguments):
     source_ids: list[str] = Field(min_length=1, max_length=6)
+
+
+class Url(Arguments):
+    url: str = Field(min_length=8, max_length=500)
 
 
 class Media(Arguments):
@@ -64,6 +68,7 @@ class Cards(Arguments):
 TOOLS = {
     "search_web": (Search, "Search for missing evidence. Up to 3 total additional queries; general or news. Never include bangs."),
     "read_sources": (Read, "Read public web pages from retrieved source IDs. Up to 6 total pages. Prefer primary evidence."),
+    "read_url": (Url, "Read one public web page by its exact URL, for a link the user gave or a page named in evidence. GitHub repos return the description and README. Up to 3 per answer."),
     "search_media": (Media, "Find actual image or video results and show a source-linked gallery. Use for images, photos, visual examples, tutorials or demonstrations. Never guess image URLs."),
     "weather": (Weather, "Get a 7-day forecast and dated hourly readings. Empty place uses the user's configured home location."),
     "lookup_entity": (Entity, "Resolve an entity through Wikipedia/Wikidata, returning typed facts and film/TV watch IDs. Can be called for multiple comparison subjects."),
@@ -86,6 +91,7 @@ class Toolbox:
         self.searx, self.ext, self.reader, self.settings = searx, ext, reader, settings
         self.evidence, self.emit = evidence, emit
         self.searches, self.reads, self.calls = 0, set(), 0
+        self.urls = set()
         self.ui = {}
         self.shown = set()
         self.executed = set()
@@ -114,6 +120,8 @@ class Toolbox:
                 self.emit("notice", {"text": response.error or "Some search engines were unavailable; coverage is partial."})
         elif name == "read_sources":
             await self.read(args.source_ids)
+        elif name == "read_url":
+            await self.read_url(args.url)
         elif name == "search_media":
             if getattr(self, "media_searches", 0) >= 2 or any(t.startswith("!") for t in args.query.split()):
                 raise ValueError("Media search limit reached or unsupported query.")
@@ -210,6 +218,28 @@ class Toolbox:
         item.url = url
         self.ui[item.id] = {"kind": kind, "title": title, "data": data}
         return item
+
+    async def read_url(self, url):
+        """Fetch one page the user pointed at. Nothing is searched, so a pasted link can't be lost to ranking."""
+        url = public_url(url)
+        if not url:
+            raise ValueError("Only public http(s) URLs can be read.")
+        if url in self.urls:
+            return
+        if len(self.urls) >= 3:
+            raise ValueError("URL read budget reached.")
+        self.urls.add(url)
+        found = github.repo_of(url)
+        if found:
+            data = await github.repo(self.ext, *found)
+            facts = {k: v for k, v in data.items() if k != "readme" and v not in (None, "", [])}
+            text = "Repository facts: " + json.dumps(facts, ensure_ascii=False) + "\n\nREADME:\n" + (data["readme"] or "(no README)")
+            add(self.evidence, "GitHub · " + data["name"], data["url"] or url, text, kind="page",
+                limitation="GitHub API repository facts and README text, retrieved on the date shown; the source code was not read.")
+            return
+        text = await self.reader.read(url)
+        title = next((line for line in text.splitlines() if line.strip()), url)[:120]
+        add(self.evidence, title, url, text, kind="page", limitation="Extracted page text; the page may omit inaccessible content.")
 
     async def read(self, ids, maximum=6):
         import asyncio

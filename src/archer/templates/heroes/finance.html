@@ -12,6 +12,9 @@
     <div class="fin-main"><dt>Monthly EMI</dt><dd data-fin-out="emi">—</dd></div>
     <div><dt>Total interest</dt><dd data-fin-out="interest">—</dd></div>
     <div><dt>Total payment</dt><dd data-fin-out="total">—</dd></div>
+    {# How the total splits between the loan itself and the interest on it. #}
+    <div class="fin-bar"><dt>Principal and interest</dt><dd><span class="splitbar" data-fin-bar style="--p: .5" aria-hidden="true"></span>
+      <span class="fin-key"><span><i></i>Principal <b data-fin-out="principalShare"></b></span><span><i class="is-b"></i>Interest <b data-fin-out="interestShare"></b></span></span></dd></div>
   </dl>
   {% elif f.tool == "bmi" %}
   <div class="fin-inputs">
@@ -23,6 +26,8 @@
     <div class="fin-main"><dt>BMI</dt><dd data-fin-out="bmi">—</dd></div>
     <div><dt>Category (WHO)</dt><dd data-fin-out="category">—</dd></div>
     <div><dt>Healthy weight for this height</dt><dd data-fin-out="range">—</dd></div>
+    {# The WHO bands on one scale (BMI 15 to 40), with this BMI marked on it. #}
+    <div class="fin-bar"><dt>On the WHO scale</dt><dd><span class="bmi-scale" data-fin-bar style="--p: .3" aria-hidden="true"><i style="--w: 14%">Under</i><i style="--w: 26%">Healthy</i><i style="--w: 20%">Over</i><i style="--w: 40%">Obese</i><b></b></span></dd></div>
   </dl>
   {% else %}
   <div class="fin-inputs">

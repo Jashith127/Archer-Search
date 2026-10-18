@@ -1,14 +1,21 @@
-{% from "macros.html" import hero_badge %}
+{% from "macros.html" import hero_badge, day_rail, day_ticks %}
 {% set t = v.hero.data %}
+{% set there, here = t.tz|hour_in, ""|hour_in %}
 <section class="hero hero-time">
-  <div>
+  <div class="time-now">
     {{ hero_badge("clock", "Local time", t.place) }}
     <p class="clock" data-clock-tz="{{ t.tz }}">{{ t.time }}</p>
     <p class="clock-date" data-clock-date-tz="{{ t.tz }}">{{ t.date }}</p>
   </div>
-  <dl class="kv-grid">
-    <div><dt>Time zone</dt><dd>{{ t.zone }} ({{ t.offset }})</dd></div>
-    <div><dt>Difference</dt><dd>{{ t.diff }}</dd></div>
-    <div><dt>IANA zone</dt><dd>{{ t.tz }}</dd></div>
+  <dl class="readout readout--stack">
+    <div><dt>Time zone</dt><dd>{{ t.zone }}<small>{{ t.offset }}</small></dd></div>
+    <div><dt>Compared with you</dt><dd>{{ t.diff }}</dd></div>
+    <div><dt>IANA zone</dt><dd class="is-mono">{{ t.tz }}</dd></div>
   </dl>
+  {# The two days side by side, so the gap between them reads at a glance. #}
+  <div class="dayrails">
+    {{ day_rail((t.place or t.tz).split(",")[0], now=there) }}
+    {% if t.diff != "Same time as you" %}{{ day_rail("You", now=here) }}{% endif %}
+    {{ day_ticks() }}
+  </div>
 </section>

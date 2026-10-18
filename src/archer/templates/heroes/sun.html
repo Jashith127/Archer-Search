@@ -1,23 +1,23 @@
-{% from "macros.html" import hero_badge %}
+{% from "macros.html" import hero_badge, day_rail, day_ticks %}
 {% set s = v.hero.data %}
 {% set today = s.days[0] %}
+{% set other = "sunset" if s.event == "sunrise" else "sunrise" %}
 <section class="hero hero-sun">
-  <div>
+  <div class="time-now">
     {{ hero_badge("sunrise", s.event|title, s.place) }}
     <p class="clock">{{ today[s.event] }}</p>
-    <p class="clock-date">{{ today.date }} · local time</p>
+    <p class="clock-date">{{ today.date }} · local time · {{ other|title }} {{ today[other] }}</p>
   </div>
-  <div class="sun-days">
+  <dl class="readout readout--stack">
+    <div><dt>Daylight today</dt><dd>{{ today.daylight }}</dd></div>
+    {% if s.days|length > 1 %}<div><dt>Tomorrow</dt><dd>{{ s.days[1].sunrise }} – {{ s.days[1].sunset }}<small>{{ s.days[1].daylight }} of daylight</small></dd></div>{% endif %}
+  </dl>
+  {# Daylight lit in warm cells, the night left dark; today carries a marker at the current hour. #}
+  <div class="dayrails">
     {% for d in s.days %}
-    <div class="sun-day">
-      <p class="sun-day-name">{{ d.name }}</p>
-      <dl class="sun-row">
-        <div><dt>Sunrise</dt><dd>{{ d.sunrise }}</dd></div>
-        <div><dt>Sunset</dt><dd>{{ d.sunset }}</dd></div>
-        <div><dt>Daylight</dt><dd>{{ d.daylight }}</dd></div>
-      </dl>
-    </div>
+    {{ day_rail(d.name, now=(s.timezone|hour_in) if loop.first else -1, rise=d.sunrise|hours, set=d.sunset|hours, note=d.sunrise ~ " – " ~ d.sunset) }}
     {% endfor %}
+    {{ day_ticks() }}
   </div>
   <p class="hero-source">Open-Meteo · {{ s.timezone }}</p>
 </section>

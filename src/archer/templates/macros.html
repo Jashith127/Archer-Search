@@ -13,6 +13,108 @@
 </p>
 {%- endmacro %}
 
+{# One fact card. facts.shape reads the label and picks the form: a date is its year with how long ago
+   it was, a span of years is a dot rail, a measurement keeps its number large and its unit small, people
+   are monogram links, a place is a link (with its flag when it has one), categories are chips; anything else is plain text,
+   shrunk to its longest word (--chars) rather than broken mid-word. #}
+{% macro fact_tile(t, lead=False) -%}
+{% set f = t|fact %}
+<div class="tile fact fact--{{ f.shape }}{% if lead %} tile--lead{% endif %}">
+  <span class="tile-label"><svg class="tile-icon"><use href="#u-{{ f.icon or 'info' }}"/></svg>{{ f.label }}</span>
+  {%- if f.shape == "when" %}
+  <span class="fact-main"><span class="fact-num">{{ f.year }}</span><span class="fact-ago">{{ f.ago }}</span></span>
+  {% if f.detail %}<span class="tile-sub">{{ f.detail }}</span>{% endif %}
+  {%- elif f.shape == "span" %}
+  <span class="fact-main"><span class="fact-num">{{ f.start }}<span class="fact-dash">–</span>{{ "now" if f.ongoing else f.end }}</span></span>
+  <span class="fact-rail{% if f.ongoing %} is-ongoing{% endif %}" aria-hidden="true">{% for _ in range(f.cells) %}<i></i>{% endfor %}</span>
+  <span class="tile-sub">{{ f.length }}{% if f.sub %} · {{ f.sub }}{% endif %}</span>
+  {%- elif f.shape == "measure" %}
+  <span class="fact-main" title="{{ f.value }}"><span class="fact-num">{{ f.num }}</span>{% if f.unit %}<span class="fact-unit">{{ f.unit }}</span>{% endif %}</span>
+  {% if f.sub %}<span class="tile-sub">{{ f.sub }}</span>{% endif %}
+  {%- elif f.shape == "people" %}
+  <span class="fact-people">
+    {%- for p in f.people %}<a class="fact-person" href="/search?q={{ p.name|qs }}"><span class="monogram" style="--h: {{ p.hue }}" aria-hidden="true">{{ p.initials }}</span><span class="fact-person-name">{{ p.name }}</span></a>{% endfor -%}
+    {%- if f.more %}<span class="fact-more">+{{ f.more }} more</span>{% endif -%}
+  </span>
+  {% if f.sub %}<span class="tile-sub">{{ f.sub }}</span>{% endif %}
+  {%- elif f.shape == "place" %}
+  <a class="fact-place" href="/search?q={{ f.value|qs }}">
+    {%- if f.flag %}<img class="tile-flag" src="{{ f.flag }}" alt="" referrerpolicy="no-referrer">{% endif -%}
+    <span>{{ f.value }}</span></a>
+  {% if f.sub %}<span class="tile-sub">{{ f.sub }}</span>{% endif %}
+  {%- elif f.shape == "tags" %}
+  <span class="fact-tags">{% for x in f.tags %}<span class="fact-tag">{{ x }}</span>{% endfor %}</span>
+  {% if f.sub %}<span class="tile-sub">{{ f.sub }}</span>{% endif %}
+  {%- else %}
+  {% set longest = f.value.split()|map("length")|max if f.value else 0 %}
+  <span class="tile-value{% if f.value|length > 22 %} is-long{% endif %}" style="--chars: {{ [longest, 6]|max }}">
+    {%- if f.flag %}<img class="tile-flag" src="{{ f.flag }}" alt="" referrerpolicy="no-referrer">{% endif %}{{ f.value[:1]|upper }}{{ f.value[1:] }}</span>
+  {% if f.sub %}<span class="tile-sub">{{ f.sub }}</span>{% endif %}
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{# A day as 24 pixel cells, one per hour. `now` lights the hours gone and marks the current one; `rise`
+   and `set` light the daylight between them. All three are hours of the day (0–24, -1 for none). #}
+{% macro day_rail(label, now=-1, rise=-1, set=-1, note="") -%}
+<div class="dayrail{% if rise >= 0 %} is-sun{% endif %}">
+  <span class="dayrail-label">{{ label }}{% if note %}<small>{{ note }}</small>{% endif %}</span>
+  <span class="dayrail-track" aria-hidden="true">
+    {%- for h in range(24) %}<i class="{% if rise >= 0 and h + 0.5 >= rise and h + 0.5 < set %}is-day{% endif %}{% if now >= 0 %}{% if h < now|int %} is-past{% elif h == now|int %} is-now{% endif %}{% endif %}"></i>{% endfor -%}
+    {%- if now >= 0 and rise >= 0 %}<b class="dayrail-now" style="--at: {{ (now / 24)|round(4) }}"></b>{% endif -%}
+  </span>
+</div>
+{%- endmacro %}
+
+{# The hour labels under a stack of day rails. #}
+{% macro day_ticks() -%}
+<div class="dayrail dayrail--ticks" aria-hidden="true"><span class="dayrail-label"></span><span class="dayrail-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></span></div>
+{%- endmacro %}
+
+{# Where a value sits between two ends, as a run of pixel dots: the stretch from `a` to `b` (0–1) is lit,
+   and `at` (0–1) marks one point on it. #}
+{% macro range_bar(a, b, at=-1, label="") -%}
+<span class="rangebar" style="--a: {{ [[a, 0]|max, 1]|min|round(4) }}; --b: {{ [[b, 0]|max, 1]|min|round(4) }}"{% if label %} role="img" aria-label="{{ label }}"{% else %} aria-hidden="true"{% endif %}>
+  <i class="rangebar-fill"></i>{% if at >= 0 %}<b class="rangebar-at" style="--at: {{ [[at, 0]|max, 1]|min|round(4) }}"></b>{% endif %}
+</span>
+{%- endmacro %}
+
+{# One cell of the motorsport bento. A manufacturer mark replaces the generic icon when there is an exact
+   one, a country gets its flag, and a `live` cell is drawn as a skeleton that archer.js fills from the
+   API so the grid never changes shape once the season numbers arrive. `--chars` lets the value shrink to
+   its own longest word rather than breaking mid-word. #}
+{% macro spec_cell(s) -%}
+{% set longest = (s.value.split()|map("length")|max) if s.value else 0 %}
+<div class="ms-cell{% if s.live %} is-live{% endif %}"{% if s.live %} data-live="{{ s.live }}"{% endif %}>
+  <span class="ms-cell-label">
+    {%- if s.logo %}<svg class="ms-cell-logo"><use href="#b-car-{{ s.logo }}"/></svg>
+    {%- else %}<svg class="tile-icon"><use href="#u-{{ s.icon }}"/></svg>{% endif -%}
+    {{ s.label }}
+  </span>
+  {%- set f = s|fact if s.value and not s.live and not s.flag else {} %}
+  {%- if s.live and not s.value %}<span class="ms-cell-value skeleton-text"></span>
+  {#- Dates, spans and measurements take the fact cards' forms, so they read the same on every panel. #}
+  {%- elif f.shape == "measure" %}<span class="fact-main" title="{{ f.value }}"><span class="fact-num">{{ f.num }}</span>{% if f.unit %}<span class="fact-unit">{{ f.unit }}</span>{% endif %}</span>
+  {%- elif f.shape == "when" %}<span class="fact-main"><span class="fact-num">{{ f.year }}</span><span class="fact-ago">{{ f.ago }}</span></span>
+  {%- elif f.shape == "span" %}<span class="fact-main"><span class="fact-num">{{ f.start }}<span class="fact-dash">–</span>{{ "now" if f.ongoing else f.end }}</span></span>
+  <span class="fact-rail{% if f.ongoing %} is-ongoing{% endif %}" aria-hidden="true">{% for _ in range(f.cells) %}<i></i>{% endfor %}</span>
+  {%- else %}<span class="ms-cell-value{% if s.value|length > 18 %} is-long{% endif %}" style="--chars: {{ [longest, 4]|max }}">
+    {%- if s.flag %}<img class="tile-flag" src="{{ s.flag }}" alt="" referrerpolicy="no-referrer">{% endif -%}
+    {%- if s.value %}{{ s.value[:1]|upper }}{{ s.value[1:] }}{% else %}<span class="muted">Not listed</span>{% endif -%}
+  </span>{% endif %}
+  {% if s.sub %}<span class="tile-sub">{{ s.sub }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The motorsport bento. Row count and cell widths are worked out in archer.js so no row is left ragged. #}
+{% macro spec_grid(specs) -%}
+{% if specs %}
+<div class="ms-facts" data-specs>
+  {% for s in specs %}{{ spec_cell(s) }}{% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}
+
 {# How close a history match is: five cells of the pixel mark's matrix, lit 1–5
    (personalize.closeness). `how` says what matched: the words, the meaning, or a page opened from it. #}
 {% macro closeness(dots, how="meaning") -%}

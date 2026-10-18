@@ -23,6 +23,8 @@ KIND_HINTS = {
     "book": ("book", "book"), "novel": ("book", "novel"), "song": ("music", "song"), "album": ("music", "album"),
     "band": ("music", "band"), "company": ("org", "company"), "brand": ("org", "company"),
     "actor": ("person", "actor"), "actress": ("person", "actress"), "singer": ("person", "singer"),
+    # Motorsport. "racing series" is longer than "series", so the sorted alternation tries it first.
+    "car": ("car", "car"), "rally": ("race", "rally"), "racing series": ("race", "racing series"),
 }
 _KIND_HINT = re.compile(r"^(?P<core>.+?)\s+(?:the\s+)?(?P<hint>" + "|".join(sorted(map(re.escape, KIND_HINTS), key=len, reverse=True)) + r")$")
 _WEATHER = re.compile(

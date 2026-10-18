@@ -1,0 +1,95 @@
+{% from "macros.html" import hero_badge, link_chip, spec_grid %}
+{# Formula One driver and constructor panels.
+
+   Wikidata says who this is (photo, nationality, born, teams). Everything that changes arrives from
+   /api/f1 after the page is up and is drawn into cards that already hold skeletons of the right size, so
+   nothing moves when it lands: the championship and the drivers around them, every result this season
+   as a dot-matrix chart, the career in totals, and the next round with its circuit drawn as the pixel
+   mark draws everything. The team colour tints all of it. The qualifying grid sits behind a button so
+   a reader who opens the page on Saturday is not shown a result they hadn't decided to look at. #}
+{% set e = v.hero.data %}
+{% set f = e.f1 or {} %}
+{% set driver = f.role != "team" %}
+<section class="hero hero-entity hero-f1 {{ 'is-driver' if driver else 'is-team' }}" data-f1 data-f1-title="{{ e.title }}" data-f1-role="{{ 'driver' if driver else 'team' }}">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge(e.badge.icon, e.badge.label, extra=(f.team if driver else "")) }}
+      <h1 class="hero-title">{{ e.title }}</h1>
+      {% if e.description %}<p class="hero-sub">{{ e.description[:1]|upper }}{{ e.description[1:] }}</p>{% endif %}
+      {% if e.others %}
+      <nav class="hero-meanings" aria-label="Other meanings">
+        <span class="hero-meanings-label">Other meanings</span>
+        {% for o in e.others %}<a class="meaning-chip" href="/search?q={{ v.q|qs }}&about={{ o.title|qs }}"{% if o.desc %} title="{{ o.desc }}"{% endif %}>{{ o.title }}{% if o.desc %}<small>{{ o.desc|truncate(34, True, "…") }}</small>{% endif %}</a>{% endfor %}
+      </nav>
+      {% endif %}
+    </div>
+    <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
+  </div>
+
+  <div class="f1-top">
+    <div class="f1-stage{% if e.image_logo %} is-logo{% endif %}">
+      {% if e.image %}
+      <img class="f1-shot" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+      {% else %}
+      <div class="ms-blank"><svg><use href="#u-{{ 'helmet' if driver else 'users' }}"/></svg><span>No picture yet</span></div>
+      {% endif %}
+      {# The car number and three-letter code, set in the team colour once /api/f1 answers. #}
+      <div class="f1-plate" data-f1-plate hidden></div>
+    </div>
+
+    <section class="f1-card f1-standing" aria-label="Championship" data-f1-standing>
+      <p class="f1-label"><svg><use href="#u-trophy"/></svg><span data-f1-standing-label>Championship</span></p>
+      <div class="f1-standing-body">
+        <span class="skeleton-text f1-skel-big"></span>
+        {% for _ in range(5) %}<span class="skeleton-text f1-skel-row"></span>{% endfor %}
+      </div>
+    </section>
+
+    {# This season, round by round: finishing positions for a driver, points for a team. #}
+    <section class="f1-card f1-form" aria-label="This season" data-f1-form>
+      <p class="f1-label"><svg><use href="#u-chart"/></svg><span data-f1-form-label>This season</span></p>
+      <div class="f1-form-body"><span class="skeleton-text f1-skel-chart"></span></div>
+    </section>
+  </div>
+
+  <section class="f1-card f1-career" aria-label="Career" data-f1-career>
+    <p class="f1-label"><svg><use href="#u-award"/></svg>Career</p>
+    <div class="f1-career-skel"><span class="skeleton-text"></span><span class="skeleton-text"></span></div>
+  </section>
+
+  {# The next round. The circuit outline is bundled, so it draws with the card. #}
+  <section class="f1-card f1-weekend" aria-label="Next round" data-f1-next>
+    <p class="f1-label"><svg><use href="#u-flag"/></svg>Next round</p>
+    <div class="f1-weekend-body"><span class="skeleton-text f1-skel-chart"></span></div>
+  </section>
+
+  {# Saturday, after the times are in: the grid is here, but only after you ask for it. #}
+  <section class="f1-card f1-quali" aria-label="Qualifying" data-f1-quali hidden>
+    <p class="f1-label"><svg><use href="#u-timer"/></svg>Qualifying</p>
+    <div class="f1-quali-body" data-f1-quali-body></div>
+  </section>
+
+  {{ spec_grid(e.specs) }}
+
+  {% if driver and f.teams %}
+  <div class="ms-chips">
+    <span class="ms-chips-label">Teams</span>
+    {% for t in f.teams %}<a class="tag-chip" href="/search?q={{ t|qs }}"><svg><use href="#u-users"/></svg>{{ t }}</a>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if e.extract or e.facts %}
+  <details class="about">
+    <summary>
+      <span class="about-label"><svg><use href="#u-info"/></svg>About</span>
+      <span class="about-preview">{{ e.extract }}</span>
+      <span class="about-toggle"><span class="about-more">More</span><span class="about-less">Less</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="about-body">
+      {% if e.extract %}<p class="about-text">{{ e.extract }} <a href="{{ e.wiki_url }}">Read more on Wikipedia</a></p>{% endif %}
+      {% if e.facts %}<dl class="about-facts">{% for label, value in e.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <p class="hero-source">Identity and team logo from Wikipedia and Wikidata. Standings, results, calendar and career totals from Jolpica (Ergast). Circuit outlines from bacinger/f1-circuits.</p>
+</section>

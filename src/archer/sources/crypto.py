@@ -63,7 +63,7 @@ async def price(client: httpx.AsyncClient, coin: str, fiat: str) -> dict | None:
         "name": c["name"], "symbol": c["symbol"].upper(), "image": c.get("image", ""), "fiat": fiat.upper(),
         "sym": sym, "price": c["current_price"], "price_text": _money(c["current_price"], sym),
         "change": round(change, 2), "week": round(week, 2) if week is not None else None,
-        "rank": c.get("market_cap_rank"),
+        "rank": c.get("market_cap_rank"), "low": c.get("low_24h"), "high": c.get("high_24h"),
         "stats": [
             ("Market cap", _money(c.get("market_cap"), sym)),
             ("24h volume", _money(c.get("total_volume"), sym)),

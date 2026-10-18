@@ -22,11 +22,22 @@ _country_iso: dict[str, str] = {}  # country QID -> ISO code, for the flag on "C
 
 # P31 (instance of) -> panel kind
 KINDS = {
+    # An F1 driver is almost always typed "human"; only the occupation says which series they race in.
+    # This catches the rare item that carries the series as its P31 instead (see _kind for the rest).
+    "f1driver": {"Q10841764"},
     "character": {"Q15632617", "Q95074", "Q15773347", "Q15773317", "Q3658341", "Q1114461", "Q80447738"},
     "person": {"Q5"},
     # Video games (and their DLC, remakes, compilations, demos, series) before "software", which also types them.
     "game": {"Q7889", "Q209163", "Q1066707", "Q865493", "Q21125433", "Q4393107", "Q16070115", "Q64170203",
              "Q1755420", "Q7058673"},
+    # Motorsport before "product" (a car model is also a product model) and before "org" (a racing team is
+    # also a business). Races and series mostly arrive through the sport fallback in _kind.
+    "f1team": {"Q10497835", "Q109136128"},
+    "car": {"Q3231690", "Q59773381"},
+    # A Grand Prix is a "Formula One event"; most other races only arrive through the sport fallback.
+    "race": {"Q60147807", "Q87292877", "Q108886259"},
+    # Circuits before "place", which every item with coordinates falls back to. A street circuit counts.
+    "circuit": {"Q2338524", "Q926439"},
     "film": {"Q11424", "Q24869", "Q202866", "Q29168811", "Q18011172", "Q506240", "Q93204"},
     "tv": {"Q5398426", "Q581714", "Q1259759", "Q15416", "Q526877", "Q63952888", "Q117467246"},
     "book": {"Q7725634", "Q571", "Q47461344", "Q8261", "Q1667921", "Q277759", "Q14406742"},
@@ -43,8 +54,8 @@ KINDS = {
     "landmark": {"Q570116", "Q33506", "Q16560", "Q23413", "Q4989906", "Q12518", "Q44539", "Q16970", "Q32815",
                  "Q839954", "Q9259", "Q12280", "Q2977", "Q1081138", "Q46169", "Q8502", "Q4022", "Q23397",
                  "Q35657", "Q10864048", "Q1107656", "Q41176", "Q483110", "Q207694", "Q811979"},
-    # Product models (smartphone, computer, console, car…); anything with a manufacturer or brand also counts.
-    "product": {"Q19723451", "Q10929058", "Q55990535", "Q3231690"},
+    # Product models (smartphone, computer, console); anything with a manufacturer or brand also counts.
+    "product": {"Q19723451", "Q10929058", "Q55990535"},
     "place": {"Q515", "Q1549591", "Q5119", "Q1637706", "Q200250", "Q7930989", "Q123705", "Q486972", "Q3957"},
 }
 ACTOR = {"Q33999", "Q10800557", "Q10798782", "Q2405480", "Q2259451", "Q948329"}
@@ -55,11 +66,21 @@ ATHLETE = {"Q2066131", "Q937857", "Q12299841", "Q3665646", "Q10833314", "Q108434
 POLITICIAN = {"Q82955", "Q193391", "Q372436", "Q30461"}
 EXECUTIVE = {"Q43845", "Q484876", "Q131524", "Q2961975", "Q1979607"}
 
+# Motorsport. A driver's occupation names the series they race in; a race or team is typed by its sport
+# (P641) rather than by P31, because Le Mans is a "recurring sporting event" and Ferrari is a business.
+F1_DRIVER = {"Q10841764"}  # occupation "Formula One driver"
+RACING_DRIVER = {"Q10349745", "Q378622"}  # "racing automobile driver", "racing driver"
+# Sports that mean "a series of motor races" when a P31 hasn't already said so.
+MOTORSPORT = {"Q5367", "Q5386", "Q1968", "Q192420", "Q506749", "Q1089579", "Q1805420", "Q7856", "Q60147807",
+              "Q965550", "Q17163326", "Q328716", "Q850292"}
+
 CURRENCY_UNITS = {"Q4917": "$", "Q80524": "₹", "Q4916": "€", "Q25224": "£", "Q8146": "¥"}
 UNIT_SUFFIX = {"Q11573": "m", "Q174728": "cm", "Q11570": "kg", "Q712226": "km²", "Q828224": "km",
                "Q7727": "min", "Q11574": "s", "Q35852": "ha", "Q232291": "mi²", "Q11579": "K",
                "Q25267": "°C", "Q42289": "°F", "Q483261": "u", "Q13147228": "g/cm³", "Q844211": "kg/m³",
-               "Q41803": "g", "Q3241121": "g/mol", "Q174789": "mm"}
+               "Q41803": "g", "Q3241121": "g/mol", "Q174789": "mm",
+               # Speeds (P2052) arrive in km/h or mph, and a car's top speed is the point of the tile.
+               "Q180154": "km/h", "Q211256": "mph"}
 _SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 
 # Badge shown above every entity panel: kind -> (icon, label). Icons live in templates/ui_icons.html.
@@ -69,6 +90,8 @@ KIND_META = {
     "species": ("leaf", "Species"), "chemical": ("flask", "Chemical"), "disease": ("virus", "Health condition"),
     "software": ("code", "Software"), "game": ("gamepad", "Video game"), "holiday": ("sparkle", "Holiday"), "landmark": ("landmark", "Landmark"),
     "place": ("pin", "Place"), "product": ("package", "Product"), "thing": ("info", "Topic"), "character": ("user", "Fictional character"),
+    "car": ("car", "Car"), "race": ("trophy", "Racing series"), "circuit": ("map", "Circuit"),
+    "f1driver": ("helmet", "Formula One driver"), "f1team": ("users", "Formula One team"),
 }
 SUBKIND_LABEL = {"athlete": "Athlete", "politician": "Politician", "executive": "Business leader", "writer": "Writer"}
 TILE_ICONS = {
@@ -92,6 +115,15 @@ TILE_ICONS = {
     "Heritage": "award", "Visitors / year": "users", "Since": "calendar",
     "Appears in": "tv", "Created by": "pen", "Played by": "user",
     "Brand": "tag", "Operating system": "code", "Processor": "cube", "Weight": "scale", "Launch price": "coins",
+    # Motorsport.
+    "Body style": "car", "Manufacturer": "building", "Production": "calendar", "Units built": "chart",
+    "Top speed": "gauge", "Layout": "layers", "Engine": "cube", "Transmission": "cube", "Platform": "cube",
+    "Class": "tag", "Predecessor": "swap", "Successor": "swap", "Discipline": "trophy", "Sport": "globe",
+    "First held": "calendar", "Last held": "calendar", "Rounds": "chart", "Circuit": "map", "Champion": "user",
+    "Record holder": "trophy", "Next race": "calendar",
+    "Record": "trophy", "Number": "hash", "Constructor": "users", "Debut": "calendar", "Races": "chart",
+    "Wins": "award", "Podiums": "award", "Points": "chart", "Car": "car", "Entry": "car", "Base": "pin",
+    "Chassis": "cube", "Engine maker": "building", "Tyres": "target", "Colours": "palette", "Assembled": "building",
 }
 
 
@@ -170,9 +202,16 @@ async def _find_page(client: httpx.AsyncClient, candidate: str, allow_suggestion
     """Returns (page, corrected). corrected=True when Wikipedia's spelling suggestion was used."""
     # Exact title first (one call resolves case and redirects: "bangalore" -> Bengaluru);
     # search only when that misses, to keep within Wikimedia's rate limits.
+    # Redirects are case-sensitive past the first letter, so "andrea kimi antonelli" misses the redirect
+    # "Andrea Kimi Antonelli" → Kimi Antonelli; the title-cased spelling is tried before searching.
     pages = (await _get(client, WP_API, **_WP_PROPS, titles=candidate)).get("query", {}).get("pages", [])
     if pages and _usable(pages[0]):
         return pages[0], False
+    titled = " ".join(w[:1].upper() + w[1:] for w in candidate.split())
+    if titled != candidate and titled[1:] != candidate[1:]:   # only when it differs past the first letter
+        pages = (await _get(client, WP_API, **_WP_PROPS, titles=titled)).get("query", {}).get("pages", [])
+        if pages and _usable(pages[0]):
+            return pages[0], False
     found = await _get(client, WP_API, **_WP_PROPS, generator="search", gsrsearch=candidate, gsrlimit=3,
                        gsrinfo="suggestion")
     for page in sorted(found.get("query", {}).get("pages", []), key=lambda p: p.get("index", 99)):
@@ -408,12 +447,24 @@ def _label(entity: dict, fallback: str) -> str:
 
 def _kind(entity: dict) -> str:
     types = set(_ids(entity, "P31", 20))
+    claims = entity.get("claims", {})
+    # A driver in a specific series is typed "human", so the generic person/athlete panel would answer
+    # first. The occupation names the series, so it is read before any P31.
+    if set(_ids(entity, "P106", 40)) & F1_DRIVER:
+        return "f1driver"
     for kind, qids in KINDS.items():
         if types & qids:
             return kind
+    # A works team's article is often "Mercedes-Benz in Formula One", which Wikidata types only as an
+    # article covering several topics; the title is the one reliable sign.
+    if _label(entity, "").endswith(" in Formula One"):
+        return "f1team"
+    # A race or series is usually a "recurring sporting event" rather than a racing series, so it is found
+    # by its sport. Circuits are typed as places above, so only events reach this.
+    if set(_ids(entity, "P641", 6)) & MOTORSPORT:
+        return "race"
     # Many items are typed by a subclass we don't list (Python is a "multi-paradigm
     # programming language", not "programming language"), so fall back to tell-tale properties.
-    claims = entity.get("claims", {})
     for kind, props in (("game", ("P404", "P1733", "P5794", "P8084", "P5944")), ("software", ("P348", "P277", "P1324")), ("chemical", ("P274", "P246")),
                         ("disease", ("P780", "P1995", "P494")), ("country", ("P36", "P38")),
                         ("film", ("P57", "P2047")), ("book", ("P50",)), ("species", ("P225",))):
@@ -488,6 +539,111 @@ def _game_stores(entity: dict, platforms: list[str], title: str) -> list[dict]:
     return stores
 
 
+# ------------------------------------------------------------ motorsport
+
+# P279 walks up the class tree, so a car's or a series' generic ancestors ("car model", "motor vehicle")
+# say nothing; the specific ones ("sports car", "supercar") are the labels worth showing.
+_GENERIC_CLASS = {"car model", "automobile model", "product model", "motor vehicle", "road vehicle",
+                  "vehicle", "automobile", "car", "auto racing", "sport", "racing", "racing event",
+                  "recurring sporting event", "sport event", "team sport"}
+# A discipline tag names the branch of motorsport, not the series or the sport. Wikidata's own names are
+# long and overlapping, so they are folded here: "endurance racing", "sports car racing" and "automobile
+# endurance racing" are all the same tag, and a race typed by several of them must still show one.
+_DISCIPLINE_NAME = {
+    "rallying": "Rally", "rally": "Rally", "rally raid": "Rally raid", "rallycross": "Rallycross",
+    "endurance racing": "Endurance", "automobile endurance racing": "Endurance", "endurance race": "Endurance",
+    "sports car racing": "Endurance", "sports prototype racing": "Endurance", "gt racing": "Endurance",
+    "le mans prototype racing": "Endurance", "sports car": "Endurance", "gt car": "Endurance",
+    "motorsport": "Motorsport", "auto racing": "Motorsport", "motor racing": "Motorsport",
+    "motorcycle racing": "Motorcycle", "motorcycle sport": "Motorcycle", "motorcycle speedway": "Motorcycle",
+    "kart racing": "Karting", "kartsport": "Karting", "grand prix motor racing": "Grand Prix", "formula racing": "Open wheel",
+    "single-seater racing": "Open wheel", "open-wheel racing": "Open wheel", "formula one": "Formula One",
+    "grand prix motorcycle racing": "Motorcycle", "motorcycle road racing": "Road racing",
+    "stock car racing": "Stock car", "circle track racing": "Stock car", "nascar": "Stock car",
+    "drag racing": "Drag racing", "motocross": "Motocross", "off-road racing": "Off-road",
+    "automobile racing series": "Racing series", "one-make racing": "One-make", "hill climb": "Hill climb",
+    "time trial": "Time trial",
+}
+
+
+def _disciplines(names: list[str]) -> list[str]:
+    """Distinct discipline tags for a race or series ("Endurance", "Rally"), each shown once."""
+    out: list[str] = []
+    for raw in names:
+        key = raw.casefold()
+        name = _DISCIPLINE_NAME.get(key)
+        if name is None and key.endswith(" race"):
+            name = _DISCIPLINE_NAME.get(key[:-5].strip())  # "rally raid race" -> "Rally raid"
+        # An unmapped label is kept only if it names something concrete; "… racing", "… series" and
+        # "… championship" are containers, and the reader already knows the series from the title.
+        if name is None:
+            name = raw if key not in _GENERIC_CLASS and not key.endswith((" racing", " series", " championship")) else ""
+        low = name.casefold()
+        if not name or low in {n.casefold() for n in out} or any(low in n.casefold() for n in out):
+            continue  # already covered, or a longer label we accepted says the same thing
+        out.append(name)
+    if len(out) > 1 and "Motorsport" in out:
+        out.remove("Motorsport")              # the branch says it; the umbrella adds nothing
+    return out[:3]
+
+
+def _units_built(entity: dict) -> str:
+    """P1092 as a plain count ("12,000"), never Wikidata's trailing "unit"."""
+    value = _first(entity, "P1092")
+    return _compact(float(value["amount"])) if isinstance(value, dict) and value.get("amount") else ""
+
+
+# Manufacturer marks, bundled in templates/motorsport_icons.html by the name Simple Icons publishes them
+# under. Only an exact match earns a badge: showing the wrong badge is worse than showing none.
+CAR_LOGO = {"ferrari": "ferrari", "porsche": "porsche", "mclaren": "mclaren", "aston martin": "astonmartin",
+            "bmw": "bmw", "audi": "audi", "volkswagen": "volkswagen",
+            "fiat": "fiat", "renault": "renault", "peugeot": "peugeot", "citroën": "citroen", "citroen": "citroen",
+            "seat": "seat", "škoda": "skoda", "skoda": "skoda", "dacia": "dacia", "lamborghini": "lamborghini",
+            "bugatti": "bugatti", "bentley": "bentley", "rolls-royce": "rollsroyce", "rolls royce": "rollsroyce",
+            "toyota": "toyota", "honda": "honda", "nissan": "nissan", "mazda": "mazda", "subaru": "subaru",
+            "suzuki": "suzuki", "hyundai": "hyundai", "kia": "kia", "ford": "ford", "chevrolet": "chevrolet",
+            "cadillac": "cadillac", "tesla": "tesla", "volvo": "volvo", "koenigsegg": "koenigsegg",
+            "red bull racing": "redbull", "ducati": "ducati"}
+
+
+def _drivetrain(entity: dict, labels: dict[str, str]) -> str:
+    """How the wheels are driven, from the drivetrain class Wikidata hangs off the model (P670)."""
+    for qid in _ids(entity, "P670", 4):
+        name = labels.get(qid, "")
+        if name.casefold() in _DRIVETRAIN:
+            return name
+    return ""
+
+
+_DRIVETRAIN = {"front-wheel drive", "rear-wheel drive", "all-wheel drive", "four-wheel drive",
+              "front-engine, front-wheel-drive", "front-engine, rear-wheel-drive",
+              "rear mid-engine, rear-wheel drive"}
+
+
+def _iso_for(name: str) -> str:
+    """The ISO 3166-1 alpha-2 code for a country name, for a tile's flag."""
+    return {"usa": "us", "united states": "us", "united states of america": "us",
+            "united kingdom": "gb", "uk": "gb", "great britain": "gb",
+            "england": "gb", "scotland": "gb", "wales": "gb", "northern ireland": "gb",
+            "kingdom of the netherlands": "nl", "netherlands": "nl", "holland": "nl",
+            "czech republic": "cz", "czechia": "cz", "south korea": "kr", "korea": "kr",
+            "republic of korea": "kr", "bosnia and herzegovina": "ba", "czech": "cz",
+            "ivory coast": "ci", "côte d'ivoire": "ci", "new zealand": "nz",
+            "united arab emirates": "ae", "uae": "ae", "saudi arabia": "sa", "türkiye": "tr", "turkey": "tr",
+            "italy": "it", "germany": "de", "france": "fr",
+            "japan": "jp", "australia": "au", "brazil": "br", "canada": "ca", "mexico": "mx",
+            "belgium": "be", "austria": "at", "switzerland": "ch", "spain": "es", "sweden": "se",
+            "india": "in", "china": "cn", "russia": "ru", "portugal": "pt", "poland": "pl",
+            "hungary": "hu", "argentina": "ar", "chile": "cl", "singapore": "sg", "bahrain": "bh",
+            "qatar": "qa", "kuwait": "kw", "oman": "om", "monaco": "mc", "belarus": "by"}.get(
+        (name or "").strip().casefold(), "")
+
+
+def _iso_flag(name: str, country_ids: list[str], iso: str) -> str:
+    """A tile's flag, from the panel's own ISO lookup when it has one and the name table otherwise."""
+    return flag_url(iso) if iso else flag_url(_iso_for(name))
+
+
 # ------------------------------------------------------------ panel build
 
 async def _entity_by_title(client: httpx.AsyncClient, title: str) -> dict:
@@ -538,6 +694,15 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
     qid = page["pageprops"]["wikibase_item"]
     entity = guess if guess.get("id") == qid else (await _wbget(client, [qid], "claims|descriptions|labels")).get(qid, {})
     kind = _kind(entity)
+    # A rookie's Wikidata often says "racing driver" months before it says "Formula One driver"; if they
+    # are in this season's F1 standings (one Jolpica table, cached an hour), they get the F1 panel anyway.
+    if kind == "person" and RACING_DRIVER & set(_ids(entity, "P106", 40)):
+        from archer.sources import f1
+        try:
+            if (hit := await f1.find(client, page["title"])) and hit[0] == "driver":
+                kind = "f1driver"
+        except Exception:  # noqa: BLE001 - Jolpica down just means the athlete panel
+            pass
 
     ref_props = ["P19", "P20", "P106", "P26", "P22", "P25", "P57", "P161", "P136", "P449", "P50", "P123",
                  "P495", "P740", "P264", "P527", "P112", "P169", "P159", "P17", "P6", "P141", "P171",
@@ -545,13 +710,19 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
                  "P38", "P37", "P35", "P1995", "P780", "P2176", "P1060", "P828", "P84", "P131", "P1435",
                  "P178", "P275", "P277", "P400", "P306", "P3966", "P837", "P140", "P1269", "P30", "P1441", "P170",
                  "P176", "P1716", "P155", "P156", "P1366", "P462", "P880", "P186",
-                 "P404", "P408", "P179", "P852", "P908", "P86"]
+                 "P404", "P408", "P179", "P852", "P908", "P86",
+                 # Motorsport: top speed, units built, class, champion, the series itself, team management
+                 # and a driver's first race, plus who designed a car, where it is built, how it drives,
+                 # how big its engine is, who owns a team and where a race is actually held.
+                 "P2052", "P1092", "P279", "P1346", "P1344", "P1037", "P2089", "P2670", "P287", "P1071",
+                 "P276", "P670", "P2109", "P127", "P186"]
     refs = {i for p in ref_props for i in _ids(entity, p)}
     refs |= {i for p in ("P54", "P39", "P108", "P6", "P35") for i in _current_ids(entity, p)}
     if kind == "game":
         refs |= {score["by"] for score in _review_scores(entity)}
     for p in ("P2048", "P2047", "P2142", "P2130", "P2046", "P2044", "P1082", "P1128", "P2139", "P2218",
-              "P2067", "P2101", "P2102", "P2054", "P1174", "P2049", "P2610", "P2284", "P2928"):
+              "P2067", "P2101", "P2102", "P2054", "P1174", "P2049", "P2610", "P2284", "P2928",
+              "P2052", "P1092", "P2053", "P1114", "P2109", "P2043"):
         if (v := _first(entity, p)) and isinstance(v, dict) and "unit" in v:
             refs.add(v["unit"].rsplit("/", 1)[-1])
     # The country's ISO code (for a flag on its tile) comes alongside the labels, not after them.
@@ -579,10 +750,19 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
     tiles: list[dict] = []
     tags: list[str] = []
     facts: list[tuple[str, str]] = []
+    specs: list[dict] = []  # the motorsport bento, which is not capped at five the way tiles are
 
     def tile(label: str, value: str, sub: str = "") -> None:
         if value:
             tiles.append({"label": label, "value": value, "sub": sub, "icon": TILE_ICONS.get(label, "info"), "flag": ""})
+
+    def spec(label: str, value: str, icon: str = "info", sub: str = "", flag: str = "", logo: str = "",
+             live: str = "") -> None:
+        """One cell of the motorsport bento. A cell with no value is dropped unless it is a live one,
+        which arrives later and is rendered as a skeleton so the grid never jumps."""
+        if value or live:
+            specs.append({"label": label, "value": value, "sub": sub, "icon": icon,
+                          "flag": flag, "logo": logo, "live": live})
 
     def fact(label: str, value: str) -> None:
         if value:
@@ -594,6 +774,10 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
     subkind = ""
     product = None
     game = None
+    car = None
+    race = None
+    f1 = None
+    circuit = None
     if kind == "person":
         born_txt, _, born = _fmt_time(_first(entity, "P569"))
         died_txt, _, died = _fmt_time(_first(entity, "P570"))
@@ -812,6 +996,158 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
         product = {"brand": brand, "manufacturer": names("P176", 1), "released": rel_txt, "year": rel_y,
                    "previous": names("P155", 1), "next": names("P156", 1) or names("P1366", 1),
                    "colors": name_list("P462", 10), "category": names("P31", 1)}
+    elif kind == "car":
+        # A car model is usually named "X <model>", so the range reads better than a single year.
+        start_txt, start_y, _ = _fmt_time(_first(entity, "P571"))
+        end_txt, end_y, _ = _fmt_time(_first(entity, "P576"))
+        # A run reads as years: "1963–1973", or "From 1963" while Wikidata has no end.
+        span = f"{start_y}–{end_y}" if start_y and end_y else f"From {start_y}" if start_y else (f"Until {end_y}" if end_y else "")
+        brand = names("P1716", 1) or names("P176", 1)
+        maker = names("P176", 1)
+        units = _units_built(entity)
+        speed = amount("P2052")
+        # P279 walks up the class tree ("sports car", "supercar"); the generic ancestors say nothing.
+        styles = [s for s in name_list("P279", 8) if s.casefold() not in _GENERIC_CLASS][:3]
+        home = names("P17", 1) or names("P495", 1)
+        tile("Body style", ", ".join(styles))
+        tile("Brand", brand)
+        tile("Production", span)
+        tile("Units built", units)
+        tile("Top speed", speed)
+        fact("Manufacturer", maker)
+        fact("Class", ", ".join(styles[1:]) or (styles[0] if styles else ""))
+        fact("Predecessor", names("P155", 1))
+        fact("Successor", names("P156", 1))
+        fact("Series", names("P361", 2))
+        fact("Country", home)
+        fact("Designed by", names("P287", 2))
+        fact("Assembled", names("P1071", 1) or maker)
+        # The bento carries the whole panel, so it gets every figure worth having rather than the five
+        # the generic entity cap allows. Live values are filled from the API once the page is up.
+        spec("Body style", ", ".join(styles), "car")
+        spec("Brand", brand, "tag", logo=CAR_LOGO.get(brand.casefold(), ""))
+        spec("Production", span, "calendar")
+        spec("Units built", units, "chart")
+        spec("Top speed", speed, "gauge")
+        spec("Layout", _drivetrain(entity, labels), "layers")
+        spec("Power", amount("P2109"), "bolt")
+        spec("Class", ", ".join(styles[1:]), "tag")
+        spec("Series", names("P361", 1), "layers")
+        spec("Predecessor", names("P155", 1), "swap")
+        spec("Successor", names("P156", 1), "swap")
+        spec("Country", home, "globe", flag=_iso_flag(home, country_ids, iso))
+        spec("Designed by", names("P287", 1), "pen")
+        spec("Assembled", names("P1071", 1), "pin")
+        spec("Weight", amount("P2067"), "scale")
+        spec("Length", amount("P2049"), "ruler")
+        spec("Width", amount("P2053"), "ruler")
+        spec("Height", amount("P2048"), "ruler")
+        spec("Wheelbase", amount("P1114"), "ruler")
+        spec("Material", names("P186", 2), "package")
+        car = {"brand": brand, "manufacturer": maker, "styles": styles, "production": span,
+               "year": start_y, "units": units, "top_speed": speed, "logo": CAR_LOGO.get(brand.casefold(), ""),
+               "previous": names("P155", 1), "next": names("P156", 1), "series": names("P361", 1)}
+        tags = list(styles)
+    elif kind == "race":
+        held_txt, held_y, _ = _fmt_time(_first(entity, "P571"))
+        end_txt, end_y, _ = _fmt_time(_first(entity, "P576"))
+        grand_prix = "Q108886259" in set(_ids(entity, "P31", 20)) or " Grand Prix" in page["title"]
+        disciplines = _disciplines((["formula one"] if grand_prix else []) + name_list("P279", 4) + name_list("P641", 6))
+        sport = names("P641", 2)
+        # "Endurance racing" next to the Endurance tag says the same thing twice.
+        sport = "" if set(_disciplines([sport])) <= set(disciplines) else sport
+        winners = name_list("P1346", 2)
+        home = names("P17", 1)
+        tile("Sport", sport)
+        tile("First held", str(held_y or ""), held_txt)
+        tile("Last held", str(end_y or ""), end_txt)
+        tile("Country", home)
+        tile("Champion", winners[0] if winners else "")
+        fact("Discipline", ", ".join(disciplines))
+        fact("Part of", names("P361", 2))
+        fact("Circuit", names("P276", 1) or names("P131", 1))
+        fact("Record holder", ", ".join(winners[1:]))
+        fact("Next race", names("P156", 1))
+        # P527 on a series is usually its sub-series; only the parts named after a year are editions.
+        parts = [labels.get(i, "") for i in _ids(entity, "P527", 20)][-6:]
+        spec("Discipline", ", ".join(disciplines), "trophy")
+        spec("Sport", sport, "globe")
+        spec("First held", str(held_y or ""), "calendar", sub=held_txt)
+        spec("Last held", str(end_y or ""), "calendar", sub=end_txt)
+        spec("Country", home, "globe", flag=_iso_flag(home, country_ids, iso))
+        spec("Champion", winners[0] if winners else "", "award")
+        spec("Circuit", names("P276", 1) or names("P131", 1), "map")
+        spec("Part of", names("P361", 1), "layers")
+        spec("Record holder", ", ".join(winners[1:]), "trophy")
+        race = {"disciplines": disciplines, "sport": sport, "champion": winners[0] if winners else "",
+                "grand_prix": grand_prix,
+                "country": home, "first_held": held_txt, "year": held_y,
+                "part_of": names("P361", 1),
+                "editions": [p for p in parts if re.search(r"\b(19|20)\d{2}\b", p)]}
+        tags = list(disciplines)
+    elif kind in ("f1driver", "f1team"):
+        # Wikidata holds who this is; the season, the standings and the career totals come from Jolpica
+        # once the page is up (/api/f1), drawn into cards that are already the right size.
+        driver = kind == "f1driver"
+        born_txt, _, born = _fmt_time(_first(entity, "P569"))
+        founded_txt, founded_y, _ = _fmt_time(_first(entity, "P571"))
+        # Only a seat with no end date is a current one; a retired driver has none.
+        seated = any("P582" not in c.get("qualifiers", {}) for c in entity.get("claims", {}).get("P54", []))
+        seat = current("P54", 1) if seated else ""
+        home = names("P27", 1) if driver else names("P17", 1)
+        if driver:
+            teams = list(reversed(name_list("P54", 10)))
+            tile("Team", seat)
+            tile("Born", born_txt, f"aged {_age(born, None)}" if born else "")
+            tile("Nationality", home)
+            tile("Series", "Formula One")
+            fact("Constructor", seat)
+            fact("Born", born_txt)
+            fact("Nationality", names("P27", 2))
+            fact("Teams", ", ".join(teams))
+            spec("Born", born_txt, "calendar", sub=f"aged {_age(born, None)}" if born else "")
+            spec("Birthplace", names("P19", 1), "pin")
+            spec("Nationality", home, "globe", flag=flag_url(_iso_for(home)))
+            spec("Height", amount("P2048"), "ruler")
+        else:
+            teams = []
+            tile("Constructor", "Formula One")
+            tile("Country", home)
+            tile("Founded", founded_txt)
+            fact("Base", names("P159", 1))
+            fact("Team principal", names("P1037", 2) or names("P169", 2))
+            fact("Owner", names("P127", 1))
+            spec("Base", names("P159", 1), "pin")
+            spec("Country", home, "globe", flag=_iso_flag(home, country_ids, iso))
+            spec("Founded", str(founded_y or ""), "calendar", sub=founded_txt)
+            spec("Team principal", names("P1037", 1) or names("P169", 1), "user")
+            spec("Owner", names("P127", 1), "building")
+        f1 = {"role": "driver" if driver else "team", "team": seat if driver else "", "teams": teams,
+              "nationality": home, "born": born_txt if driver else "", "founded": founded_txt if not driver else ""}
+        tags = ["Formula One"]
+    elif kind == "circuit":
+        # The outline, the races held and the recent winners come from /api/f1/circuit after load; this is
+        # what the circuit is: where, how long, since when.
+        opened_txt, opened_y, _ = _fmt_time(_first(entity, "P1619") or _first(entity, "P571"))
+        home = names("P17", 1)
+        point = _first(entity, "P625")
+        tile("Country", home)
+        tile("Location", names("P131", 1))
+        tile("Length", amount("P2043"))
+        tile("Opened", str(opened_y or ""), opened_txt)
+        fact("Owner", names("P127", 1))
+        fact("Designed by", names("P84", 2))
+        spec("Location", names("P131", 1), "pin")
+        spec("Country", home, "globe", flag=_iso_flag(home, country_ids, iso))
+        spec("Length", amount("P2043"), "ruler")
+        spec("Opened", str(opened_y or ""), "calendar", sub=opened_txt)
+        spec("Capacity", amount("P1083"), "users")
+        spec("Owner", names("P127", 1), "building")
+        spec("Designed by", names("P84", 1), "pen")
+        circuit = {"lat": str(point["latitude"]) if isinstance(point, dict) else "",
+                   "lon": str(point["longitude"]) if isinstance(point, dict) else "",
+                   "street": "Q926439" in set(_ids(entity, "P31", 20))}
+        tags = ["Street circuit"] if circuit["street"] else []
     else:
         inc_txt, inc_y, _ = _fmt_time(_first(entity, "P571"))
         tile("Since", str(inc_y or ""), inc_txt)
@@ -858,6 +1194,8 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
     watch = _watch_data(entity, kind, page["title"]) if kind in ("film", "tv") else None
 
     icon, kind_label = KIND_META.get(kind, KIND_META["thing"])
+    if race and race["grand_prix"]:
+        icon, kind_label = "chequered", "Grand Prix"
     shown = tiles[:5]
     # Tiles that don't fit the bento move into the expandable About section, so nothing is lost.
     overflow = [(t["label"], t["value"] + (f" ({t['sub']})" if t["sub"] else "")) for t in tiles[5:]]
@@ -872,6 +1210,11 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
         "watch": watch,
         "product": product,
         "game": game,
+        "car": car,
+        "race": race,
+        "f1": f1,
+        "circuit": circuit,
+        "specs": specs,
         "qid": qid,
         "title": page["title"],
         "description": page.get("description") or entity.get("descriptions", {}).get("en", {}).get("value", ""),

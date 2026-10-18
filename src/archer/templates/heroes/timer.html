@@ -7,6 +7,8 @@
     <button type="button" class="mode{% if t.mode == 'stopwatch' %} is-active{% endif %}" data-timer-mode="stopwatch">Stopwatch</button>
   </div>
   <p class="clock timer-display" data-timer-display>{{ "%02d:%02d"|format(t.seconds // 60, t.seconds % 60) }}</p>
+  {# Time gone, as a run of pixel dots; archer.js fills it while the timer runs. #}
+  <span class="timer-bar" data-timer-bar style="--p: 0" aria-hidden="true"></span>
   <div class="timer-presets" data-timer-presets>
     {% for s, label in [(60, "1 min"), (300, "5 min"), (600, "10 min"), (900, "15 min"), (1800, "30 min"), (3600, "1 h")] %}
     <button type="button" class="chip" data-timer-set="{{ s }}">{{ label }}</button>
