@@ -189,6 +189,17 @@ def test_case_and_spacing_variants_share_one_searxng_call():
     assert upstream.calls.count("127.0.0.1") == 1
 
 
+def test_searxng_requests_turn_wikidata_off():
+    seen = []
+
+    def upstream(request):
+        seen.append(request.url.params)
+        return httpx.Response(200, json={"results": [], "unresponsive_engines": []})
+    asyncio.run(search(upstream).search("dune"))
+    assert seen[0]["disabled_engines"] == "wikidata__general"
+    assert seen[0]["categories"] == "general"
+
+
 def test_a_working_nothing_found_is_cached_but_a_rate_limit_is_not():
     calls = []
 

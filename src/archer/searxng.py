@@ -29,6 +29,10 @@ SUGGEST_TTL = 60
 # SearXNG waits for its slowest engine (up to each engine's own timeout, several seconds for some).
 # Engines that haven't answered by then are left out and listed as unresponsive.
 TIME_LIMIT = 2.5
+# Engines (as SearXNG's `name__category` preference ids) Archer turns off per request. Wikidata
+# only feeds SearXNG's infobox, which Archer doesn't show (it asks Wikidata itself), and it is often
+# the engine that runs into TIME_LIMIT. A !wd bang still reaches it.
+DISABLED_ENGINES = "wikidata__general"
 
 
 def suggestion_terms(values: object, q: str) -> list[str]:
@@ -261,7 +265,8 @@ class Search:
     async def _searxng(self, q: str, category: str, page: int) -> SearchResponse:
         if self._probe_local and _local_down():
             return SearchResponse(error="SearXNG isn't running")
-        params = {"q": q, "format": "json", "categories": category, "pageno": page, "timeout_limit": TIME_LIMIT}
+        params = {"q": q, "format": "json", "categories": category, "pageno": page, "timeout_limit": TIME_LIMIT,
+                  "disabled_engines": DISABLED_ENGINES}
         if settings.safesearch is not None:
             params["safesearch"] = settings.safesearch
         if settings.search_language:
