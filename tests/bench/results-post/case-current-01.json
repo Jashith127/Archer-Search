@@ -1,0 +1,87 @@
+{
+  "case": {
+    "id": "current-01",
+    "query": "latest news about OpenStreetMap",
+    "depth": "research",
+    "category": "current_information",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a specific date asserted with no citation"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Current-information and inherently time-dependent. No single authoritative answer, so only structural properties are graded."
+  },
+  "id": "current-01",
+  "query": "latest news about OpenStreetMap",
+  "depth": "research",
+  "category": "current_information",
+  "run": {
+    "ok": true,
+    "run_id": "EDcodmygV33ozkjNPHxsIu3d",
+    "total_s": 7.764124400011497,
+    "marks": {
+      "t_run": 0.008246400000643916,
+      "t_notice": 0.00834150001173839,
+      "t_status": 0.008368400012841448,
+      "t_visuals": 0.008488999999826774,
+      "t_sources": 1.7464616000070237,
+      "t_block": 4.440697099998943,
+      "t_complete": 7.764019200010807
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 8,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "06",
+      "10",
+      "200",
+      "295",
+      "8"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 2,
+    "searches": 2,
+    "pages_read": 4,
+    "cost_usd": 0.002699,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 7536,
+    "output_tokens": 992,
+    "replayed": false,
+    "t_first_block_s": 4.440697099998943,
+    "t_complete_s": 7.764124400011497,
+    "sources_count": 20,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['06', '10', '200', '295', '8']"
+    ],
+    "pass": false
+  }
+}

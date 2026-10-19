@@ -1,0 +1,83 @@
+{
+  "case": {
+    "id": "current-01",
+    "query": "latest news about OpenStreetMap",
+    "depth": "research",
+    "category": "current_information",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a specific date asserted with no citation"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Current-information and inherently time-dependent. No single authoritative answer, so only structural properties are graded."
+  },
+  "id": "current-01",
+  "query": "latest news about OpenStreetMap",
+  "depth": "research",
+  "category": "current_information",
+  "run": {
+    "ok": true,
+    "run_id": "KeTtKszNYdk7kRWzuVflssb2",
+    "total_s": 8.163963800005149,
+    "marks": {
+      "t_run": 0.017530800003441982,
+      "t_notice": 0.017592200005310588,
+      "t_status": 0.017629200010560453,
+      "t_visuals": 0.01766009999846574,
+      "t_sources": 1.4958039000048302,
+      "t_block": 4.50937200000044,
+      "t_complete": 8.163704200007487
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 9,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "15",
+      "2004",
+      "2024",
+      "2025",
+      "30,000",
+      "6,000"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 2,
+    "searches": 1,
+    "pages_read": 5,
+    "cost_usd": 0.003025,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 8199,
+    "output_tokens": 1161,
+    "replayed": false,
+    "t_first_block_s": 4.50937200000044,
+    "t_complete_s": 8.163963800005149,
+    "sources_count": 15,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "infra_degraded": false,
+    "infra_notices": [],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['15', '2004', '2024', '2025', '30,000', '6,000']"
+    ],
+    "pass": false
+  }
+}

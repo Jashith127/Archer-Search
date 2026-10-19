@@ -1,0 +1,77 @@
+{
+  "case": {
+    "id": "current-01",
+    "query": "latest news about OpenStreetMap",
+    "depth": "research",
+    "category": "current_information",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a specific date asserted with no citation"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Current-information and inherently time-dependent. No single authoritative answer, so only structural properties are graded."
+  },
+  "id": "current-01",
+  "query": "latest news about OpenStreetMap",
+  "depth": "research",
+  "category": "current_information",
+  "run": {
+    "ok": true,
+    "run_id": "pva-0vuIMVMapm41mkRBfblt",
+    "total_s": 2.0315819999959785,
+    "marks": {
+      "t_run": 0.012466200001654215,
+      "t_notice": 0.012512100001913495,
+      "t_status": 0.01253579999320209,
+      "t_visuals": 0.012555599998449907,
+      "t_sources": 1.523509999999078,
+      "t_error": 2.0310914000001503
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "Couldn't retrieve supporting evidence. Try a more specific question.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 2.0315819999959785,
+    "sources_count": 0,
+    "notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

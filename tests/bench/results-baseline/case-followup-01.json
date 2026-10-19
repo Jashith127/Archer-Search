@@ -1,0 +1,131 @@
+{
+  "case": {
+    "id": "followup-01",
+    "query": "why do cats knead",
+    "depth": "research",
+    "category": "followup_depends_on_context",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "followup": "what about kittens",
+    "followup_properties": {
+      "must_cite": [],
+      "forbidden": [
+        "a total restart that ignores the established topic"
+      ]
+    },
+    "notes": "Follow-up pair. Exercises parent-run inheritance and previous_answer_untrusted."
+  },
+  "id": "followup-01",
+  "query": "why do cats knead",
+  "depth": "research",
+  "category": "followup_depends_on_context",
+  "run": {
+    "ok": true,
+    "run_id": "1AaYyeo_-2B38p1KAWZ6xNRh",
+    "total_s": 4.482202899991535,
+    "marks": {
+      "t_run": 0.004707000000053085,
+      "t_notice": 0.03365269998903386,
+      "t_status": 0.03391159999591764,
+      "t_visuals": 0.03451439998752903,
+      "t_sources": 0.03578049999487121,
+      "t_card": 0.03750639999634586,
+      "t_block": 1.6381947999907425,
+      "t_complete": 4.481671899993671
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 5,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 4,
+    "cost_usd": 0.0009,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5903,
+    "output_tokens": 654,
+    "replayed": false,
+    "t_first_block_s": 1.6381947999907425,
+    "t_complete_s": 4.482202899991535,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  },
+  "followup": {
+    "run": {
+      "ok": true,
+      "run_id": "PHPNc3oEMkmZIV7RCLKueCLd",
+      "total_s": 3.6149166999966837,
+      "marks": {
+        "t_run": 0.009938999995938502,
+        "t_notice": 0.009998699999414384,
+        "t_status": 0.010096199999679811,
+        "t_visuals": 0.010137499994016252,
+        "t_card": 0.11821319999580737,
+        "t_sources": 0.12060609999753069,
+        "t_block": 1.5806996000028448,
+        "t_complete": 3.614483099998324
+      }
+    },
+    "grade": {
+      "terminal": "complete",
+      "blocks": 6,
+      "summary_is_first": true,
+      "summary_present": true,
+      "citations_resolve": true,
+      "summary_cited": true,
+      "unsupported_numbers": [],
+      "numbers_supported": true,
+      "summary_not_snippet_only": true,
+      "facts": [],
+      "model_calls": 1,
+      "searches": 0,
+      "pages_read": 6,
+      "cost_usd": 0.000773,
+      "cost_is_ceiling": true,
+      "evidence_label": "Read source pages and Archer data",
+      "input_tokens": 7286,
+      "output_tokens": 485,
+      "replayed": false,
+      "t_first_block_s": 1.5806996000028448,
+      "t_complete_s": 3.6149166999966837,
+      "sources_count": 13,
+      "notices": [
+        "Some search engines were unavailable; coverage is partial.",
+        "WHY Definition & Meaning - Merriam-Webster: couldn't read the page; keeping its excerpt.",
+        "WHY | English meaning - Cambridge Dictionary: couldn't read the page; keeping its excerpt."
+      ],
+      "human_review": {
+        "citation_support": null,
+        "addresses_question": null,
+        "unsupported_claims": null,
+        "notes": null
+      },
+      "problems": [],
+      "pass": true
+    }
+  }
+}

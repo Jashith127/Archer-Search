@@ -28,7 +28,7 @@ IMAGE_KINDS = {"person", "place", "species", "thing", "music", "landmark", "coun
 WEATHER_KINDS = {"place", "landmark"}
 # Heroes computed entirely from the query text (no network).
 LOCAL_KINDS = {"calc", "unit", "color", "timestamp", "random", "timer", "metronome", "finance",
-               "solve", "graph", "track"}
+               "solve", "graph", "track", "vct"}
 
 
 @dataclass
@@ -127,15 +127,40 @@ def _places_hero(query: Query, response: SearchResponse) -> Hero:
     return Hero("places", {**d, "area": fixed or typed, "typed_area": typed if fixed else ""})
 
 
+def _hint_ok(kind: str, hint: tuple[str, str] | None) -> bool:
+    """Whether a panel of `kind` is what "… show" / "… valorant" asked for. "esports" (and "esports:<game>")
+    is a team or a player alike."""
+    if not hint:
+        return True
+    wanted = hint[0].split(":", 1)[0]
+    return kind in ("esteam", "esplayer") if wanted == "esports" else kind == wanted
+
+
+def _for_game(hero: Hero | None, hint: tuple[str, str] | None) -> Hero | None:
+    """"t1 valorant": the organisation's panel, drawn for the game the search named."""
+    if not hero or hero.kind != "entity" or not hint or ":" not in hint[0]:
+        return hero
+    data = hero.data
+    if data.get("kind") not in ("esteam", "esplayer") or not data.get("esports"):
+        return hero
+    from archer.sources import esports
+    game = hint[0].split(":", 1)[1]
+    info = esports.GAME_INFO.get(game)
+    if not info or data["esports"]["game"] == game:
+        return hero
+    games = [info] + [g for g in data["esports"]["games"] if g["key"] != game]
+    return Hero("entity", {**data, "esports": {**data["esports"], "game": game, "games": games, "color": info["color"]}})
+
+
 async def _entity(ext: httpx.AsyncClient, query: Query) -> Hero | None:
     if query.entity_hint:
         # "archer show": search for the TV series by name; the bare "Archer" is Archery.
         kind, words = query.entity_hint
         data = await wiki.lookup(ext, f"{query.entity_candidate} {words}")
-        if data and data["kind"] == kind:
+        if data and _hint_ok(data["kind"], query.entity_hint):
             return Hero("entity", data)
     data = await wiki.lookup(ext, query.entity_candidate)
-    if data and query.entity_hint and data["kind"] != query.entity_hint[0]:
+    if data and not _hint_ok(data["kind"], query.entity_hint):
         return None  # the wrong kind of thing; the web results may still name the right article
     return Hero("entity", data) if data else None
 
@@ -216,7 +241,7 @@ async def _settle_meaning(ext: httpx.AsyncClient, query: Query, hero: Hero | Non
         if chosen and title.lower() == chosen["title"].lower():
             break
         data = await _safe(wiki.lookup(ext, title), "wikipedia")
-        if data and data is not _FAILED and (not hint or data["kind"] == hint[0]) and data["title"] != (chosen or {}).get("title"):
+        if data and data is not _FAILED and _hint_ok(data["kind"], hint) and data["title"] != (chosen or {}).get("title"):
             chosen, replaced = data, chosen
             break
     if not chosen:
@@ -411,7 +436,7 @@ async def _hero_phase(view: View, ext: httpx.AsyncClient, query: Query, response
             and (view.hero is None or view.hero.kind == "entity"):
         if not query.entity_candidate:  # a chip on a longer query: still offer the way back
             query.entity_candidate = about
-        view.hero = await _settle_meaning(ext, query, view.hero, response.results, about)
+        view.hero = _for_game(await _settle_meaning(ext, query, view.hero, response.results, about), query.entity_hint)
     if query.kind == "general" and query.entity_candidate:
         view.hero = _product_hero(query, view.hero, response, view.related) or view.hero
     if not view.hero and query.kind in ("general", "question"):

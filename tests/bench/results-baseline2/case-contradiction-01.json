@@ -1,0 +1,75 @@
+{
+  "case": {
+    "id": "contradiction-01",
+    "query": "is coffee good or bad for you",
+    "depth": "compact",
+    "category": "contradictory_or_stale_sources",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a single unqualified verdict where sources disagree"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Genuinely contested. The prompt asks for disagreements to stay visible; check the answer does not collapse to a single flat claim."
+  },
+  "id": "contradiction-01",
+  "query": "is coffee good or bad for you",
+  "depth": "compact",
+  "category": "contradictory_or_stale_sources",
+  "run": {
+    "ok": true,
+    "run_id": "70iP3cq5Ovwd68psSkvwXLAS",
+    "total_s": 0.0034666999999899417,
+    "marks": {
+      "t_run": 0.003227799999876879,
+      "t_notice": 0.0032758999877842143,
+      "t_status": 0.0033027999888872728,
+      "t_error": 0.0033613999985391274
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "No sources came back. Try another search; Archer won't invent a researched answer.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.0034666999999899417,
+    "sources_count": 0,
+    "notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

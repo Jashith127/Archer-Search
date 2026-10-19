@@ -1,0 +1,101 @@
+{
+  "case": {
+    "id": "deterministic-01",
+    "query": "emi for 1000000 at 8 percent for 5 years",
+    "depth": "research",
+    "category": "deterministic_tool_path",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a monthly payment figure",
+          "tokens": [
+            "monthly",
+            "payment",
+            "₹",
+            "rs",
+            "inr"
+          ]
+        }
+      ],
+      "forbidden": [
+        "a monthly payment not matching the deterministic loan_payment result"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "direct_tools() should resolve this to loan_payment and SKIP the planner. Verify model_calls == 1 and a calculation card is emitted."
+  },
+  "id": "deterministic-01",
+  "query": "emi for 1000000 at 8 percent for 5 years",
+  "depth": "research",
+  "category": "deterministic_tool_path",
+  "run": {
+    "ok": true,
+    "run_id": "OxcAQXiV2jKm-FIwLtmkNhg9",
+    "total_s": 2.5872741999919526,
+    "marks": {
+      "t_run": 0.01774739999382291,
+      "t_notice": 0.018941299989819527,
+      "t_status": 0.01945109998632688,
+      "t_visuals": 0.019955699986894615,
+      "t_sources": 0.020468199989409186,
+      "t_card": 0.020783399988431484,
+      "t_block": 1.5080423999897903,
+      "t_complete": 2.582371799988323
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [
+      "10,00,000"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a monthly payment figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.00069,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 2483,
+    "output_tokens": 425,
+    "replayed": false,
+    "t_first_block_s": 1.5080423999897903,
+    "t_complete_s": 2.5872741999919526,
+    "sources_count": 1,
+    "notices": [
+      "SearXNG is rate-limited right now",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "unsupported quantities: ['10,00,000']"
+    ],
+    "pass": false
+  }
+}

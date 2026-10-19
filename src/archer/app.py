@@ -24,7 +24,7 @@ from archer.imagerank import rank_images, similar_query
 from archer.config import settings
 from archer.query import PLACE_TYPES, classify
 from archer.searxng import SearXNG, SUGGEST_LIMIT, SUGGEST_MIN, SUGGEST_MAX_LENGTH, active_limits, fallback_order
-from archer.sources import USER_AGENT, TTLCache, aimodels, credits, f1, games, lyrics, products, watch, weather, wiki
+from archer.sources import USER_AGENT, TTLCache, aimodels, credits, esports, f1, games, lyrics, products, sports, watch, weather, wiki
 from archer.ai_routes import router as ai_router, service as ai_service, set_cookie as ai_cookie
 from archer.ai_provider import readiness
 from archer.ai_service import AIService
@@ -512,6 +512,67 @@ async def api_f1_track(request: Request, lat: str = Query("", max_length=20), lo
         return JSONResponse({"path": await f1.track(request.app.state.ext, lat, lon, id[:60])})
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return JSONResponse({"path": ""})
+
+
+_QID = re.compile(r"Q\d{1,10}")
+
+
+@app.get("/api/sport/club")
+async def api_sport_club(request: Request, title: str = Query("", max_length=120), league: str = Query("", max_length=12),
+                         sport: str = Query("", max_length=12), country: str = Query("", max_length=12),
+                         alias: str = Query("", max_length=120)) -> JSONResponse:
+    """A club's table, results, fixtures, record and squad (ESPN), found through its Wikidata league."""
+    league, sport, country = (v if _QID.fullmatch(v) else "" for v in (league, sport, country))
+    if not title.strip():
+        return JSONResponse({})
+    return JSONResponse(await sports.team(request.app.state.ext, title.strip(), league, sport, country,
+                                          (alias.strip(),) if alias.strip() else ()))
+
+
+@app.get("/api/sport/league")
+async def api_sport_league(request: Request, qid: str = Query("", max_length=12)) -> JSONResponse:
+    """A league's tables and its current round of games (ESPN)."""
+    return JSONResponse(await sports.league(request.app.state.ext, qid) if _QID.fullmatch(qid) else {})
+
+
+@app.get("/api/esports")
+async def api_esports(request: Request, title: str = Query("", max_length=120), role: str = Query("team", pattern="^(team|player)$"),
+                      game: str = Query("", max_length=16)) -> JSONResponse:
+    """An esports team or player: VLR.gg for Valorant, the game's Liquipedia wiki for anything else."""
+    if not title.strip():
+        return JSONResponse({})
+    if game == "valorant":
+        return JSONResponse(await esports.valorant(request.app.state.ext, title.strip(), role))
+    return JSONResponse(await esports.liquipedia(request.app.state.ext, title.strip(), role, game))
+
+
+@app.get("/api/vlr/img/{name}")
+async def api_vlr_img(request: Request, name: str) -> Response:
+    """A VLR.gg team or event logo, player photo or map picture, fetched here because its CDN turns away a
+    browser that sends no Referer (and the results page sends none)."""
+    got = await esports.image(request.app.state.ext, name)
+    if not got:
+        return Response(status_code=404)
+    body, kind = got
+    headers = {"Cache-Control": "public, max-age=604800"}
+    if kind == "image/svg+xml":
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"  # no script in an svg
+    return Response(body, media_type=kind, headers=headers)
+
+
+@app.get("/api/vct/season")
+async def api_vct_season(request: Request, year: int = Query(0, ge=2021, le=2040),
+                         event: str = Query("", pattern="^(|champions|masters|kickoff|stage1|stage2|gc|lcq)$"),
+                         region: str = Query("", pattern="^(|Americas|EMEA|Pacific|China)$")) -> JSONResponse:
+    """A VCT season's events (VCT and the main Game Changers ones), grouped, with the one to open on."""
+    this_year = datetime.now(timezone.utc).year
+    return JSONResponse(await esports.vct_season(request.app.state.ext, year or this_year, this_year, event, region))
+
+
+@app.get("/api/vct/event")
+async def api_vct_event(request: Request, id: str = Query("", max_length=8, pattern=r"^\d*$")) -> JSONResponse:
+    """One VCT event: champion, grand final, standings with prizes and the latest results."""
+    return JSONResponse(await esports.vct_event(request.app.state.ext, id))
 
 
 @app.get("/api/watch")

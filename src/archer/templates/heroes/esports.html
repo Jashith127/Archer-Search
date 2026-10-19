@@ -1,0 +1,48 @@
+{% from "macros.html" import spec_grid %}
+{% from "sport_macros.html" import panel_head, about, label, skeleton %}
+{# An esports team or player in any game but Valorant (which has its own panel): T1, Faker, Natus Vincere.
+
+   Wikidata says who this is; the game's Liquipedia wiki (/api/esports) adds the scene's facts after load:
+   a team's region, league and active roster with each player's position and flag; a player's team, role,
+   status, names and world titles. The game's colour is the accent. #}
+{% set e = v.hero.data %}
+{% set s = e.esports or {} %}
+{% set player = s.role == "player" %}
+<section class="hero hero-entity hero-es {{ 'is-player' if player else 'is-team' }}"
+  {%- if s.game %} data-es data-es-title="{{ e.title }}" data-es-role="{{ s.role }}" data-es-game="{{ s.game }}" style="--game: {{ s.color }}"{% else %} data-compact{% endif %}>
+  {{ panel_head(v, e, s.games[0].name if s.games else "") }}
+
+  <div class="es-top">
+    <div class="es-stage{% if not player %} is-logo{% endif %}">
+      {% if e.image %}
+      <img class="es-shot" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+      {% else %}
+      <div class="ms-blank"><svg><use href="#u-{{ 'user' if player else 'gamepad' }}"/></svg><span>No picture yet</span></div>
+      {% endif %}
+    </div>
+    {% if s.game %}
+    <section class="sp-card es-info" aria-label="On the scene" data-es-info>
+      {{ label("gamepad", s.games[0].name, hook="data-es-info-label") }}
+      {{ skeleton(4, big=True) }}
+    </section>
+    {% endif %}
+  </div>
+
+  {% if s.game %}
+  <section class="sp-card es-list" aria-label="{{ 'Titles' if player else 'Roster' }}" data-es-list>
+    {{ label("trophy" if player else "users", "World titles" if player else "Active roster") }}
+    {{ skeleton(3) }}
+  </section>
+  {% endif %}
+
+  {% if s.games|length > 1 %}
+  <div class="ms-chips">
+    <span class="ms-chips-label">Games</span>
+    {% for g in s.games %}<span class="tag-chip es-game-chip" style="--game: {{ g.color }}"><svg><use href="#u-gamepad"/></svg>{{ g.name }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {{ spec_grid(e.specs) }}
+  {{ about(e) }}
+  <p class="hero-source">Identity from Wikipedia and Wikidata.{% if s.game %} Scene facts and roster from <a href="https://liquipedia.net/" data-es-source>Liquipedia</a> (CC BY-SA).{% endif %}</p>
+</section>

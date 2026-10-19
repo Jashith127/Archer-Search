@@ -648,7 +648,11 @@ def test_relevant_images_drop_pictures_that_only_appeared_for_the_query():
 
 
 def test_summary_facts_callouts_and_highlights_are_validated():
-    evidence = [Evidence("S1", "Spec", "https://example.com/", "The battery is 5000 mAh and lasts about two days. Avoid fast chargers above 45 W.")]
+    # A read page, because a summary may no longer rest only on an unverified snippet
+    # (Deliverable 1 / U3). The snippet-only case has its own test below.
+    evidence = [Evidence("S1", "Spec", "https://example.com/",
+                         "The battery is 5000 mAh and lasts about two days. Avoid fast chargers above 45 W.",
+                         kind="page", verified=True)]
     summary = validate_block({"kind": "summary", "text": "It lasts ==about two days== on a ==5000 mAh== cell.", "citations": ["S1"]}, evidence, first=True)
     assert summary["kind"] == "summary"
     assert summary["text"] == "It lasts ==about two days== on a 5000 mAh cell."  # one highlight per summary
@@ -664,6 +668,16 @@ def test_summary_facts_callouts_and_highlights_are_validated():
     assert callout["tone"] == "warning"
     with pytest.raises(AIError):  # a callout is a factual claim
         validate_block({"kind": "callout", "tone": "tip", "text": "Charge overnight."}, evidence)
+
+    # The same assertions hold against a snippet for everything except the summary,
+    # which a snippet alone may no longer carry.
+    snippet = [Evidence("S2", "Spec", "https://example.org/",
+                        "The battery is 5000 mAh and lasts about two days. Avoid fast chargers above 45 W.")]
+    with pytest.raises(AIError, match="unverified"):
+        validate_block({"kind": "summary", "text": "It lasts about two days.", "citations": ["S2"]},
+                       snippet, first=True)
+    assert validate_block({"kind": "callout", "tone": "warning", "text": "Avoid chargers above 45 W.",
+                           "citations": ["S2"]}, snippet, first=True)["tone"] == "warning"
 
 
 def test_visual_verdict_respects_what_the_user_asked_for(tmp_path):

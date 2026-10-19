@@ -1,0 +1,112 @@
+{
+  "case": {
+    "id": "compare-01",
+    "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+    "depth": "research",
+    "category": "company_and_product_comparison",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a single unsupported winner declared without conditions"
+      ],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Two-sided comparison. direct_tools() should route this to two parallel search_web calls without the planner. Verify search count >= 2 and that model_calls stays within the research range."
+  },
+  "id": "compare-01",
+  "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+  "depth": "research",
+  "category": "company_and_product_comparison",
+  "run": {
+    "ok": true,
+    "run_id": "o_F7gy7PKq8e_pYvFRqRuKt3",
+    "total_s": 7.754344100001617,
+    "marks": {
+      "t_run": 0.008683399995788932,
+      "t_notice": 0.013151599996490404,
+      "t_status": 0.014676999999210238,
+      "t_card": 0.9623346000007587,
+      "t_visuals": 1.3283958999963943,
+      "t_sources": 1.4475176999985706,
+      "t_block": 4.416042700002436,
+      "t_complete": 7.753899000003003
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 5,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "100",
+      "145",
+      "15",
+      "150",
+      "158",
+      "16",
+      "165",
+      "2",
+      "200",
+      "2077",
+      "25",
+      "263",
+      "3",
+      "35",
+      "38",
+      "48",
+      "499",
+      "5",
+      "55",
+      "58",
+      "599",
+      "600",
+      "65",
+      "66",
+      "700,",
+      "86",
+      "90",
+      "96,"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 2,
+    "pages_read": 4,
+    "cost_usd": 0.002696,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 7217,
+    "output_tokens": 913,
+    "replayed": false,
+    "t_first_block_s": 4.416042700002436,
+    "t_complete_s": 7.754344100001617,
+    "sources_count": 21,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "SearXNG is rate-limited right now",
+      "SearXNG is rate-limited right now",
+      "Radeon RX 7800 XT vs GeForce RTX 4070: gaming performance tests: couldn't read the page; keeping its excerpt.",
+      "A section Archer couldn't verify was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now",
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['100', '145', '15', '150', '158', '16', '165', '2', '200', '2077', '25', '263', '3', '35', '38', '48', '499', '5', '55', '58', '599', '600', '65', '66', '700,', '86', '90', '96,']"
+    ],
+    "pass": false
+  }
+}

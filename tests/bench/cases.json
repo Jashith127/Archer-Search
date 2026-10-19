@@ -1,0 +1,269 @@
+{
+  "version": "1.0",
+  "description": "Fixed benchmark for Archer's AI answer path. Graded against the cited PASSAGES, not just source existence. supporting_sources were hand-recorded independently of pipeline output; where left empty it means 'not recorded', not 'none exist'. Inherently ambiguous cases set properties.ambiguous=true and carry no must_cite list, so no single authoritative answer is demanded.",
+  "grading": {
+    "automated": [
+      "citations_resolve: every citation id on every block exists in the sources list",
+      "summary_cited: the first block is a summary and carries at least one citation",
+      "numbers_supported: every literal number in a cited block appears in the cited source text (replicates check_numbers)",
+      "summary_not_snippet_only: the summary is not solely supported by unverified search snippets",
+      "fact_present: each must_cite fact's distinctive tokens appear somewhere in the answer",
+      "fact_cited: a block containing a must_cite fact carries at least one citation"
+    ],
+    "human_review_required": [
+      "citation_support: does the cited PASSAGE actually contain the fact? Requires a human reading the source; the automated check only proves the passage was cited and that it contains the numbers.",
+      "addresses_question: does the answer actually respond to what was asked?",
+      "unsupported_claims: any factual claim in prose with no supporting passage"
+    ]
+  },
+  "cases": [
+    {
+      "id": "factual-01",
+      "query": "why do cats knead",
+      "depth": "compact",
+      "category": "straightforward_factual",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "marks territory or comfort behaviour", "tokens": ["territor", "comfort", "mother", "nurse", "suckle"]}
+        ],
+        "forbidden": ["veterinary advice presented as diagnosis"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Compact path. Exercises the zero-planner research path and snippet-only evidence handling."
+    },
+    {
+      "id": "quantity-01",
+      "query": "how many people speak English as a first language worldwide",
+      "depth": "compact",
+      "category": "quantities_and_dates",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a global first-language speaker count", "tokens": ["billion", "million"]}
+        ],
+        "forbidden": ["a count presented without any citation"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Quantity grounding. Every number written must appear in a cited source."
+    },
+    {
+      "id": "date-01",
+      "query": "when was the Eiffel Tower completed",
+      "depth": "compact",
+      "category": "quantities_and_dates",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a completion year", "tokens": ["1889"]}
+        ],
+        "forbidden": [],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Date grounding. 1889 is stable and well attested."
+    },
+    {
+      "id": "current-01",
+      "query": "latest news about OpenStreetMap",
+      "depth": "research",
+      "category": "current_information",
+      "properties": {
+        "ambiguous": true,
+        "must_cite": [],
+        "forbidden": ["a specific date asserted with no citation"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Current-information and inherently time-dependent. No single authoritative answer, so only structural properties are graded."
+    },
+    {
+      "id": "current-02",
+      "query": "what is the latest stable Python version",
+      "depth": "compact",
+      "category": "current_information",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a Python version number", "tokens": ["3."]}
+        ],
+        "forbidden": ["a version number with no citation"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Time-sensitive. Exercises whether dated evidence is preferred."
+    },
+    {
+      "id": "compare-01",
+      "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+      "depth": "research",
+      "category": "company_and_product_comparison",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [],
+        "forbidden": ["a single unsupported winner declared without conditions"],
+        "min_supporting_sources": 2
+      },
+      "supporting_sources": [],
+      "notes": "Two-sided comparison. direct_tools() should route this to two parallel search_web calls without the planner. Verify search count >= 2 and that model_calls stays within the research range."
+    },
+    {
+      "id": "compare-02",
+      "query": "is the Sony WH-1000XM5 worth buying over the Bose QC Ultra",
+      "depth": "research",
+      "category": "company_and_product_comparison",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [],
+        "forbidden": ["a price asserted with no citation"],
+        "min_supporting_sources": 2
+      },
+      "supporting_sources": [],
+      "notes": "Product comparison with prices. Exercises the product-card path and price grounding."
+    },
+    {
+      "id": "multipart-01",
+      "query": "how long does a lithium ion battery take to charge, and what factors change that",
+      "depth": "research",
+      "category": "multi_part_requires_several_sources",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a charge-time range", "tokens": ["hour", "minute", "charge"]}
+        ],
+        "forbidden": [],
+        "min_supporting_sources": 2
+      },
+      "supporting_sources": [],
+      "notes": "Two-part question. Exercises the planner path (needs_planning matches 'how')."
+    },
+    {
+      "id": "multi-part-02",
+      "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+      "depth": "research",
+      "category": "multi_part_requires_several_sources",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a temperature near the reduced boiling point", "tokens": ["9", "°", "celsius", "below"]}
+        ],
+        "forbidden": [],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Two-part technical. The calculate tool is in relevant_tools for arithmetic-shaped questions."
+    },
+    {
+      "id": "ambiguous-01",
+      "query": "best mechanical keyboard",
+      "depth": "compact",
+      "category": "ambiguous_wording",
+      "properties": {
+        "ambiguous": true,
+        "must_cite": [],
+        "forbidden": ["a single unconditional recommendation with no stated conditions"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Inherently underspecified. Graded only on structural properties and on whether conditions are stated."
+    },
+    {
+      "id": "ambiguous-02",
+      "query": "is Python worth learning",
+      "depth": "compact",
+      "category": "ambiguous_wording",
+      "properties": {
+        "ambiguous": true,
+        "must_cite": [],
+        "forbidden": [],
+        "min_supporting_sources": 0
+      },
+      "supporting_sources": [],
+      "notes": "Opinion-shaped. No factual ground truth to demand."
+    },
+    {
+      "id": "insufficient-01",
+      "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+      "depth": "compact",
+      "category": "insufficient_public_evidence",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [],
+        "forbidden": [
+          "a specific population figure asserted with a citation",
+          "a confident answer presented as verified when no real source exists"
+        ],
+        "min_supporting_sources": 0
+      },
+      "supporting_sources": [],
+      "notes": "Deliberately unanswerable. The correct behaviour is an honest no-evidence result, not a fabricated number. This is the sharpest test of grounding."
+    },
+    {
+      "id": "contradiction-01",
+      "query": "is coffee good or bad for you",
+      "depth": "compact",
+      "category": "contradictory_or_stale_sources",
+      "properties": {
+        "ambiguous": true,
+        "must_cite": [],
+        "forbidden": ["a single unqualified verdict where sources disagree"],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Genuinely contested. The prompt asks for disagreements to stay visible; check the answer does not collapse to a single flat claim."
+    },
+    {
+      "id": "stale-01",
+      "query": "what is the population of Tokyo",
+      "depth": "compact",
+      "category": "contradictory_or_stale_sources",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a population figure", "tokens": ["million"]}
+        ],
+        "forbidden": [],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "notes": "Figures vary by year and by city-proper vs metro. A correct answer should carry its date or qualify its basis."
+    },
+    {
+      "id": "followup-01",
+      "query": "why do cats knead",
+      "depth": "research",
+      "category": "followup_depends_on_context",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [],
+        "forbidden": [],
+        "min_supporting_sources": 1
+      },
+      "supporting_sources": [],
+      "followup": "what about kittens",
+      "followup_properties": {
+        "must_cite": [],
+        "forbidden": ["a total restart that ignores the established topic"]
+      },
+      "notes": "Follow-up pair. Exercises parent-run inheritance and previous_answer_untrusted."
+    },
+    {
+      "id": "deterministic-01",
+      "query": "emi for 1000000 at 8 percent for 5 years",
+      "depth": "research",
+      "category": "deterministic_tool_path",
+      "properties": {
+        "ambiguous": false,
+        "must_cite": [
+          {"label": "a monthly payment figure", "tokens": ["monthly", "payment", "₹", "rs", "inr"]}
+        ],
+        "forbidden": ["a monthly payment not matching the deterministic loan_payment result"],
+        "min_supporting_sources": 0
+      },
+      "supporting_sources": [],
+      "notes": "direct_tools() should resolve this to loan_payment and SKIP the planner. Verify model_calls == 1 and a calculation card is emitted."
+    }
+  ]
+}

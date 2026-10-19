@@ -1,0 +1,78 @@
+{
+  "case": {
+    "id": "compare-01",
+    "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+    "depth": "research",
+    "category": "company_and_product_comparison",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a single unsupported winner declared without conditions"
+      ],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Two-sided comparison. direct_tools() should route this to two parallel search_web calls without the planner. Verify search count >= 2 and that model_calls stays within the research range."
+  },
+  "id": "compare-01",
+  "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+  "depth": "research",
+  "category": "company_and_product_comparison",
+  "run": {
+    "ok": true,
+    "run_id": "PNTWtXhb8mqJW5Z-EhZcdtB-",
+    "total_s": 5.567125600005966,
+    "marks": {
+      "t_run": 0.0030864000000292435,
+      "t_notice": 0.013462300004903227,
+      "t_status": 0.013526100010494702,
+      "t_card": 0.013877000004868023,
+      "t_visuals": 0.014474600000539795,
+      "t_sources": 0.02100020000943914,
+      "t_block": 1.8646044000051916,
+      "t_complete": 5.56675240000186
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 6,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 2,
+    "pages_read": 1,
+    "cost_usd": 0.001442,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 4985,
+    "output_tokens": 1116,
+    "replayed": false,
+    "t_first_block_s": 1.8646044000051916,
+    "t_complete_s": 5.567125600005966,
+    "sources_count": 31,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "RX 7800XT vs RTX 4070 SUPER: Whichbis better for 1440p gaming ...: couldn't read the page; keeping its excerpt.",
+      "RTX 4070 vs RX 7800 XT: Gaming FPS & Benchmarks (2026) - HowManyFPS: couldn't read the page; keeping its excerpt.",
+      "Radeon RX 7800 XT vs GeForce RTX 4070: gaming performance tests: couldn't read the page; keeping its excerpt.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  }
+}

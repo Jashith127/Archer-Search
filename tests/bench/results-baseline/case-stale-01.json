@@ -1,0 +1,84 @@
+{
+  "case": {
+    "id": "stale-01",
+    "query": "what is the population of Tokyo",
+    "depth": "compact",
+    "category": "contradictory_or_stale_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a population figure",
+          "tokens": [
+            "million"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Figures vary by year and by city-proper vs metro. A correct answer should carry its date or qualify its basis."
+  },
+  "id": "stale-01",
+  "query": "what is the population of Tokyo",
+  "depth": "compact",
+  "category": "contradictory_or_stale_sources",
+  "run": {
+    "ok": true,
+    "run_id": "_cysj5FH_TpcmHVW94nhSimF",
+    "total_s": 2.1045198000065284,
+    "marks": {
+      "t_run": 0.014012500003445894,
+      "t_notice": 0.014476000011200085,
+      "t_status": 0.014932900012354366,
+      "t_visuals": 0.01679090000106953,
+      "t_sources": 0.016970000011497177,
+      "t_block": 1.3360728000116069,
+      "t_complete": 2.1038173000124516
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [
+      {
+        "label": "a population figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000423,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2790,
+    "output_tokens": 282,
+    "replayed": false,
+    "t_first_block_s": 1.3360728000116069,
+    "t_complete_s": 2.1045198000065284,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

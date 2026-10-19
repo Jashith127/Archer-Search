@@ -1,0 +1,96 @@
+{
+  "case": {
+    "id": "deterministic-01",
+    "query": "emi for 1000000 at 8 percent for 5 years",
+    "depth": "research",
+    "category": "deterministic_tool_path",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a monthly payment figure",
+          "tokens": [
+            "monthly",
+            "payment",
+            "₹",
+            "rs",
+            "inr"
+          ]
+        }
+      ],
+      "forbidden": [
+        "a monthly payment not matching the deterministic loan_payment result"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "direct_tools() should resolve this to loan_payment and SKIP the planner. Verify model_calls == 1 and a calculation card is emitted."
+  },
+  "id": "deterministic-01",
+  "query": "emi for 1000000 at 8 percent for 5 years",
+  "depth": "research",
+  "category": "deterministic_tool_path",
+  "run": {
+    "ok": true,
+    "run_id": "ID5TpD5sIKiKoQqGRpFjRSEI",
+    "total_s": 4.274390900012804,
+    "marks": {
+      "t_run": 0.006674200005363673,
+      "t_status": 0.00731390000146348,
+      "t_visuals": 0.007339400006458163,
+      "t_sources": 0.007929500003228895,
+      "t_notice": 0.19784680000157095,
+      "t_card": 0.3597563000075752,
+      "t_block": 2.1928490999998758,
+      "t_complete": 4.274215500001446
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 4,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a monthly payment figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.002067,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5545,
+    "output_tokens": 775,
+    "replayed": false,
+    "t_first_block_s": 2.1928490999998758,
+    "t_complete_s": 4.274390900012804,
+    "sources_count": 11,
+    "notices": [
+      "EMI Calculator, Bank Loan EMI Calculator in India - Goodreturn: couldn't read the page; keeping its excerpt.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": false,
+    "infra_notices": [],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

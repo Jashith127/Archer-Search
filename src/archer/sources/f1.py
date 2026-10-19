@@ -618,12 +618,35 @@ async def _winners(client: httpx.AsyncClient, circuit_id: str, count: int = 8) -
 
 
 async def _podium(client: httpx.AsyncClient, round_: int) -> list[dict]:
+    """The top three of a round with what the card needs to tell the race: time or gap, grid slot, laps."""
     data = await _get(client, f"current/{round_}/results", limit=3)
     races = _table(data, "RaceTable", "Races")
-    return [{"position": _number(r.get("position")), "driver": _name(r.get("Driver") or {}),
-             "team": (r.get("Constructor") or {}).get("name", ""),
-             "color": color((r.get("Constructor") or {}).get("constructorId", ""))}
-            for r in (_list(races[0], "Results") if races else [])]
+    out = []
+    for r in (_list(races[0], "Results") if races else []):
+        lap = r.get("FastestLap") or {}
+        team = r.get("Constructor") or {}
+        out.append({"position": _number(r.get("position")), "driver": _name(r.get("Driver") or {}),
+                    "code": (r.get("Driver") or {}).get("code", ""), "number": (r.get("Driver") or {}).get("permanentNumber", ""),
+                    "team": team.get("name", ""), "color": color(team.get("constructorId", "")),
+                    "grid": _number(r.get("grid")), "laps": _number(r.get("laps")), "points": _points(r.get("points")),
+                    "time": str((r.get("Time") or {}).get("time") or ""),
+                    "millis": _number((r.get("Time") or {}).get("millis")),
+                    "fastest": str(lap.get("rank") or "") == "1",
+                    "fastest_time": str((lap.get("Time") or {}).get("time") or ""), "fastest_lap": _number(lap.get("lap"))})
+    return out
+
+
+def _report(podium: list[dict], lap_m) -> dict:
+    """The race in four numbers: laps, distance, the winner's average speed and the fastest lap (if it was a podium car's)."""
+    win = next((p for p in podium if p["position"] == 1), None)
+    if not win or not win["laps"]:
+        return {}
+    km = round(win["laps"] * float(lap_m) / 1000, 3) if lap_m else 0
+    hours = win["millis"] / 3.6e6 if win["millis"] else 0
+    quick = next((p for p in podium if p["fastest"]), None)
+    return {"laps": win["laps"], "distance": km, "avg_kph": round(km / hours, 1) if km and hours else 0,
+            "fastest": {"driver": quick["driver"], "color": quick["color"], "time": quick["fastest_time"],
+                        "lap": quick["fastest_lap"]} if quick and quick["fastest_time"] else {}}
 
 
 def _race_card(race: dict) -> dict:
@@ -658,7 +681,8 @@ async def grand_prix(client: httpx.AsyncClient, title: str) -> dict:
         card = _race_card(race)
         held, winners = await _soft(_winners(client, race["circuit_id"]), (0, []))
         podium = await _soft(_podium(client, race["round"]), []) if card["done"] else []
-        return {**card, "held": held, "winners": winners, "podium": podium, "rounds": len(rounds)}
+        report = _report(podium, (card.get("map") or {}).get("length")) if podium else {}
+        return {**card, "held": held, "winners": winners, "podium": podium, "report": report, "rounds": len(rounds)}
     except (httpx.HTTPError, ValueError, KeyError, TypeError, IndexError):
         return {}
 

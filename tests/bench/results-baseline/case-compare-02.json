@@ -1,0 +1,74 @@
+{
+  "case": {
+    "id": "compare-02",
+    "query": "is the Sony WH-1000XM5 worth buying over the Bose QC Ultra",
+    "depth": "research",
+    "category": "company_and_product_comparison",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a price asserted with no citation"
+      ],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Product comparison with prices. Exercises the product-card path and price grounding."
+  },
+  "id": "compare-02",
+  "query": "is the Sony WH-1000XM5 worth buying over the Bose QC Ultra",
+  "depth": "research",
+  "category": "company_and_product_comparison",
+  "run": {
+    "ok": true,
+    "run_id": "_620sIBB7-1KwD33QSpxfMW6",
+    "total_s": 3.3276905000093393,
+    "marks": {
+      "t_run": 0.007506399997510016,
+      "t_notice": 0.007579099998110905,
+      "t_status": 0.007686700002523139,
+      "t_visuals": 0.007898500000010245,
+      "t_sources": 0.24057300000276882,
+      "t_block": 1.2893823000049451,
+      "t_error": 3.325990900004399
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "AI returned an unsupported comparison cell. The answer was stopped.",
+    "blocks": 4,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": 1.2893823000049451,
+    "t_complete_s": 3.3276905000093393,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Sony India | Latest Technology News | Electronics | Entertainment: couldn't read the page; keeping its excerpt.",
+      "Bose QuietComfort Ultra Headphones vs Sony WH-1000XM5: couldn't read the page; keeping its excerpt."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  }
+}

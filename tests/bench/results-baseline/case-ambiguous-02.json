@@ -1,0 +1,71 @@
+{
+  "case": {
+    "id": "ambiguous-02",
+    "query": "is Python worth learning",
+    "depth": "compact",
+    "category": "ambiguous_wording",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Opinion-shaped. No factual ground truth to demand."
+  },
+  "id": "ambiguous-02",
+  "query": "is Python worth learning",
+  "depth": "compact",
+  "category": "ambiguous_wording",
+  "run": {
+    "ok": true,
+    "run_id": "R8dMMP5rkFfFHx-py-qcr3IU",
+    "total_s": 2.1648131999972975,
+    "marks": {
+      "t_run": 0.01719749999756459,
+      "t_notice": 0.017311500007053837,
+      "t_status": 0.01740789999894332,
+      "t_visuals": 0.017953600006876513,
+      "t_sources": 0.01827100000809878,
+      "t_block": 1.1724626000068383,
+      "t_complete": 2.164503899999545
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000478,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2834,
+    "output_tokens": 317,
+    "replayed": false,
+    "t_first_block_s": 1.1724626000068383,
+    "t_complete_s": 2.1648131999972975,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "case": {
+    "id": "multipart-01",
+    "query": "how long does a lithium ion battery take to charge, and what factors change that",
+    "depth": "research",
+    "category": "multi_part_requires_several_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a charge-time range",
+          "tokens": [
+            "hour",
+            "minute",
+            "charge"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Two-part question. Exercises the planner path (needs_planning matches 'how')."
+  },
+  "id": "multipart-01",
+  "query": "how long does a lithium ion battery take to charge, and what factors change that",
+  "depth": "research",
+  "category": "multi_part_requires_several_sources",
+  "run": {
+    "ok": true,
+    "run_id": "T_1xdNJcXRQv2zWPT2yPIrtE",
+    "total_s": 8.330122300001676,
+    "marks": {
+      "t_run": 0.00257430000056047,
+      "t_notice": 0.002611500007333234,
+      "t_status": 0.002761399999144487,
+      "t_visuals": 0.0029135999939171597,
+      "t_sources": 3.816393400004017,
+      "t_block": 4.97495920000074,
+      "t_complete": 8.329858400000376
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 8,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "0",
+      "0.5",
+      "10",
+      "100",
+      "15",
+      "2",
+      "20",
+      "200",
+      "32",
+      "5",
+      "50",
+      "8"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [
+      {
+        "label": "a charge-time range",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.002182,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5132,
+    "output_tokens": 974,
+    "replayed": false,
+    "t_first_block_s": 4.97495920000074,
+    "t_complete_s": 8.330122300001676,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "How Long Does It Take to Charge a Lithium-Ion Battery ... - ZERNE: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['0', '0.5', '10', '100', '15', '2', '20', '200', '32', '5', '50', '8']"
+    ],
+    "pass": false
+  }
+}

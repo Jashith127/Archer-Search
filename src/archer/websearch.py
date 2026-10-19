@@ -155,6 +155,12 @@ async def duckduckgo(client: httpx.AsyncClient, q: str, category: str, page: int
             start = (page - 1) * 10
             data.update({"s": str(start), "dc": str(start + 1), "v": "l", "o": "json", "api": "d.js", "nextParams": ""})
         resp = await client.post("https://html.duckduckgo.com/html/", data=data, headers=headers, timeout=10)
+        if resp.status_code == 202:
+            # DuckDuckGo answers a bot check with 202 and a challenge body rather
+            # than a 4xx. Reporting it as "returned HTTP 202" hid the real cause
+            # from the rate-limit tracker, so the provider was retried on every
+            # subsequent search instead of entering its cooldown.
+            raise ProviderError("DuckDuckGo is bot-checking this computer (HTTP 202)")
         if resp.status_code != 200:
             raise ProviderError(f"DuckDuckGo returned HTTP {resp.status_code}")
         if "anomaly-modal" in resp.text or "Unfortunately, bots use DuckDuckGo too" in resp.text:
@@ -170,6 +176,8 @@ async def duckduckgo(client: httpx.AsyncClient, q: str, category: str, page: int
         params["s"] = str((page - 1) * 50)
     resp = await client.get(f"https://duckduckgo.com/{endpoint}", params=params,
                             headers={**headers, "Referer": "https://duckduckgo.com/"}, timeout=10)
+    if resp.status_code == 202:
+        raise ProviderError("DuckDuckGo is bot-checking this computer (HTTP 202)")
     if resp.status_code != 200:
         raise ProviderError(f"DuckDuckGo returned HTTP {resp.status_code}")
     items = resp.json().get("results", [])

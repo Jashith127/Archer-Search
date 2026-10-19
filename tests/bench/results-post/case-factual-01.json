@@ -1,0 +1,94 @@
+{
+  "case": {
+    "id": "factual-01",
+    "query": "why do cats knead",
+    "depth": "compact",
+    "category": "straightforward_factual",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "marks territory or comfort behaviour",
+          "tokens": [
+            "territor",
+            "comfort",
+            "mother",
+            "nurse",
+            "suckle"
+          ]
+        }
+      ],
+      "forbidden": [
+        "veterinary advice presented as diagnosis"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Compact path. Exercises the zero-planner research path and snippet-only evidence handling."
+  },
+  "id": "factual-01",
+  "query": "why do cats knead",
+  "depth": "compact",
+  "category": "straightforward_factual",
+  "run": {
+    "ok": true,
+    "run_id": "mMz5RyVbKliTyoiTrNnux7-y",
+    "total_s": 4.818867100009811,
+    "marks": {
+      "t_run": 0.006263100003707223,
+      "t_notice": 0.006706700005452149,
+      "t_status": 0.006972900009714067,
+      "t_visuals": 0.007033300003968179,
+      "t_sources": 2.574113100010436,
+      "t_card": 2.5742974000022514,
+      "t_block": 3.980663900001673,
+      "t_complete": 4.818421200005105
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [
+      {
+        "label": "marks territory or comfort behaviour",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 2,
+    "cost_usd": 0.000723,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 3026,
+    "output_tokens": 285,
+    "replayed": false,
+    "t_first_block_s": 3.980663900001673,
+    "t_complete_s": 4.818867100009811,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Why Do Cats Knead? 7 Vet-Reviewed Reasons They Do It: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  }
+}

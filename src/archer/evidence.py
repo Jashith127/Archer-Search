@@ -2,6 +2,7 @@
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -15,6 +16,52 @@ def public_url(value: str) -> str:
         return urlunsplit((p.scheme, p.netloc.lower(), p.path or "/", p.query, ""))
     except ValueError:
         return ""
+
+
+PREVIEW_CHARS = 240
+
+
+def preview(item: "Evidence") -> dict:
+    """An evidence payload trimmed for the stream. The source panel renders at most a
+    220-char excerpt, so shipping the full text (up to 24k chars per source) was
+    bandwidth the client discarded. Validation and the model prompt still use the
+    complete retained text — only this wire representation is trimmed."""
+    data = item.payload()
+    text = data.get("text") or ""
+    data["text"] = text[:PREVIEW_CHARS] + ("…" if len(text) > PREVIEW_CHARS else "")
+    return data
+
+
+# Forum and community hosts: attributed opinion, not reporting. Kept citable, but
+# never promoted to a read `page`, so a forum thread cannot outrank real reporting
+# in ranked_evidence just because it was fetchable.
+DISCUSSION_HOSTS = (
+    r"(^|\.)reddit\.com",
+    r"(^|\.)stackoverflow\.com",
+    r"(^|\.)stackexchange\.com",
+    r"(^|\.)superuser\.com",
+    r"(^|\.)serverfault\.com",
+    r"(^|\.)quora\.com",
+    r"(^|\.)news\.ycombinator\.com",
+    r"(^|\.)ycombinator\.com",
+    r"(^|\.)steamcommunity\.com",
+    r"(^|\.)vlr\.gg",
+    r"(^|\.)liquipedia\.net",
+    r"(^|\.)resetera\.com",
+    r"(^|\.)tomshardware\.com/forums",
+    r"(^|\.)techpowerup\.com/forums",
+    r"(^|\.)headps\.com",
+    r"(^|\.)anandtech\.com/forums",
+    r"(^|\.)discussions\.apple\.com",
+    r"(^|\.)discourse\.",
+    r"(^|\.)lemmy\.\w+",
+)
+
+
+def discussion_host(host: str) -> bool:
+    """Is this host a forum or community rather than an editorial source?"""
+    host = (host or "").lower()
+    return any(re.search(pattern, host) for pattern in DISCUSSION_HOSTS)
 
 
 def now() -> str:
@@ -33,6 +80,12 @@ class Evidence:
     retrieved: str = field(default_factory=now)
     limitation: str = "Search excerpt; page not read."
     thumbnail: str = ""
+    # Did Archer actually retrieve this content, rather than inferring it from a
+    # search-result snippet? True for a page Archer fetched and read, and for
+    # structured tool/card data it retrieved itself. False for search excerpts and
+    # for pages whose read failed. Not a trust score — a provenance flag, used to
+    # stop an unverified snippet from being the only support for a summary.
+    verified: bool = False
 
     def payload(self):
         return asdict(self)
@@ -46,9 +99,39 @@ def add(bundle: list[Evidence], title: str, url: str, text: str, **kwargs) -> Ev
         prior = next((e for e in bundle if e.url == url), None)
         if prior:
             return prior
-    item = Evidence(f"S{len(bundle) + 1}", title[:240], url, text[:24000], **kwargs)
+    # Structured data Archer fetched itself (tools, cards) and pages it read are
+    # provenance-verified, even when upstream-cached; only search snippets and
+    # discussions are not.
+    verified = kwargs.get("kind") in ("page", "tool", "card") or bool(kwargs.get("verified"))
+    item = Evidence(f"S{len(bundle) + 1}", title[:240], url, text[:24000],
+                    **{**kwargs, "verified": verified})
     bundle.append(item)
     return item
+
+
+def sent_ids(ordered) -> set[str]:
+    """The evidence IDs actually serialised into a prompt. Validation must use this
+    set, not the whole bundle: a citation to a source the model never saw would
+    otherwise pass the 'unknown source' check and be grounded against text it was
+    never given."""
+    return {e.id for e in ordered}
+
+
+def snippet_only(citations, bundle) -> bool:
+    """True when every cited source is an unverified snippet: a search-result
+    excerpt, a discussion post, or a page whose read failed. Such a set may not be
+    the sole support for a summary, because nothing verified the underlying page.
+
+    `bundle` may be a sequence of Evidence or an id-keyed mapping.
+    """
+    if isinstance(bundle, dict):
+        cited = [bundle[i] for i in citations if i in bundle]
+    else:
+        index = {e.id: e for e in bundle}
+        cited = [index[i] for i in citations if i in index]
+    if not cited:
+        return False
+    return all(not getattr(e, "verified", False) for e in cited)
 
 
 def product_facts(data: dict) -> dict:
@@ -92,6 +175,5 @@ def from_view(view) -> list[Evidence]:
     if view.response:
         for result in view.response.results[:12]:
             add(bundle, result.title, result.url, result.content or "Search result title only: " + result.title, engines=result.engines,
-                published=result.date, thumbnail=public_url(result.thumbnail), kind="discussion" if any(h in result.host for h in
-                ("reddit.com", "stackexchange.com", "stackoverflow.com", "ycombinator.com", "quora.com")) else "excerpt")
+                published=result.date, thumbnail=public_url(result.thumbnail), kind="discussion" if discussion_host(result.host) else "excerpt")
     return bundle

@@ -1,0 +1,94 @@
+{
+  "case": {
+    "id": "deterministic-01",
+    "query": "emi for 1000000 at 8 percent for 5 years",
+    "depth": "research",
+    "category": "deterministic_tool_path",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a monthly payment figure",
+          "tokens": [
+            "monthly",
+            "payment",
+            "₹",
+            "rs",
+            "inr"
+          ]
+        }
+      ],
+      "forbidden": [
+        "a monthly payment not matching the deterministic loan_payment result"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "direct_tools() should resolve this to loan_payment and SKIP the planner. Verify model_calls == 1 and a calculation card is emitted."
+  },
+  "id": "deterministic-01",
+  "query": "emi for 1000000 at 8 percent for 5 years",
+  "depth": "research",
+  "category": "deterministic_tool_path",
+  "run": {
+    "ok": true,
+    "run_id": "rMDLb-PTwfbpqlKSax24xj7P",
+    "total_s": 2.933961500006262,
+    "marks": {
+      "t_run": 0.004025700007332489,
+      "t_notice": 0.014937400002963841,
+      "t_status": 0.01685379999980796,
+      "t_visuals": 0.017167700003483333,
+      "t_sources": 0.0180294000019785,
+      "t_card": 0.018783499996061437,
+      "t_block": 1.904136600001948,
+      "t_complete": 2.9336509999993723
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a monthly payment figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 4,
+    "cost_usd": 0.00072,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5378,
+    "output_tokens": 510,
+    "replayed": false,
+    "t_first_block_s": 1.904136600001948,
+    "t_complete_s": 2.933961500006262,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

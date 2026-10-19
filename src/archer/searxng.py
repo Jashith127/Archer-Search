@@ -98,7 +98,8 @@ class SearchResponse:
 # Engine suspensions inside SearXNG ("Suspended: too many requests", "CAPTCHA", "access denied") and
 # provider errors (429, used-up credits or quota, DuckDuckGo's bot check) all count. Not a bare "limit":
 # that also matched errors that aren't rate limits.
-RATE_LIMITED = re.compile(r"suspend|too many|captcha|access denied|rate.?limit|\b429\b|credits|quota|used up", re.I)
+RATE_LIMITED = re.compile(r"suspend|too many|captcha|access denied|rate.?limit|\b429\b|\b202\b|bot.?check|"
+                          r"credits|quota|used up", re.I)
 COOLDOWN = 600       # seconds a rate-limited provider is skipped
 SHOWN_FOR = 3600     # seconds a rate limit stays in the banner after it was last seen
 _limits: dict[str, dict] = {}

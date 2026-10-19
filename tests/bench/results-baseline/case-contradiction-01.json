@@ -1,0 +1,73 @@
+{
+  "case": {
+    "id": "contradiction-01",
+    "query": "is coffee good or bad for you",
+    "depth": "compact",
+    "category": "contradictory_or_stale_sources",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a single unqualified verdict where sources disagree"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Genuinely contested. The prompt asks for disagreements to stay visible; check the answer does not collapse to a single flat claim."
+  },
+  "id": "contradiction-01",
+  "query": "is coffee good or bad for you",
+  "depth": "compact",
+  "category": "contradictory_or_stale_sources",
+  "run": {
+    "ok": true,
+    "run_id": "yj1BMIiiyE06lOnKcu4Yd3Bx",
+    "total_s": 2.0829125000018394,
+    "marks": {
+      "t_run": 0.01950100000249222,
+      "t_notice": 0.019940400001360103,
+      "t_status": 0.020082000002730638,
+      "t_visuals": 0.021500600007129833,
+      "t_sources": 0.02276620001066476,
+      "t_block": 1.2358523000002606,
+      "t_complete": 2.0826728000101866
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000404,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2780,
+    "output_tokens": 269,
+    "replayed": false,
+    "t_first_block_s": 1.2358523000002606,
+    "t_complete_s": 2.0829125000018394,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

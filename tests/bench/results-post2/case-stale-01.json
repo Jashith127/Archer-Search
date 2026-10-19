@@ -1,0 +1,87 @@
+{
+  "case": {
+    "id": "stale-01",
+    "query": "what is the population of Tokyo",
+    "depth": "compact",
+    "category": "contradictory_or_stale_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a population figure",
+          "tokens": [
+            "million"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Figures vary by year and by city-proper vs metro. A correct answer should carry its date or qualify its basis."
+  },
+  "id": "stale-01",
+  "query": "what is the population of Tokyo",
+  "depth": "compact",
+  "category": "contradictory_or_stale_sources",
+  "run": {
+    "ok": true,
+    "run_id": "l7-39tX6LPIs9eaiQWL8Tc5_",
+    "total_s": 0.005978000001050532,
+    "marks": {
+      "t_run": 0.005588999993051402,
+      "t_notice": 0.005621999996947125,
+      "t_status": 0.005656299996189773,
+      "t_error": 0.005692299993825145
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "No sources came back. Try another search; Archer won't invent a researched answer.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a population figure",
+        "present": false,
+        "cited": false
+      }
+    ],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.005978000001050532,
+    "sources_count": 0,
+    "notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "required facts absent: ['a population figure']"
+    ],
+    "pass": false
+  }
+}

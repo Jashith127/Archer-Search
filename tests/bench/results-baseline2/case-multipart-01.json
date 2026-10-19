@@ -1,0 +1,90 @@
+{
+  "case": {
+    "id": "multipart-01",
+    "query": "how long does a lithium ion battery take to charge, and what factors change that",
+    "depth": "research",
+    "category": "multi_part_requires_several_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a charge-time range",
+          "tokens": [
+            "hour",
+            "minute",
+            "charge"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Two-part question. Exercises the planner path (needs_planning matches 'how')."
+  },
+  "id": "multipart-01",
+  "query": "how long does a lithium ion battery take to charge, and what factors change that",
+  "depth": "research",
+  "category": "multi_part_requires_several_sources",
+  "run": {
+    "ok": true,
+    "run_id": "FnEE9QNpgDJuXSoC3sA7oU17",
+    "total_s": 0.0036663000064436346,
+    "marks": {
+      "t_run": 0.003333200002089143,
+      "t_notice": 0.0033666000090306625,
+      "t_status": 0.003416899999137968,
+      "t_visuals": 0.0034912000119220465,
+      "t_error": 0.003540000005159527
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "Couldn't retrieve supporting evidence. Try a more specific question.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a charge-time range",
+        "present": false,
+        "cited": false
+      }
+    ],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.0036663000064436346,
+    "sources_count": 0,
+    "notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "required facts absent: ['a charge-time range']"
+    ],
+    "pass": false
+  }
+}

@@ -7,6 +7,7 @@ cookies, browser credentials, JavaScript or automatic redirects are used.
 import asyncio
 from html.parser import HTMLParser
 import ipaddress
+import re
 import socket
 import zlib
 from urllib.parse import urljoin, urlsplit
@@ -21,24 +22,118 @@ MAX_BYTES = 2_000_000
 
 
 class TextReader(HTMLParser):
+    """Page text with the furniture removed.
+
+    Beyond script/style and the landmark tags, list containers are dropped when
+    they are navigation rather than content. Forum and wiki pages routinely open
+    with hundreds of characters of link lists — thread titles, sidebars, tag
+    clouds — and those windows then win any term-overlap ranking against the real
+    article. That is how a 7200-character VLR.gg navigation blob ended up as the
+    "read page" behind the answer to "riot vs valve".
+
+    A list is treated as chrome when it is link-dense (most of its characters sit
+    inside anchors) or when it sits inside a container marked navigational.
+    Article lists — specifications, findings, steps, comparisons — keep their text.
+    """
+
+    HIDDEN_TAGS = ("script", "style", "noscript", "svg", "nav", "footer", "header")
+    LIST_TAGS = ("ul", "ol", "dl")
+    NAVISH = re.compile(
+        r"(^|[^a-z])(nav|menu|sidebar|breadcrumb|masthead|banner|promo|related|social|"
+        r"comment|toolbar|pagination|tag-?cloud|widget|module)s?([^a-z]|$)", re.I)
+    # Only these are treated as navigational by class/id alone. They are semantic
+    # containers that real markup closes, so an omitted end tag cannot make one
+    # swallow the whole article. Generic <div class="sidebar"> is left to the
+    # link-density rule, which cannot over-fire on prose.
+    NAVISH_TAGS = ("nav", "aside", "section", "header", "footer", "menu")
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.hidden = 0
         self.parts = []
+        # One entry per open element: (tag, hidden, navish, opened_list). A stack
+        # is required rather than a counter: an end tag must decrement only the
+        # element that actually opened it.
+        self._stack = []
+        self._link_depth = 0     # depth inside <a>
+        self._list = None        # {"links", "text", "buffer"} while a list is open
+
+    def _chrome(self) -> bool:
+        return any(hidden or navish for _, hidden, navish, _ in self._stack) \
+            or bool((self._list or {}).get("dropped"))
+
+    @staticmethod
+    def _blob(attrs) -> str:
+        """Attribute names and values as bare space-separated tokens, so NAVISH sees
+        `class sidebar` rather than `class=sidebar`."""
+        tokens = []
+        for key, value in attrs:
+            tokens.append(key or "")
+            if value:
+                tokens.extend(re.split(r"[^A-Za-z0-9]+", value))
+        return " ".join(tokens)
 
     def handle_starttag(self, tag, attrs):
-        if tag in ("script", "style", "noscript", "svg", "nav", "footer", "header"):
-            self.hidden += 1
-        if tag in ("p", "div", "li", "h1", "h2", "h3", "tr", "br") and not self.hidden:
-            self.parts.append("\n")
+        hidden = tag in self.HIDDEN_TAGS
+        navish = tag in self.NAVISH_TAGS and bool(self.NAVISH.search(self._blob(attrs)))
+        opened_list = False
+        if tag == "a":
+            self._link_depth += 1
+        if tag in self.LIST_TAGS and self._list is None and not hidden:
+            self._list = {"links": 0, "text": 0, "buffer": [],
+                          "chrome": any(n for _, _, n, _ in self._stack)}
+            opened_list = True
+        self._stack.append((tag, hidden, navish, opened_list))
+        if tag in ("p", "div", "li", "h1", "h2", "h3", "h4", "tr", "br") and not self._chrome():
+            self._emit("\n")
 
     def handle_endtag(self, tag):
-        if tag in ("script", "style", "noscript", "svg", "nav", "footer", "header"):
-            self.hidden = max(0, self.hidden - 1)
+        # Pop through the matching open element so counters stay balanced even
+        # when the markup omits optional end tags.
+        index = next((i for i in range(len(self._stack) - 1, -1, -1)
+                      if self._stack[i][0] == tag), None)
+        if index is None:
+            if tag == "a":
+                self._link_depth = max(0, self._link_depth - 1)
+            return
+        while len(self._stack) > index:
+            open_tag, hidden, navish, opened_list = self._stack.pop()
+            if open_tag == "a":
+                self._link_depth = max(0, self._link_depth - 1)
+            if opened_list and self._list is not None:
+                entry = self._list
+                # Buffered, so the decision can be made before anything is kept:
+                # link-dense lists are link farms, text-bearing lists are content.
+                linky = entry["links"] >= 40 and entry["links"] >= 2 * max(1, entry["text"])
+                if not (entry["chrome"] or linky):
+                    self.parts.extend(entry["buffer"])
+                    self.parts.append("\n")
+                self._list = None
+
+    def handle_startendtag(self, tag, attrs):
+        # Self-closing: contributes a break but opens no state.
+        if tag in ("p", "div", "li", "h1", "h2", "h3", "h4", "tr", "br") and not self._chrome():
+            self._emit("\n")
+
+    def _emit(self, text: str) -> None:
+        """Text goes to the open list's buffer when there is one, so a link farm can
+        still be discarded at close."""
+        if self._list is not None:
+            self._list["buffer"].append(text)
+        else:
+            self.parts.append(text)
 
     def handle_data(self, data):
-        if not self.hidden:
-            self.parts.append(data)
+        if any(hidden for _, hidden, _, _ in self._stack):
+            return
+        if self._list is not None:
+            stripped = len(data.strip())
+            if self._link_depth:
+                self._list["links"] += stripped
+            else:
+                self._list["text"] += stripped
+        if self._chrome():
+            return
+        self._emit(data)
 
 
 async def pinned_address(host: str, port: int) -> str:

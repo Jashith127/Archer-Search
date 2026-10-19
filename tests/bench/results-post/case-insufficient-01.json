@@ -1,0 +1,81 @@
+{
+  "case": {
+    "id": "insufficient-01",
+    "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+    "depth": "compact",
+    "category": "insufficient_public_evidence",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a specific population figure asserted with a citation",
+        "a confident answer presented as verified when no real source exists"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Deliberately unanswerable. The correct behaviour is an honest no-evidence result, not a fabricated number. This is the sharpest test of grounding."
+  },
+  "id": "insufficient-01",
+  "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+  "depth": "compact",
+  "category": "insufficient_public_evidence",
+  "run": {
+    "ok": true,
+    "run_id": "HmSgtLfcBwPpUGWmZd8IYx5Q",
+    "total_s": 2.5889185999985784,
+    "marks": {
+      "t_run": 0.007746100003714673,
+      "t_notice": 0.008497300004819408,
+      "t_status": 0.010808499995619059,
+      "t_visuals": 0.021820800000568852,
+      "t_sources": 1.0725062999990769,
+      "t_block": 2.0821384000009857,
+      "t_complete": 2.588627799996175
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 1,
+    "cost_usd": 0.000649,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 2858,
+    "output_tokens": 265,
+    "replayed": false,
+    "t_first_block_s": 2.0821384000009857,
+    "t_complete_s": 2.5889185999985784,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Can I make a fictional city in a non-fictional country? What ... - Quora: couldn't read the page; keeping its excerpt.",
+      "Full article: Tradition and Modernity in Thomas Hardy's Wessex: couldn't read the page; keeping its excerpt.",
+      "A statement Archer couldn't support from a verified source was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

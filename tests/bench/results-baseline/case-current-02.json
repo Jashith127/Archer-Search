@@ -1,0 +1,91 @@
+{
+  "case": {
+    "id": "current-02",
+    "query": "what is the latest stable Python version",
+    "depth": "compact",
+    "category": "current_information",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a Python version number",
+          "tokens": [
+            "3."
+          ]
+        }
+      ],
+      "forbidden": [
+        "a version number with no citation"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Time-sensitive. Exercises whether dated evidence is preferred."
+  },
+  "id": "current-02",
+  "query": "what is the latest stable Python version",
+  "depth": "compact",
+  "category": "current_information",
+  "run": {
+    "ok": true,
+    "run_id": "9MSDndKBD4H-tI8rLRNUbyru",
+    "total_s": 1.817591099999845,
+    "marks": {
+      "t_run": 0.0038849999982630834,
+      "t_notice": 0.003912999993190169,
+      "t_status": 0.003944299998693168,
+      "t_visuals": 0.004125999999814667,
+      "t_sources": 0.08812179999949876,
+      "t_error": 1.8163786999939475
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "The provider returned inconsistent answer blocks.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a Python version number",
+        "present": false,
+        "cited": false
+      }
+    ],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 1.817591099999845,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Latest News: Today's big news headlines from India and around the …: couldn't read the page; keeping its excerpt.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "required facts absent: ['a Python version number']"
+    ],
+    "pass": false
+  }
+}

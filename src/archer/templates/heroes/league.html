@@ -1,0 +1,31 @@
+{% from "macros.html" import spec_grid %}
+{% from "sport_macros.html" import panel_head, about, label, skeleton %}
+{# A league: the Premier League, La Liga, the NBA. The whole table (every conference for the American
+   leagues) and this round's games, with scores, the live minute or the kick-off, arrive from
+   /api/sport/league. A league ESPN doesn't cover keeps its Wikidata facts. #}
+{% set e = v.hero.data %}
+{% set l = e.league or {} %}
+<section class="hero hero-entity hero-league {{ 'is-football' if l.sport == 'soccer' else 'is-sport' }}"{% if l.live %} data-league="{{ l.qid }}"{% else %} data-compact{% endif %}>
+  {{ panel_head(v, e, l.short if l.short != e.title else "") }}
+
+  {% if l.live %}
+  <div class="sp-league">
+    <section class="sp-card sp-table sp-table--full" aria-label="Table" data-lg-table>
+      {{ label("trophy", "Table", hook="data-lg-table-label") }}
+      {{ skeleton(10) }}
+    </section>
+    <section class="sp-card sp-round" aria-label="This round" data-lg-round>
+      {{ label("calendar", "This round", hook="data-lg-round-label") }}
+      {{ skeleton(6) }}
+    </section>
+  </div>
+  {% elif e.image %}
+  <div class="sp-stage sp-stage--league is-crest">
+    <img class="sp-crest" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer">
+  </div>
+  {% endif %}
+
+  {{ spec_grid(e.specs) }}
+  {{ about(e) }}
+  <p class="hero-source">League details from Wikipedia and Wikidata.{% if l.live %} Table and games from ESPN.{% endif %}</p>
+</section>

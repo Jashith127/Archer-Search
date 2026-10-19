@@ -12,12 +12,12 @@ WHEN = {"Age", "Died", "Released", "Aired", "Published", "Formed", "Founded", "F
 MEASURE = {"Height", "Runtime", "Pages", "Seasons", "Episodes", "Population", "Area", "Elevation", "Employees",
            "Revenue", "Net worth", "Molar mass", "Atomic mass", "Melting point", "Boiling point", "Density",
            "Units sold", "Box office", "Visitors / year", "Weight", "Launch price", "Top speed", "Units built",
-           "Rounds", "Number"}
+           "Rounds", "Number", "Teams"}
 PEOPLE = {"Parents", "Spouse", "Director", "CEO", "Leader", "Author", "Artist", "Members", "Head of government",
-          "Developer", "Composer", "Architect", "Created by", "Played by", "Champion"}
-PLACE = {"Born in", "Headquarters", "Country", "Capital", "Location", "Observed in"}
+          "Developer", "Composer", "Architect", "Created by", "Played by", "Champion", "Head coach"}
+PLACE = {"Born in", "Headquarters", "Country", "Capital", "Location", "Observed in", "Ground", "Based in", "Nationality"}
 TAGS = {"Genre", "Occupation", "Position", "Symptoms", "Specialty", "Treatment", "Label", "License", "Conservation",
-        "Platforms", "Game modes", "Type", "Spread by", "Religion", "Class"}
+        "Platforms", "Game modes", "Type", "Spread by", "Religion", "Class", "Games"}
 
 _YEAR = re.compile(r"\b(\d{4})\b")
 _SPAN = re.compile(r"^(\d{4})\s*[–-]\s*(\d{4}|present)$")

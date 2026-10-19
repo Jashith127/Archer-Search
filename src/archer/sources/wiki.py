@@ -33,6 +33,11 @@ KINDS = {
     # Motorsport before "product" (a car model is also a product model) and before "org" (a racing team is
     # also a business). Races and series mostly arrive through the sport fallback in _kind.
     "f1team": {"Q10497835", "Q109136128"},
+    # Esports teams before clubs (an esports team is also a sports team), clubs and leagues before "org"
+    # (a football club is often also a business). Players are found by occupation in _kind.
+    "esteam": {"Q61974339"},
+    "club": {"Q476028", "Q13393265", "Q17156793", "Q13027888", "Q4498974", "Q20639856", "Q12973014", "Q847017"},
+    "league": {"Q15991303", "Q15991290", "Q623109"},
     "car": {"Q3231690", "Q59773381"},
     # A Grand Prix is a "Formula One event"; most other races only arrive through the sport fallback.
     "race": {"Q60147807", "Q87292877", "Q108886259"},
@@ -74,6 +79,11 @@ RACING_DRIVER = {"Q10349745", "Q378622"}  # "racing automobile driver", "racing 
 MOTORSPORT = {"Q5367", "Q5386", "Q1968", "Q192420", "Q506749", "Q1089579", "Q1805420", "Q7856", "Q60147807",
               "Q965550", "Q17163326", "Q328716", "Q850292"}
 
+# Esports. A player is a "professional gamer" by occupation; a team or league plays the sport "esports".
+ESPORTS_PLAYER = {"Q4379701"}
+ESPORTS = "Q300920"
+TEAM_SPORTS = {"Q2736", "Q5372", "Q41323", "Q5369", "Q41466"}
+
 CURRENCY_UNITS = {"Q4917": "$", "Q80524": "₹", "Q4916": "€", "Q25224": "£", "Q8146": "¥"}
 UNIT_SUFFIX = {"Q11573": "m", "Q174728": "cm", "Q11570": "kg", "Q712226": "km²", "Q828224": "km",
                "Q7727": "min", "Q11574": "s", "Q35852": "ha", "Q232291": "mi²", "Q11579": "K",
@@ -92,6 +102,8 @@ KIND_META = {
     "place": ("pin", "Place"), "product": ("package", "Product"), "thing": ("info", "Topic"), "character": ("user", "Fictional character"),
     "car": ("car", "Car"), "race": ("trophy", "Racing series"), "circuit": ("map", "Circuit"),
     "f1driver": ("helmet", "Formula One driver"), "f1team": ("users", "Formula One team"),
+    "club": ("shield", "Sports club"), "league": ("trophy", "League"),
+    "esteam": ("gamepad", "Esports team"), "esplayer": ("gamepad", "Esports player"),
 }
 SUBKIND_LABEL = {"athlete": "Athlete", "politician": "Politician", "executive": "Business leader", "writer": "Writer"}
 TILE_ICONS = {
@@ -124,6 +136,9 @@ TILE_ICONS = {
     "Record": "trophy", "Number": "hash", "Constructor": "users", "Debut": "calendar", "Races": "chart",
     "Wins": "award", "Podiums": "award", "Points": "chart", "Car": "car", "Entry": "car", "Base": "pin",
     "Chassis": "cube", "Engine maker": "building", "Tyres": "target", "Colours": "palette", "Assembled": "building",
+    # Clubs, leagues and esports.
+    "League": "trophy", "Ground": "landmark", "Head coach": "user", "Teams": "users", "Game": "gamepad",
+    "Games": "gamepad", "Based in": "pin", "Nationality": "globe",
 }
 
 
@@ -452,6 +467,12 @@ def _kind(entity: dict) -> str:
     # first. The occupation names the series, so it is read before any P31.
     if set(_ids(entity, "P106", 40)) & F1_DRIVER:
         return "f1driver"
+    if set(_ids(entity, "P106", 40)) & ESPORTS_PLAYER:
+        return "esplayer"
+    # A league ESPN covers is a league, whatever newer class Wikidata has moved it to.
+    from archer.sources.sports import LEAGUES
+    if entity.get("id") in LEAGUES:
+        return "league"
     for kind, qids in KINDS.items():
         if types & qids:
             return kind
@@ -463,6 +484,12 @@ def _kind(entity: dict) -> str:
     # by its sport. Circuits are typed as places above, so only events reach this.
     if set(_ids(entity, "P641", 6)) & MOTORSPORT:
         return "race"
+    # A team typed by a class we don't list still plays in a league; esports organisations name their sport.
+    sports_played = set(_ids(entity, "P641", 6))
+    if "P118" in claims and sports_played & TEAM_SPORTS and "Q5" not in types:
+        return "club"
+    if ESPORTS in sports_played and "Q5" not in types and types & {"Q4438121", "Q4830453", "Q43229"}:
+        return "esteam"
     # Many items are typed by a subclass we don't list (Python is a "multi-paradigm
     # programming language", not "programming language"), so fall back to tell-tale properties.
     for kind, props in (("game", ("P404", "P1733", "P5794", "P8084", "P5944")), ("software", ("P348", "P277", "P1324")), ("chemical", ("P274", "P246")),
@@ -715,7 +742,9 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
                  # and a driver's first race, plus who designed a car, where it is built, how it drives,
                  # how big its engine is, who owns a team and where a race is actually held.
                  "P2052", "P1092", "P279", "P1346", "P1344", "P1037", "P2089", "P2670", "P287", "P1071",
-                 "P276", "P670", "P2109", "P127", "P186"]
+                 "P276", "P670", "P2109", "P127", "P186",
+                 # Clubs and leagues: league, home ground, head coach, chairperson, organiser.
+                 "P118", "P115", "P286", "P488", "P664"]
     refs = {i for p in ref_props for i in _ids(entity, p)}
     refs |= {i for p in ("P54", "P39", "P108", "P6", "P35") for i in _current_ids(entity, p)}
     if kind == "game":
@@ -778,6 +807,9 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
     race = None
     f1 = None
     circuit = None
+    club = None
+    league = None
+    esports = None
     if kind == "person":
         born_txt, _, born = _fmt_time(_first(entity, "P569"))
         died_txt, _, died = _fmt_time(_first(entity, "P570"))
@@ -1148,6 +1180,89 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
                    "lon": str(point["longitude"]) if isinstance(point, dict) else "",
                    "street": "Q926439" in set(_ids(entity, "P31", 20))}
         tags = ["Street circuit"] if circuit["street"] else []
+    elif kind == "club":
+        # Who the club is; the table, results, fixtures and squad come from /api/sport/club after load.
+        from archer.sources import sports
+        founded_txt, founded_y, _ = _fmt_time(_first(entity, "P571"))
+        sport_q = next(iter(_ids(entity, "P641", 1)), "")
+        league_q = next(iter(_current_ids(entity, "P118", 1)), "")
+        home = names("P17", 1)
+        ground = names("P115", 1)
+        coach = current("P286") or names("P286", 1)
+        nickname = next((c["mainsnak"]["datavalue"]["value"].get("text", "") for c in entity.get("claims", {}).get("P1449", [])
+                         if c.get("mainsnak", {}).get("snaktype") == "value"
+                         and c["mainsnak"]["datavalue"]["value"].get("language") == "en"), "")
+        tile("League", labels.get(league_q, ""))
+        tile("Founded", str(founded_y or ""), founded_txt)
+        tile("Ground", ground)
+        tile("Country", home)
+        tile("Head coach", coach)
+        fact("Nickname", nickname)
+        fact("Owner", names("P127", 2))
+        fact("Chairman", names("P488", 1))
+        spec("Ground", ground, "landmark")
+        spec("Founded", str(founded_y or ""), "calendar", sub=founded_txt)
+        spec("Country", home, "globe", flag=_iso_flag(home, country_ids, iso))
+        spec("Head coach", coach, "user")
+        spec("Nickname", nickname, "tag")
+        spec("Owner", names("P127", 1), "building")
+        club = {"sport": sports.SPORTS.get(sport_q, ""), "sport_qid": sport_q, "league": league_q,
+                "league_name": labels.get(league_q, ""), "country": country_ids[0] if country_ids else "",
+                "nickname": nickname, "ground": ground,
+                "live": league_q in sports.LEAGUES or bool(sports.SPORTS.get(sport_q))}
+        tags = [x for x in (sports.SPORT_NAMES.get(club["sport"]) or names("P641", 1).capitalize(), labels.get(league_q, "")) if x]
+    elif kind == "league":
+        from archer.sources import sports
+        founded_txt, founded_y, _ = _fmt_time(_first(entity, "P571"))
+        sport_q = next(iter(_ids(entity, "P641", 1)), "")
+        champions = name_list("P1346", 40)
+        teams = amount("P1132")
+        tile("Founded", str(founded_y or ""), founded_txt)
+        tile("Country", names("P17", 1))
+        tile("Teams", teams)
+        tile("Champion", champions[-1] if champions else "")
+        fact("Organiser", names("P664", 1))
+        spec("Founded", str(founded_y or ""), "calendar", sub=founded_txt)
+        spec("Country", names("P17", 1), "globe", flag=_iso_flag(names("P17", 1), country_ids, iso))
+        spec("Teams", teams, "users")
+        spec("Champion", champions[-1] if champions else "", "trophy")
+        mapped = sports.LEAGUES.get(qid)
+        league = {"qid": qid, "sport": mapped[0] if mapped else sports.SPORTS.get(sport_q, ""), "live": bool(mapped),
+                  "short": mapped[2] if mapped else page["title"]}
+        tags = [x for x in (sports.SPORT_NAMES.get(league["sport"]) or names("P641", 1).capitalize(),) if x]
+    elif kind in ("esteam", "esplayer"):
+        # Who they are; what they are doing comes from VLR.gg (Valorant) or Liquipedia after load.
+        from archer.sources import esports as es
+        games = es.games_in(page.get("description") or "", page.get("extract") or "")
+        player = kind == "esplayer"
+        if not games and await es.on_vlr(client, page["title"], "player" if player else "team"):
+            games = ["valorant"]
+        born_txt, _, born = _fmt_time(_first(entity, "P569"))
+        founded_txt, founded_y, _ = _fmt_time(_first(entity, "P571"))
+        game = es.GAME_INFO.get(games[0]) if games else None
+        if player:
+            nat = names("P27", 1)
+            tile("Team", current("P54"))
+            tile("Game", game["name"] if game else "")
+            tile("Age", f"{_age(born, None)} years" if born else "", born_txt)
+            tile("Nationality", nat)
+            spec("Born", born_txt, "calendar", sub=f"aged {_age(born, None)}" if born else "")
+            spec("Nationality", nat, "globe", flag=flag_url(_iso_for(nat)))
+            fact("Teams", ", ".join(reversed(name_list("P54", 8))))
+        else:
+            tile("Founded", str(founded_y or ""), founded_txt)
+            tile("Country", names("P17", 1))
+            tile("Based in", names("P159", 1))
+            tile("Games", ", ".join(es.GAME_INFO[g]["name"] for g in games[:3]))
+            spec("Founded", str(founded_y or ""), "calendar", sub=founded_txt)
+            spec("Based in", names("P159", 1), "pin")
+            spec("Country", names("P17", 1), "globe", flag=_iso_flag(names("P17", 1), country_ids, iso))
+            fact("Owner", names("P127", 2))
+            fact("CEO", names("P169", 1))
+        esports = {"role": "player" if player else "team", "game": games[0] if games else "",
+                   "games": [es.GAME_INFO[g] for g in games], "color": game["color"] if game else "",
+                   "handle": es.handle(page["title"]), "team": current("P54") if player else ""}
+        tags = [es.GAME_INFO[g]["name"] for g in games[:4]] or ["Esports"]
     else:
         inc_txt, inc_y, _ = _fmt_time(_first(entity, "P571"))
         tile("Since", str(inc_y or ""), inc_txt)
@@ -1214,6 +1329,9 @@ async def _lookup(client: httpx.AsyncClient, candidate: str, key: str) -> dict |
         "race": race,
         "f1": f1,
         "circuit": circuit,
+        "club": club,
+        "league": league,
+        "esports": esports,
         "specs": specs,
         "qid": qid,
         "title": page["title"],

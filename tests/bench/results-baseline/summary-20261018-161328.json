@@ -1,0 +1,17 @@
+{
+  "base": "http://127.0.0.1:4747",
+  "stamp": "20261018-161328",
+  "python": "3.12.10",
+  "cases": 16,
+  "passed": 6,
+  "total": 16,
+  "graded": 16,
+  "median_first_block_s": 1.336,
+  "median_total_s": 2.463,
+  "total_model_calls": 15,
+  "total_cost_usd": 0.010308,
+  "citation_failures": 0,
+  "unsupported_number_failures": 0,
+  "snippet_only_failures": 8,
+  "sample_size_note": "n=16 is a small benchmark. These are descriptive counts, not statistically significant results. Semantic quality requires the human_review fields, which are unfilled."
+}

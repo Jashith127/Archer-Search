@@ -1,0 +1,88 @@
+{
+  "case": {
+    "id": "multi-part-02",
+    "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+    "depth": "research",
+    "category": "multi_part_requires_several_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a temperature near the reduced boiling point",
+          "tokens": [
+            "9",
+            "°",
+            "celsius",
+            "below"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Two-part technical. The calculate tool is in relevant_tools for arithmetic-shaped questions."
+  },
+  "id": "multi-part-02",
+  "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+  "depth": "research",
+  "category": "multi_part_requires_several_sources",
+  "run": {
+    "ok": true,
+    "run_id": "Vy0-fxPoPvdnll1ZTaQvfQY1",
+    "total_s": 4.128264800005127,
+    "marks": {
+      "t_run": 0.013746199998422526,
+      "t_notice": 0.013814000005368143,
+      "t_status": 0.01384919999691192,
+      "t_visuals": 0.013934999995399266,
+      "t_sources": 0.18309609999414533,
+      "t_block": 1.4328587999916635,
+      "t_complete": 4.127660900005139
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 5,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [
+      {
+        "label": "a temperature near the reduced boiling point",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.001016,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5086,
+    "output_tokens": 767,
+    "replayed": false,
+    "t_first_block_s": 1.4328587999916635,
+    "t_complete_s": 4.128264800005127,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "High Altitude Cooking | Food Safety and Inspection Service - USDA: couldn't read the page; keeping its excerpt.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained.",
+      "A statement with an unsupported quantity was omitted. Other supported sections are retained."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  }
+}

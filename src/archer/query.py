@@ -8,6 +8,7 @@ and feed entity candidates; the hero modules keyed by `kind` stay the same.
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 
 from archer import utilities
 
@@ -25,6 +26,12 @@ KIND_HINTS = {
     "actor": ("person", "actor"), "actress": ("person", "actress"), "singer": ("person", "singer"),
     # Motorsport. "racing series" is longer than "series", so the sorted alternation tries it first.
     "car": ("car", "car"), "rally": ("race", "rally"), "racing series": ("race", "racing series"),
+    # Clubs and esports: "arsenal fc", "inter football club", "sentinels esports".
+    "fc": ("club", "football club"), "football club": ("club", "football club"),
+    # Esports: a team or a player, either one. A game's name also says which game's panel to draw:
+    # "tenz valorant", "gen.g valorant" (an organisation whose article names no game), "t1 cs2".
+    "esports": ("esports", "esports"), "valorant": ("esports:valorant", "esports"), "vlr": ("esports:valorant", "esports"),
+    "cs2": ("esports:cs", "esports"), "csgo": ("esports:cs", "esports"), "dota 2": ("esports:dota2", "esports"),
 }
 _KIND_HINT = re.compile(r"^(?P<core>.+?)\s+(?:the\s+)?(?P<hint>" + "|".join(sorted(map(re.escape, KIND_HINTS), key=len, reverse=True)) + r")$")
 _WEATHER = re.compile(
@@ -144,6 +151,47 @@ _FINANCE = re.compile(
 )
 
 
+# The Valorant Champions Tour as a season: "vct 2026", "vct champions 2024", "valorant masters", "vct 2025
+# emea stage 2". Every other word has to be one of these, so "vct sentinels roster" stays a normal search.
+_VCT_LEAD = ("valorant champions tour", "valorant champions", "valorant masters", "valorant game changers",
+             "vct game changers", "vct")
+_VCT_EVENTS = {"champions": "champions", "masters": "masters", "kickoff": "kickoff", "stage 1": "stage1",
+               "stage1": "stage1", "stage 2": "stage2", "stage2": "stage2", "game changers": "gc", "gc": "gc",
+               "lcq": "lcq", "last chance": "lcq",
+               # LOCK//IN (2023) was the season opener before Riot renamed it Kickoff.
+               "lockin": "kickoff", "lock in": "kickoff", "lock//in": "kickoff"}
+_VCT_REGIONS = {"americas": "Americas", "emea": "EMEA", "pacific": "Pacific", "china": "China"}
+_VCT_FILLER = {"the", "results", "result", "standings", "winner", "winners", "bracket", "schedule", "season", "tour",
+               "valorant", "who", "won", "event", "events"}
+
+
+def vct(low: str, today: date | None = None) -> dict | None:
+    """{"year", "this_year", "event", "region"} for a search about a VCT season, else None."""
+    lead = next((w for w in _VCT_LEAD if re.search(rf"(?:^|\s){re.escape(w)}(?:\s|$)", low)), None)
+    if not lead:
+        return None
+    rest = re.sub(rf"(?:^|\s){re.escape(lead)}(?=\s|$)", " ", low, count=1)
+    event = {"valorant champions": "champions", "valorant masters": "masters",
+             "valorant game changers": "gc", "vct game changers": "gc"}.get(lead, "")
+    region, year = "", None
+    for phrase in sorted(_VCT_EVENTS, key=len, reverse=True):
+        if re.search(rf"(?:^|\s){phrase}(?:\s|$)", rest):
+            event = event or _VCT_EVENTS[phrase]
+            rest = re.sub(rf"(?:^|\s){phrase}(?=\s|$)", " ", rest)
+    for word in rest.split():
+        if re.fullmatch(r"20[2-3]\d", word):
+            year = int(word)
+        elif word in _VCT_REGIONS:
+            region = _VCT_REGIONS[word]
+        elif word not in _VCT_FILLER:
+            return None
+    this_year = (today or date.today()).year
+    if year and not 2021 <= year <= this_year + 1:
+        return None
+    return {"year": year or this_year, "this_year": this_year, "event": event, "region": region,
+            "named_year": bool(year)}
+
+
 @dataclass
 class Query:
     text: str
@@ -223,6 +271,9 @@ def classify(q: str, home_currency: str = "inr") -> Query:
         tag_key, tag_value, label = PLACE_TYPES[m.group("cat")]
         return Query(text, "places", {"cat": m.group("cat"), "key": tag_key, "value": tag_value, "label": label,
                                       "area": (m.group("area") or "").strip(), "near_me": bool(m.group("near"))})
+
+    if data := vct(low):
+        return Query(text, "vct", data)
 
     words = low.split()
     is_howto = low.startswith(("how to ", "how do i ", "how do you ", "how can i "))

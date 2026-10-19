@@ -1,0 +1,114 @@
+{
+  "case": {
+    "id": "multi-part-02",
+    "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+    "depth": "research",
+    "category": "multi_part_requires_several_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a temperature near the reduced boiling point",
+          "tokens": [
+            "9",
+            "°",
+            "celsius",
+            "below"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Two-part technical. The calculate tool is in relevant_tools for arithmetic-shaped questions."
+  },
+  "id": "multi-part-02",
+  "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+  "depth": "research",
+  "category": "multi_part_requires_several_sources",
+  "run": {
+    "ok": true,
+    "run_id": "CY5VLdXbYJWSJiY2GjGubfsL",
+    "total_s": 6.371902600003523,
+    "marks": {
+      "t_run": 0.003943000003346242,
+      "t_notice": 0.003990700002759695,
+      "t_status": 0.0042012999911094084,
+      "t_visuals": 0.004634800003259443,
+      "t_sources": 0.6808400000008987,
+      "t_block": 2.4531265999976313,
+      "t_complete": 6.371543799992651
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 6,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [
+      "1,500",
+      "10,000",
+      "100",
+      "193",
+      "198",
+      "2,300",
+      "203",
+      "212",
+      "5,000",
+      "600",
+      "7,500",
+      "8,000",
+      "90",
+      "900",
+      "92",
+      "95",
+      "98"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a temperature near the reduced boiling point",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 2,
+    "cost_usd": 0.002373,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 4593,
+    "output_tokens": 1268,
+    "replayed": false,
+    "t_first_block_s": 2.4531265999976313,
+    "t_complete_s": 6.371902600003523,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Why does the cooking process become so complicated at ... - Quora: couldn't read the page; keeping its excerpt.",
+      "High Altitude Cooking | Food Safety and Inspection Service - USDA: couldn't read the page; keeping its excerpt.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "unsupported quantities: ['1,500', '10,000', '100', '193', '198', '2,300', '203', '212', '5,000', '600', '7,500', '8,000', '90', '900', '92', '95', '98']"
+    ],
+    "pass": false
+  }
+}

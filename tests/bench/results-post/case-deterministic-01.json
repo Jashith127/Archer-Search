@@ -1,0 +1,104 @@
+{
+  "case": {
+    "id": "deterministic-01",
+    "query": "emi for 1000000 at 8 percent for 5 years",
+    "depth": "research",
+    "category": "deterministic_tool_path",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a monthly payment figure",
+          "tokens": [
+            "monthly",
+            "payment",
+            "₹",
+            "rs",
+            "inr"
+          ]
+        }
+      ],
+      "forbidden": [
+        "a monthly payment not matching the deterministic loan_payment result"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "direct_tools() should resolve this to loan_payment and SKIP the planner. Verify model_calls == 1 and a calculation card is emitted."
+  },
+  "id": "deterministic-01",
+  "query": "emi for 1000000 at 8 percent for 5 years",
+  "depth": "research",
+  "category": "deterministic_tool_path",
+  "run": {
+    "ok": true,
+    "run_id": "V2oi4uZ82V5HisLeK8KOrP6z",
+    "total_s": 3.7498273000092013,
+    "marks": {
+      "t_run": 0.006521500006783754,
+      "t_notice": 0.00743990000046324,
+      "t_status": 0.0075369999976828694,
+      "t_visuals": 0.007647799997357652,
+      "t_sources": 0.008581100002629682,
+      "t_card": 0.340560299999197,
+      "t_block": 2.3368434000003617,
+      "t_complete": 3.749490100002731
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [
+      "20,300",
+      "8"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a monthly payment figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.001625,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 4578,
+    "output_tokens": 649,
+    "replayed": false,
+    "t_first_block_s": 2.3368434000003617,
+    "t_complete_s": 3.7498273000092013,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Personal Loan EMI Calculator | Bajaj Finance - Bajaj Finserv: couldn't read the page; keeping its excerpt.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained.",
+      "A statement with a quantity or date Archer couldn't verify was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "unsupported quantities: ['20,300', '8']"
+    ],
+    "pass": false
+  }
+}

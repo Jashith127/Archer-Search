@@ -1,0 +1,79 @@
+{
+  "case": {
+    "id": "ambiguous-02",
+    "query": "is Python worth learning",
+    "depth": "compact",
+    "category": "ambiguous_wording",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Opinion-shaped. No factual ground truth to demand."
+  },
+  "id": "ambiguous-02",
+  "query": "is Python worth learning",
+  "depth": "compact",
+  "category": "ambiguous_wording",
+  "run": {
+    "ok": true,
+    "run_id": "ujHddTsM40DSlWabzGm63mfR",
+    "total_s": 1.6385062000044854,
+    "marks": {
+      "t_run": 0.002258099993923679,
+      "t_notice": 0.00227719999384135,
+      "t_status": 0.0022982999944360927,
+      "t_visuals": 0.0023369999980786815,
+      "t_sources": 0.11097880000306759,
+      "t_block": 1.1890557000006083,
+      "t_complete": 1.6379011999961222
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000677,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2798,
+    "output_tokens": 304,
+    "replayed": false,
+    "t_first_block_s": 1.1890557000006083,
+    "t_complete_s": 1.6385062000044854,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Python in 2026: Is It Still Worth Learning? | by Ahmad Tariq: couldn't read the page; keeping its excerpt.",
+      "Is Python really worth learning if you don't plan on doing data ...: couldn't read the page; keeping its excerpt.",
+      "I just started learning Python. Is it worth it? If yes, what advice can ...: couldn't read the page; keeping its excerpt.",
+      "A statement Archer couldn't support from a verified source was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

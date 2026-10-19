@@ -1,0 +1,77 @@
+{
+  "case": {
+    "id": "ambiguous-01",
+    "query": "best mechanical keyboard",
+    "depth": "compact",
+    "category": "ambiguous_wording",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a single unconditional recommendation with no stated conditions"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Inherently underspecified. Graded only on structural properties and on whether conditions are stated."
+  },
+  "id": "ambiguous-01",
+  "query": "best mechanical keyboard",
+  "depth": "compact",
+  "category": "ambiguous_wording",
+  "run": {
+    "ok": true,
+    "run_id": "acfTCBl3BnHHM81zD5ja8yB6",
+    "total_s": 3.206568099994911,
+    "marks": {
+      "t_run": 0.004543799994280562,
+      "t_notice": 0.005141600006027147,
+      "t_status": 0.005167299997992814,
+      "t_visuals": 0.005727700001443736,
+      "t_sources": 1.3252204000018537,
+      "t_card": 1.325536500007729,
+      "t_block": 2.1842732000077376,
+      "t_complete": 3.20639979999396
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 2,
+    "cost_usd": 0.000677,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 2806,
+    "output_tokens": 302,
+    "replayed": false,
+    "t_first_block_s": 2.1842732000077376,
+    "t_complete_s": 3.206568099994911,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "The Best Mechanical Keyboards We've Tested for 2026 | PCMag: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  }
+}

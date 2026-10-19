@@ -1,0 +1,92 @@
+{
+  "case": {
+    "id": "date-01",
+    "query": "when was the Eiffel Tower completed",
+    "depth": "compact",
+    "category": "quantities_and_dates",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a completion year",
+          "tokens": [
+            "1889"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Date grounding. 1889 is stable and well attested."
+  },
+  "id": "date-01",
+  "query": "when was the Eiffel Tower completed",
+  "depth": "compact",
+  "category": "quantities_and_dates",
+  "run": {
+    "ok": true,
+    "run_id": "Z8vUSA-KPAKpsAg-fcavjDsU",
+    "total_s": 2.3414808999950765,
+    "marks": {
+      "t_run": 0.014523000005283393,
+      "t_notice": 0.015210099998512305,
+      "t_status": 0.015420299998368137,
+      "t_visuals": 0.015652600006433204,
+      "t_sources": 0.5333684999932302,
+      "t_block": 1.634700199996587,
+      "t_complete": 2.3410963999922387
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "1930"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [
+      {
+        "label": "a completion year",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 1,
+    "cost_usd": 0.000689,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 2901,
+    "output_tokens": 288,
+    "replayed": false,
+    "t_first_block_s": 1.634700199996587,
+    "t_complete_s": 2.3414808999950765,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "History Today: When construction of the iconic Eiffel Tower was completed: couldn't read the page; keeping its excerpt.",
+      "How old is the completed Eiffel Tower? - Quora: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['1930']"
+    ],
+    "pass": false
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "case": {
+    "id": "insufficient-01",
+    "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+    "depth": "compact",
+    "category": "insufficient_public_evidence",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a specific population figure asserted with a citation",
+        "a confident answer presented as verified when no real source exists"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Deliberately unanswerable. The correct behaviour is an honest no-evidence result, not a fabricated number. This is the sharpest test of grounding."
+  },
+  "id": "insufficient-01",
+  "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+  "depth": "compact",
+  "category": "insufficient_public_evidence",
+  "run": {
+    "ok": true,
+    "run_id": "YMeWn4QVPdNjQidKqW3BNZoI",
+    "total_s": 0.004952400006004609,
+    "marks": {
+      "t_run": 0.0044464000093284994,
+      "t_notice": 0.004501600007642992,
+      "t_status": 0.0045378000068012625,
+      "t_error": 0.004759800009196624
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "No sources came back. Try another search; Archer won't invent a researched answer.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.004952400006004609,
+    "sources_count": 0,
+    "notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "base": "http://127.0.0.1:4747",
+  "stamp": "20261018-171605",
+  "python": "3.12.10",
+  "cases": 16,
+  "passed": 3,
+  "total": 16,
+  "graded": 16,
+  "infra_degraded": 10,
+  "degraded_ids": [
+    "compare-01",
+    "compare-02",
+    "multipart-01",
+    "multi-part-02",
+    "ambiguous-01",
+    "ambiguous-02",
+    "insufficient-01",
+    "contradiction-01",
+    "stale-01",
+    "deterministic-01"
+  ],
+  "clean_graded": 6,
+  "clean_passed": 3,
+  "median_first_block_s": 2.275,
+  "median_total_s": 1.187,
+  "total_model_calls": 7,
+  "total_cost_usd": 0.008327,
+  "citation_failures": 0,
+  "unsupported_number_failures": 5,
+  "snippet_only_failures": 0,
+  "median_pages_read": 3.0,
+  "sample_size_note": "n=16 is a small benchmark. Descriptive counts only, not statistically significant. infra_degraded cases failed for provider or network reasons, not answer quality; read clean_* for the quality view. Semantic quality requires the human_review fields, which are unfilled."
+}

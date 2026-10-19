@@ -1,0 +1,90 @@
+{
+  "case": {
+    "id": "stale-01",
+    "query": "what is the population of Tokyo",
+    "depth": "compact",
+    "category": "contradictory_or_stale_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a population figure",
+          "tokens": [
+            "million"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Figures vary by year and by city-proper vs metro. A correct answer should carry its date or qualify its basis."
+  },
+  "id": "stale-01",
+  "query": "what is the population of Tokyo",
+  "depth": "compact",
+  "category": "contradictory_or_stale_sources",
+  "run": {
+    "ok": true,
+    "run_id": "G0_RrQWWhN3APNgZno8a8gv4",
+    "total_s": 3.2573143000045093,
+    "marks": {
+      "t_run": 0.008353199998964556,
+      "t_notice": 0.008600000001024455,
+      "t_status": 0.008651500000269152,
+      "t_visuals": 0.008676900004502386,
+      "t_sources": 1.352467600008822,
+      "t_block": 2.6678088000044227,
+      "t_complete": 3.256644500012044
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 2,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a population figure",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 2,
+    "cost_usd": 0.000661,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 2796,
+    "output_tokens": 291,
+    "replayed": false,
+    "t_first_block_s": 2.6678088000044227,
+    "t_complete_s": 3.2573143000045093,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Tokyo, Japan Metro Area Population (1950-2026) - Macrotrends: couldn't read the page; keeping its excerpt.",
+      "A statement Archer couldn't support from a verified source was omitted. Other supported sections are retained."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

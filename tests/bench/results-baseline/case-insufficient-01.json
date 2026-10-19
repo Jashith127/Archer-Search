@@ -1,0 +1,74 @@
+{
+  "case": {
+    "id": "insufficient-01",
+    "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+    "depth": "compact",
+    "category": "insufficient_public_evidence",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a specific population figure asserted with a citation",
+        "a confident answer presented as verified when no real source exists"
+      ],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Deliberately unanswerable. The correct behaviour is an honest no-evidence result, not a fabricated number. This is the sharpest test of grounding."
+  },
+  "id": "insufficient-01",
+  "query": "what is the population of the fictional city of Northhaven in the county of Wessex",
+  "depth": "compact",
+  "category": "insufficient_public_evidence",
+  "run": {
+    "ok": true,
+    "run_id": "d7IoRQeYc-ztIhTHuc9qH3LQ",
+    "total_s": 2.078238899994176,
+    "marks": {
+      "t_run": 0.004693599999882281,
+      "t_notice": 0.02339879999635741,
+      "t_status": 0.023540800000773743,
+      "t_visuals": 0.02400429999397602,
+      "t_sources": 0.024956599998404272,
+      "t_block": 1.1948167999944417,
+      "t_complete": 2.0773162999976194
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000401,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2926,
+    "output_tokens": 261,
+    "replayed": false,
+    "t_first_block_s": 1.1948167999944417,
+    "t_complete_s": 2.078238899994176,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "case": {
+    "id": "followup-01",
+    "query": "why do cats knead",
+    "depth": "research",
+    "category": "followup_depends_on_context",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "followup": "what about kittens",
+    "followup_properties": {
+      "must_cite": [],
+      "forbidden": [
+        "a total restart that ignores the established topic"
+      ]
+    },
+    "notes": "Follow-up pair. Exercises parent-run inheritance and previous_answer_untrusted."
+  },
+  "id": "followup-01",
+  "query": "why do cats knead",
+  "depth": "research",
+  "category": "followup_depends_on_context",
+  "run": {
+    "ok": true,
+    "run_id": "vuC3keWMhgmvPYP9NgsIQTnD",
+    "total_s": 0.2282785999996122,
+    "marks": {
+      "t_run": 0.004835400002775714,
+      "t_notice": 0.004873300000326708,
+      "t_status": 0.004937099991366267,
+      "t_visuals": 0.005153199992491864,
+      "t_error": 0.22817919999943115
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "Couldn't retrieve supporting evidence. Try a more specific question.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.2282785999996122,
+    "sources_count": 0,
+    "notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "DuckDuckGo returned HTTP 202"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  },
+  "followup": {
+    "run": {
+      "ok": true,
+      "run_id": "l8GLXyWGm4oOrTQ5WjWSH_Ie",
+      "total_s": 0.0020512000046437606,
+      "marks": {
+        "t_run": 0.0019080000056419522,
+        "t_notice": 0.0019520999921951443,
+        "t_status": 0.0019659999961731955,
+        "t_visuals": 0.0019782000017585233,
+        "t_error": 0.0019995000038761646
+      }
+    },
+    "grade": {
+      "terminal": "error",
+      "error_text": "Couldn't retrieve supporting evidence. Try a more specific question.",
+      "blocks": 0,
+      "summary_is_first": false,
+      "summary_present": false,
+      "citations_resolve": true,
+      "summary_cited": false,
+      "unsupported_numbers": [],
+      "numbers_supported": true,
+      "summary_not_snippet_only": null,
+      "facts": [],
+      "model_calls": null,
+      "searches": null,
+      "pages_read": null,
+      "cost_usd": null,
+      "cost_is_ceiling": null,
+      "evidence_label": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "replayed": false,
+      "t_first_block_s": null,
+      "t_complete_s": 0.0020512000046437606,
+      "sources_count": 0,
+      "notices": [
+        "DuckDuckGo returned HTTP 202"
+      ],
+      "infra_degraded": true,
+      "infra_notices": [
+        "DuckDuckGo returned HTTP 202"
+      ],
+      "human_review": {
+        "citation_support": null,
+        "addresses_question": null,
+        "unsupported_claims": null,
+        "notes": null
+      },
+      "problems": [
+        "no summary block in answer"
+      ],
+      "pass": false
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "case": {
+    "id": "quantity-01",
+    "query": "how many people speak English as a first language worldwide",
+    "depth": "compact",
+    "category": "quantities_and_dates",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a global first-language speaker count",
+          "tokens": [
+            "billion",
+            "million"
+          ]
+        }
+      ],
+      "forbidden": [
+        "a count presented without any citation"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Quantity grounding. Every number written must appear in a cited source."
+  },
+  "id": "quantity-01",
+  "query": "how many people speak English as a first language worldwide",
+  "depth": "compact",
+  "category": "quantities_and_dates",
+  "run": {
+    "ok": true,
+    "run_id": "12RcdFPl9OwOemAZevjmNYvr",
+    "total_s": 2.159843000001274,
+    "marks": {
+      "t_run": 0.011061199998948723,
+      "t_notice": 0.011142200004542246,
+      "t_status": 0.01123209999059327,
+      "t_visuals": 0.011389299994334579,
+      "t_sources": 0.01178319999598898,
+      "t_block": 1.1450541999947745,
+      "t_complete": 2.159599899998284
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [
+      {
+        "label": "a global first-language speaker count",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000465,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2791,
+    "output_tokens": 317,
+    "replayed": false,
+    "t_first_block_s": 1.1450541999947745,
+    "t_complete_s": 2.159843000001274,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

@@ -967,7 +967,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-const isHttp = (u) => typeof u === "string" && /^https?:\/\//.test(u);
+// An external picture, or a VLR.gg one Archer fetches for the page (its CDN refuses a browser with no Referer).
+const isHttp = (u) => typeof u === "string" && (/^https?:\/\//.test(u) || u.startsWith("/api/vlr/img/"));
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -2494,7 +2495,65 @@ function f1TrackBlock(map, accent, label) {
   return block;
 }
 
-function f1Weekend(card, race, { accent = "", title = "Next round", podium = [] } = {}) {
+// The Grand Prix card's right-hand column, laid out by what each piece of information is: the result as a
+// podium of three steps (height = finishing place, colour = team), the race as four numbers, and the
+// weekend as one column per day so the order of sessions reads left to right.
+function f1Steps(podium) {
+  const steps = el("ol", { class: "f1-steps" });
+  for (const n of [2, 1, 3]) {
+    const p = podium.find((x) => x.position === n);
+    if (!p) continue;
+    const moved = p.grid && p.grid !== p.position ? p.grid - p.position : 0;
+    const li = el("li", { class: `f1-step f1-step--${n}` },
+      el("span", { class: "f1-step-pos", text: String(n) }),
+      el("a", { class: "f1-step-name", href: searchHref(p.driver), text: p.driver }),
+      el("small", { text: p.team }),
+      el("span", { class: "f1-step-time", text: p.time || "" }),
+      el("span", { class: "f1-step-grid" + (moved > 0 ? " is-up" : moved < 0 ? " is-down" : "") },
+        p.grid ? (p.grid === 1 ? "Pole" : `From P${p.grid}`) : "Pit lane", moved ? ` ${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}` : ""));
+    if (p.color) li.style.setProperty("--step", p.color);
+    steps.append(li);
+  }
+  return steps;
+}
+
+function f1Stats(report) {
+  if (!report?.laps) return null;
+  const rows = el("dl", { class: "f1-stats" });
+  const stat = (k, v, sub) => { if (v) rows.append(el("div", {}, el("dt", { text: k }), el("dd", { text: v }), sub ? el("small", { text: sub }) : null)); };
+  stat("Laps", String(report.laps));
+  stat("Distance", report.distance ? `${report.distance.toFixed(1)} km` : "");
+  stat("Avg speed", report.avg_kph ? `${report.avg_kph.toFixed(1)} km/h` : "");
+  if (report.fastest?.time) stat("Fastest lap", report.fastest.time, `${report.fastest.driver}${report.fastest.lap ? ` · lap ${report.fastest.lap}` : ""}`);
+  return rows;
+}
+
+function f1Rail(schedule, raceDone) {
+  const now = Date.now();
+  const rows = Object.entries(schedule || {}).filter(([k, v]) => F1_SESSION_LABEL[k] && v).sort((a, b) => (a[1] < b[1] ? -1 : 1));
+  if (!rows.length) return null;
+  const next = rows.find(([, at]) => new Date(at) > now);
+  const days = new Map();
+  for (const row of rows) {
+    const day = f1Day(row[1]);
+    if (!days.has(day)) days.set(day, []);
+    days.get(day).push(row);
+  }
+  const rail = el("div", { class: "f1-rail" });
+  rail.style.setProperty("--days", days.size);
+  for (const [day, list] of days) {
+    const col = el("div", { class: "f1-rail-day" }, el("p", { class: "f1-rail-head", text: day }));
+    for (const [key, at] of list) {
+      const past = new Date(at) <= now;
+      col.append(el("div", { class: "f1-rail-session" + (key === "Race" ? " is-race" : "") + (past ? " is-past" : "") + (next && next[0] === key ? " is-next" : "") },
+        el("span", { text: F1_SESSION_LABEL[key] }), el("time", { datetime: at, text: f1Clock(at) })));
+    }
+    rail.append(col);
+  }
+  return el("div", { class: "f1-rail-wrap" }, f1Label(raceDone ? "The weekend" : "Weekend schedule", "flag"), rail);
+}
+
+function f1Weekend(card, race, { accent = "", title = "Next round", podium = [], report = null, rich = false } = {}) {
   const body = $(".f1-weekend-body", card);
   if (!race || (!race.name && !race.calendar?.length)) { card.remove(); return; }
   card.hidden = false;
@@ -2511,7 +2570,13 @@ function f1Weekend(card, race, { accent = "", title = "Next round", podium = [] 
     el("p", { class: "f1-race-where" },
       el("a", { href: searchHref(race.circuit), text: race.circuit }),
       el("span", { text: [race.locality, race.country].filter(Boolean).join(", ") })));
-  if (race.done) {
+  if (rich) {
+    info.append(el("p", { class: "f1-race-date", text: race.done ? `Raced ${f1Day(race.start)}` : `Lights out ${f1Day(race.start)} · ${f1Clock(race.start)}` }));
+    if (race.done && podium.length) info.append(...[f1Steps(podium), f1Stats(report)].filter(Boolean));
+    else if (!race.done) info.append(f1Countdown(race.start));
+    const rail = f1Rail(race.schedule, race.done);
+    if (rail) info.append(rail);
+  } else if (race.done) {
     info.append(el("p", { class: "f1-race-date", text: `Raced ${f1Day(race.start)}` }));
     if (podium.length) {
       const list = el("ol", { class: "f1-podium" });
@@ -2551,7 +2616,25 @@ function f1Winners(card, winners, held, title = "Recent winners") {
       el("span", { class: "f1-win-team" }, swatch, w.team),
       el("span", { class: "f1-win-time", text: w.time || "" })));
   }
-  card.replaceChildren(f1Label(held ? `${title} · ${f1Plural(held, "Grand Prix", "Grands Prix")} held` : title, "trophy"), list);
+  // Who owned the place, as one bar split by team over the winners shown (the barcode of a circuit's history).
+  const bar = winners.length >= 3 ? el("div", { class: "f1-dominance" }) : null;
+  if (bar) {
+    const tally = new Map();
+    for (const w of winners) { const t = tally.get(w.team) || { n: 0, color: w.color }; t.n++; tally.set(w.team, t); }
+    const strip = el("span", { class: "f1-dom-bar", role: "img", "aria-label": "Winning teams" });
+    const legend = el("span", { class: "f1-dom-legend" });
+    for (const [team, t] of [...tally].sort((a, b) => b[1].n - a[1].n)) {
+      const seg = el("i", { title: `${team}: ${t.n} of ${winners.length}` });
+      seg.style.flexGrow = t.n;
+      if (t.color) seg.style.background = t.color;
+      strip.append(seg);
+      const dot = el("i");
+      if (t.color) dot.style.background = t.color;
+      legend.append(el("span", {}, dot, `${team} ${t.n}`));
+    }
+    bar.append(strip, legend);
+  }
+  card.replaceChildren(f1Label(held ? `${title} · ${f1Plural(held, "Grand Prix", "Grands Prix")} held` : title, "trophy"), ...(bar ? [bar] : []), list);
 }
 
 // The last qualifying session, behind a button: nothing of the grid is drawn until it is asked for.
@@ -2639,7 +2722,9 @@ function gpPanel(panel) {
     if (!gp?.name) return;
     // The circuit becomes the picture: the generic stage and discipline cards step aside.
     if (gp.map?.points) panel.classList.add("has-gp");
-    f1Weekend($("[data-f1-gp-card]", panel), gp, { title: `${gp.season} · round ${gp.round}`, podium: gp.podium || [] });
+    const lead = gp.podium?.[0]?.color || "";
+    if (lead) panel.style.setProperty("--team", lead);
+    f1Weekend($("[data-f1-gp-card]", panel), gp, { accent: lead, title: `${gp.season} · round ${gp.round}`, podium: gp.podium || [], report: gp.report, rich: true });
     f1Winners($("[data-f1-winners]", panel), gp.winners, gp.held, "Winners here");
   });
 }
@@ -2696,6 +2781,768 @@ function circuitPanel(panel) {
 $$("[data-f1]").forEach(f1Panel);
 $$("[data-f1-gp]").forEach(gpPanel);
 $$("[data-f1-circuit]").forEach(circuitPanel);
+
+// ------------------------------------------------- clubs and leagues
+// Club and league panels. The page arrives with skeletons; ESPN's half lands from /api/sport/* and is
+// drawn in the house vocabulary with one accent, --club, the club's own colour. Football is drawn as
+// football (a table with its zones, W/D/L blocks with scorelines, a match card, the squad on a pitch);
+// other sports get the same cards in their terms (win-loss, a conference, the next games).
+const spOrdinal = (n) => { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const spDay = (iso) => f1When(iso, { weekday: "short", day: "numeric", month: "short" });
+const spShort = (iso) => f1When(iso, { day: "numeric", month: "short" });
+const spSigned = (n) => (Number(n) > 0 ? `+${n}` : String(n ?? ""));
+
+function spLabel(card, text) {
+  const hook = $("p > span", card);
+  if (hook && text) hook.textContent = text;
+}
+
+// A crest, or its first letters on a tile when there is none or it won't load, so a grid never loses a cell.
+function spCrest(src, alt, cls = "sp-mini-crest") {
+  const blank = () => el("span", { class: cls + " is-blank", text: (alt || "?").slice(0, 3).toUpperCase(), "aria-hidden": "true" });
+  if (!isHttp(src)) return blank();
+  const pic = el("img", { src, alt: alt || "", class: cls, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" });
+  pic.addEventListener("error", () => pic.replaceWith(blank()));
+  return pic;
+}
+
+// A countdown that keeps itself current while it is on the page.
+function spCountdown(target, label) {
+  const out = el("p", { class: "sp-countdown" });
+  const start = new Date(target);
+  const tick = () => {
+    const ms = start - Date.now();
+    if (Number.isNaN(ms) || !out.isConnected && out.dataset.armed) return;
+    if (ms <= 0) { out.replaceChildren(el("span", { class: "sp-live-dot" }), "Under way"); return; }
+    const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
+    out.replaceChildren(el("small", { text: label }), el("strong", { text: d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m` }));
+    out.dataset.armed = "1";
+    setTimeout(tick, 30000);
+  };
+  tick();
+  return out;
+}
+
+// The table: a football table whole, with its zones as a stripe down the left; any other league's
+// conference around the club. The club's own row is lit.
+function spTableRows(rows, { football, compact = false, me = "" } = {}) {
+  const head = football ? ["P", "W", "D", "L", "GD", "Pts"] : ["W", "L", "PCT", "GB"];
+  const table = el("table", { class: "sp-tbl" + (compact ? " is-compact" : "") });
+  table.append(el("thead", {}, el("tr", {}, el("th", { class: "sp-tbl-pos", text: "#" }), el("th", { class: "sp-tbl-team", text: "Team" }),
+    ...head.map((h) => el("th", { text: h })))));
+  const body = el("tbody");
+  for (const r of rows) {
+    if (r.gap) body.append(el("tr", { class: "sp-tbl-gap", "aria-hidden": "true" }, el("td", { colspan: String(head.length + 2), text: "···" })));
+    const tr = el("tr", { class: (r.me || r.id === me) ? "is-me" : "" });
+    if (r.zone?.color) tr.style.setProperty("--zone", r.zone.color);
+    if (r.zone?.label) tr.title = r.zone.label;
+    const cells = football ? [r.played, r.wins, r.draws, r.losses, spSigned(r.diff), r.points] : [r.wins, r.losses, r.pct, r.behind];
+    tr.append(el("td", { class: "sp-tbl-pos", text: String(r.rank || "") }),
+      el("td", { class: "sp-tbl-team" }, spCrest(r.logo, r.abbr || r.name), el("a", { href: searchHref(r.name), text: compact ? (r.abbr || r.name) : r.name, title: r.name })),
+      ...cells.map((c, i) => el("td", { class: i === cells.length - 1 && football ? "sp-tbl-pts" : "", text: String(c ?? "") })));
+    body.append(tr);
+  }
+  table.append(body);
+  return table;
+}
+
+function spZoneKey(zones) {
+  if (!zones?.length) return null;
+  return el("p", { class: "sp-zones" }, ...zones.map((z) => {
+    const dot = el("i");
+    dot.style.background = z.color;
+    return el("span", {}, dot, z.label);
+  }));
+}
+
+function clubTable(card, d) {
+  if (!card) return;
+  const rec = d.record || {};
+  if (!d.position) { card.remove(); return; }
+  spLabel(card, [d.league.name, d.league.group].filter(Boolean).join(" · "));
+  const football = d.sport === "soccer";
+  const head = el("div", { class: "sp-pos-row" },
+    el("span", { class: "sp-pos", text: spOrdinal(d.position) }),
+    el("div", { class: "sp-pos-meta" },
+      football ? el("span", { class: "sp-pos-pts" }, el("strong", { text: f1Num(rec.points) }), " pts") :
+        el("span", { class: "sp-pos-pts" }, el("strong", { text: `${rec.wins}–${rec.losses}` }), rec.pct ? ` · ${rec.pct}` : ""),
+      el("span", { class: "muted", text: [football ? `${rec.played} played` : rec.streak && `Streak ${rec.streak}`, `of ${d.of}`].filter(Boolean).join(" · ") })));
+  // A whole football table is twenty rows: shown around the club, the rest a click away.
+  const rows = d.table || [];
+  const around = football ? d.ladder : rows;
+  const body = el("div", { class: "sp-table-body" }, head, spTableRows(around, { football, compact: true, me: d.team.id }));
+  if (football && rows.length > around.length) {
+    const more = el("details", { class: "sp-more" }, el("summary", { text: `Full table · ${rows.length} clubs` }),
+      spTableRows(rows, { football, me: d.team.id }), spZoneKey(d.zones));
+    body.append(more);
+  }
+  card.replaceChildren($(".sp-label", card), body);
+}
+
+// Form: one block per game, oldest to newest, each with its score and the opponent's crest. A football
+// season also gets its totals as a sheet, goals for and against as one split bar.
+function clubForm(card, d) {
+  if (!card) return;
+  const results = d.results || [];
+  const rec = d.record || {};
+  if (!results.length && !rec.played) { card.remove(); return; }
+  const football = d.sport === "soccer";
+  spLabel(card, results.length ? `Last ${results.length} · ${football ? "league" : "games"}` : "Season");
+  const strip = el("ol", { class: "sp-form-strip" });
+  for (const g of results) {
+    const block = el("li", { class: `sp-res is-${(g.outcome || "").toLowerCase()}`, title: `${g.home ? "vs" : "at"} ${g.opp} · ${spDay(g.date)}${g.comp ? " · " + g.comp : ""}` },
+      el("span", { class: "sp-res-mark", text: g.outcome || "–" }),
+      spCrest(g.opp_logo, g.opp_abbr || g.opp),
+      el("span", { class: "sp-res-score", text: `${g.for}–${g.against}` }),
+      el("span", { class: "sp-res-ha", text: g.home ? "H" : "A" }));
+    strip.append(block);
+  }
+  const parts = [$(".sp-label", card)];
+  if (results.length) parts.push(strip); else card.classList.add("is-bare");
+  if (rec.played) {
+    const sheet = el("dl", { class: "sp-sheet" });
+    const cells = football
+      ? [["Played", rec.played], ["Won", rec.wins], ["Drawn", rec.draws], ["Lost", rec.losses], ["Goal diff", spSigned(rec.diff)], ["Points", rec.points]]
+      : [["Played", rec.played], ["Won", rec.wins], ["Lost", rec.losses], ["Win %", rec.pct], ["Behind", rec.behind], ["Streak", rec.streak]];
+    for (const [k, v] of cells) if (v !== "" && v != null) sheet.append(el("div", {}, el("dt", { text: k }), el("dd", { text: String(v) })));
+    parts.push(sheet);
+    const total = (Number(rec.for) || 0) + (Number(rec.against) || 0);
+    if (total) {
+      const bar = el("div", { class: "sp-split" }, el("i", { class: "is-for" }), el("i", { class: "is-against" }));
+      bar.children[0].style.flexGrow = rec.for;
+      bar.children[1].style.flexGrow = rec.against;
+      const what = football ? "goals" : "points";
+      parts.push(el("div", { class: "sp-split-row" }, el("span", { text: `${rec.for} ${what} for` }), bar, el("span", { text: `${rec.against} against` })));
+    }
+  }
+  card.replaceChildren(...parts);
+}
+
+// The next match as a match card: both crests, home on the left, the kick-off in local time with a
+// countdown. A game being played now takes its place with the score.
+function clubNext(card, d) {
+  if (!card) return;
+  const g = d.live || (d.fixtures || [])[0];
+  if (!g) { card.remove(); return; }
+  const football = d.sport === "soccer";
+  spLabel(card, d.live ? "Live now" : football ? "Next match" : "Next game");
+  const us = { name: d.team.short || d.team.name, logo: d.team.logo, abbr: d.team.abbr, me: true };
+  const them = { name: g.opp_short || g.opp, logo: g.opp_logo, abbr: g.opp_abbr };
+  const [home, away] = g.home ? [us, them] : [them, us];
+  const side = (t) => el("a", { class: "sp-vs-side" + (t.me ? " is-me" : ""), href: searchHref(t.me ? d.team.name : g.opp) },
+    spCrest(t.logo, t.abbr || t.name, "sp-vs-crest"), el("span", { class: "sp-vs-name", text: t.name }));
+  const middle = d.live
+    ? el("div", { class: "sp-vs-mid is-live" }, el("strong", { text: g.home ? `${g.for}–${g.against}` : `${g.against}–${g.for}` }), el("small", {}, el("span", { class: "sp-live-dot" }), g.detail || "Live"))
+    : el("div", { class: "sp-vs-mid" }, el("strong", { text: f1Clock(g.date) }), el("small", { text: spDay(g.date) }));
+  const match = el("div", { class: "sp-vs" }, side(home), middle, side(away));
+  const meta = el("p", { class: "sp-vs-meta" }, ...[g.comp, g.venue, g.tv && `On ${g.tv}`].filter(Boolean).map((t) => el("span", { text: t })));
+  const parts = [$(".sp-label", card), match, meta];
+  if (!d.live) parts.push(spCountdown(g.date, football ? "Kick-off in" : "Starts in"));
+  const later = (d.fixtures || []).slice(d.live ? 0 : 1, 4);
+  if (later.length) {
+    parts.push(el("ol", { class: "sp-fixtures" }, ...later.map((f) => el("li", {},
+      el("span", { class: "sp-fx-day", text: spShort(f.date) }),
+      el("span", { class: "sp-fx-ha", text: f.home ? "vs" : "at" }),
+      spCrest(f.opp_logo, f.opp_abbr || f.opp),
+      el("a", { href: searchHref(f.opp), text: f.opp }),
+      el("span", { class: "sp-fx-comp", text: f.comp || "" })))));
+  }
+  card.replaceChildren(...parts);
+}
+
+// Football: the squad on a pitch, forwards at the top, one row per line, each player a shirt number and a
+// name. Other sports: the roster by position.
+function clubSquad(card, d) {
+  if (!card) return;
+  const groups = d.squad || [];
+  if (!groups.length) { card.remove(); return; }
+  const count = groups.reduce((n, g) => n + g.players.length, 0);
+  spLabel(card, `Squad · ${count} players${d.coach ? ` · ${d.sport === "soccer" ? "manager" : "coach"} ${d.coach}` : ""}`);
+  const person = (p) => {
+    const chip = el("a", { class: "sp-player", href: searchHref(p.name), title: [p.position, p.nat, p.age && `${p.age} years`].filter(Boolean).join(" · ") },
+      el("span", { class: "sp-shirt", text: p.number || "–" }),
+      el("span", { class: "sp-player-name", text: p.short || p.name }));
+    const flag = img(p.flag, p.nat);
+    if (flag) { flag.className = "sp-player-flag"; chip.append(flag); }
+    return chip;
+  };
+  if (d.sport === "soccer") {
+    const pitch = el("div", { class: "sp-squad-pitch" });
+    for (const g of [...groups].reverse()) {
+      pitch.append(el("div", { class: `sp-line is-${g.code.toLowerCase()}` },
+        el("span", { class: "sp-line-label", text: g.label }),
+        el("div", { class: "sp-line-row" }, ...g.players.map(person))));
+    }
+    card.replaceChildren($(".sp-label", card), pitch);
+  } else {
+    card.replaceChildren($(".sp-label", card), el("div", { class: "sp-roster" }, ...groups.map((g) =>
+      el("div", { class: "sp-roster-group" }, el("p", { class: "sp-roster-label", text: g.label }), el("div", { class: "sp-line-row" }, ...g.players.map(person))))));
+  }
+}
+
+// A panel whose live half didn't come (or never had one): the picture beside the facts and the About,
+// one compact block, instead of a lone picture over full-width rows with a single fact in them.
+function compactPanel(panel) {
+  const stage = $(".sp-stage, .val-stage, .es-stage", panel);
+  if (!stage || $(".sp-compact", panel)) return;
+  const anchor = stage.parentElement === panel ? stage : stage.parentElement;
+  const wrap = el("div", { class: "sp-compact" });
+  const side = el("div", { class: "sp-compact-side" });
+  anchor.before(wrap);
+  for (const node of $$(":scope > .ms-chips, :scope > [data-specs], :scope > details.about", panel)) side.append(node);
+  wrap.append(stage, side);
+  if (anchor !== stage && !$(".sp-card, .val-card", anchor)) anchor.remove();
+  panel.classList.add("is-compact");  // the bento's ResizeObserver re-fits it to the narrower column
+}
+
+function clubPanel(panel) {
+  const q = new URLSearchParams({ title: panel.dataset.clubTitle || "", league: panel.dataset.clubLeague || "",
+    sport: panel.dataset.clubSport || "", country: panel.dataset.clubCountry || "" });
+  getJSON(`/api/sport/club?${q}`).then((d) => {
+    if (!d || !d.team) {
+      for (const sel of ["[data-sp-table]", "[data-sp-form]", "[data-sp-next]", "[data-sp-squad]"]) $(sel, panel)?.remove();
+      panel.classList.add("is-offline");
+      compactPanel(panel);
+      return;
+    }
+    if (d.team.color) panel.style.setProperty("--club", d.team.color);
+    if (d.team.alt) panel.style.setProperty("--club-2", d.team.alt);
+    const plate = $("[data-sp-plate]", panel);
+    if (plate && d.position) {
+      plate.replaceChildren(el("span", { class: "sp-plate-pos", text: spOrdinal(d.position) }), el("span", { class: "sp-plate-code", text: d.team.abbr || "" }));
+      plate.hidden = false;
+    }
+    clubTable($("[data-sp-table]", panel), d);
+    clubForm($("[data-sp-form]", panel), d);
+    clubNext($("[data-sp-next]", panel), d);
+    clubSquad($("[data-sp-squad]", panel), d);
+    if (!$("[data-sp-table]", panel) && !$("[data-sp-form]", panel)) panel.classList.add("is-offline");
+  });
+}
+
+function leaguePanel(panel) {
+  getJSON(`/api/sport/league?qid=${encodeURIComponent(panel.dataset.league)}`).then((d) => {
+    const tableCard = $("[data-lg-table]", panel), roundCard = $("[data-lg-round]", panel);
+    if (!d || !d.tables) { tableCard?.remove(); roundCard?.remove(); return; }
+    const football = d.sport === "soccer";
+    spLabel(tableCard, football ? "Table" : "Standings");
+    const parts = [$(".sp-label", tableCard)];
+    for (const t of d.tables) {
+      if (d.tables.length > 1) parts.push(el("p", { class: "sp-group", text: t.name }));
+      parts.push(spTableRows(t.rows, { football }));
+    }
+    const key = spZoneKey(d.zones);
+    if (key) parts.push(key);
+    tableCard.replaceChildren(...parts);
+    if (!d.games?.length) { roundCard.remove(); return; }
+    const live = d.games.some((g) => g.state === "in");
+    spLabel(roundCard, live ? "Live and this round" : "This round");
+    const list = el("div", { class: "sp-round-list" });
+    let day = "";
+    for (const g of d.games) {
+      const today = spDay(g.date);
+      if (today !== day) { day = today; list.append(el("p", { class: "sp-round-day", text: today })); }
+      const side = (t, right) => el("a", { class: "sp-rg-side" + (right ? " is-right" : "") + (g.state === "post" && !t.winner && football ? " is-quiet" : ""), href: searchHref(t.name) },
+        spCrest(t.logo, t.abbr || t.name), el("span", { text: t.name }));
+      const mid = g.state === "pre"
+        ? el("span", { class: "sp-rg-mid", text: f1Clock(g.date) })
+        : el("span", { class: "sp-rg-mid is-score" + (g.state === "in" ? " is-live" : "") }, `${g.home.score ?? ""}–${g.away.score ?? ""}`,
+          el("small", { text: g.state === "in" ? g.detail : "FT" }));
+      list.append(el("div", { class: "sp-rg" + (g.state === "in" ? " is-live" : "") }, side(g.home, false), mid, side(g.away, true)));
+    }
+    roundCard.replaceChildren($(".sp-label", roundCard), list);
+  });
+}
+
+$$("[data-club]").forEach(clubPanel);
+$$("[data-league]").forEach(leaguePanel);
+
+// ------------------------------------------------- Valorant
+// Valorant teams and players from VLR.gg. The game's look rather than the house one: cut corners, the
+// red, agents by role. Every card was drawn as a skeleton of its size; each one fills or steps aside.
+const VAL_ROLES = { duelist: "Duelist", initiator: "Initiator", controller: "Controller", sentinel: "Sentinel", flex: "Flex" };
+
+function valAgent(a, size = "") {
+  const pic = img(a.icon, a.name);
+  const box = el("span", { class: `val-agent is-${a.role}${size ? " is-" + size : ""}`, title: `${a.name} · ${VAL_ROLES[a.role] || ""}` });
+  if (pic) box.append(pic); else box.textContent = a.name.slice(0, 2);
+  return box;
+}
+
+function valComp(agents) {
+  return el("span", { class: "val-comp" }, ...(agents || []).map((a) => valAgent(a, "sm")));
+}
+
+function valCardDone(card, ...parts) {
+  card.replaceChildren($(".val-label", card), ...parts.filter(Boolean));
+}
+
+function valPlate(panel, text, flag) {
+  const plate = $("[data-val-plate]", panel);
+  if (!plate || !text) return;
+  const f = img(flag, "");
+  plate.replaceChildren(...[f, el("span", { text })].filter(Boolean));
+  plate.hidden = false;
+}
+
+const VAL_PLACE = (rank) => (rank === 1 ? "is-gold" : rank === 2 ? "is-silver" : rank === 3 ? "is-bronze" : "");
+
+// Placements: a tally on top (titles, podiums, winnings), then the events by year, newest first, each a
+// row with the finish as a medal for the top three and the prize to the right. Six show; the rest fold.
+function valTrophies(card, d) {
+  if (!card) return;
+  const all = d.placements || [];
+  if (!all.length) { card.remove(); return; }
+  const titles = all.filter((p) => p.rank === 1).length;
+  const podiums = all.filter((p) => p.rank && p.rank <= 3).length;
+  const tally = el("div", { class: "val-tally" },
+    ...[["Titles", titles], ["Podiums", podiums], ["Events", all.length]].map(([k, v]) => el("span", {}, el("b", { text: String(v) }), el("small", { text: k }))),
+    d.winnings ? el("span", { class: "is-money" }, el("b", { text: d.winnings }), el("small", { text: "Winnings" })) : null);
+  const row = (p) => el("li", { class: "val-place " + VAL_PLACE(p.rank) },
+    el("span", { class: "val-medal", text: p.place || "—" }),
+    el("span", { class: "val-place-what" }, el("a", { href: p.url, text: p.event }), el("small", { text: p.stage })),
+    el("span", { class: "val-place-prize", text: p.prize || "" }));
+  const byYear = (list) => {
+    const out = [];
+    let year = "";
+    for (const p of list) {
+      if (p.year !== year) { year = p.year; out.push(el("li", { class: "val-place-year", text: year || "—" })); }
+      out.push(row(p));
+    }
+    return el("ol", { class: "val-places" }, ...out);
+  };
+  const parts = [tally, byYear(all.slice(0, 6))];
+  if (all.length > 6) parts.push(el("details", { class: "sp-more" }, el("summary", { text: `${all.length - 6} more events` }), byYear(all.slice(6))));
+  valCardDone(card, ...parts);
+}
+
+// One series: who, the series score, then a row per map with its score and both compositions.
+function valSeries(s, open) {
+  const won = s.outcome === "W";
+  const row = el("details", { class: "val-series-row " + (won ? "is-win" : s.outcome === "L" ? "is-loss" : "") });
+  if (open) row.open = true;
+  row.append(el("summary", {},
+    el("span", { class: "val-series-date", text: s.date ? spShort(s.date) : "" }),
+    el("span", { class: "val-series-event" }, el("strong", { text: s.event }), el("small", { text: s.stage })),
+    el("span", { class: "val-series-score" }, el("b", { text: String(s.us ?? "–") }), ":", el("b", { text: String(s.them ?? "–") })),
+    el("span", { class: "val-series-opp" }, spCrest(s.opp_logo, s.opp_tag || s.opp, "val-crest"), el("span", { text: s.opp }))));
+  if (s.maps?.length) {
+    row.append(el("div", { class: "val-maps-played" }, ...s.maps.map((m) => el("div", { class: "val-map-line " + (m.won ? "is-win" : "is-loss") },
+      valComp(m.agents),
+      el("span", { class: "val-map-score" }, el("b", { text: String(m.us) }), el("span", { class: "val-map-name", text: m.map }), el("b", { text: String(m.them) })),
+      valComp(m.against)))));
+  }
+  return row;
+}
+
+// Rating over this roster's matches: a line on the house dot paper, a win lit, a loss hollow.
+function valHistory(card, d) {
+  if (!card) return;
+  const pts = d.history || [];
+  if (pts.length < 3) { card.remove(); return; }
+  const W = 520, H = 170, pad = 26;
+  const ratings = pts.map((p) => p.rating);
+  const lo = Math.min(...ratings) - 15, hi = Math.max(...ratings) + 15;
+  const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const y = (r) => H - pad - ((r - lo) / (hi - lo || 1)) * (H - pad * 2);
+  const svg = svgNode("svg", { viewBox: `0 0 ${W} ${H}`, class: "val-hist-svg", role: "img", "aria-label": `Rating from ${ratings[0]} to ${ratings[ratings.length - 1]}` });
+  for (const r of [lo + 15, (lo + hi) / 2, hi - 15]) {
+    svg.append(svgNode("line", { x1: pad, x2: W - pad, y1: y(r), y2: y(r), class: "val-hist-grid" }),
+      svgNode("text", { x: 2, y: y(r) + 3, class: "val-hist-axis" }, document.createTextNode(String(Math.round(r)))));
+  }
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.rating).toFixed(1)}`).join("");
+  svg.append(svgNode("path", { d: `${line}L${x(pts.length - 1)},${H - pad}L${x(0)},${H - pad}Z`, class: "val-hist-area" }),
+    svgNode("path", { d: line, class: "val-hist-line" }));
+  const tip = f1Tip(card);
+  pts.forEach((p, i) => {
+    const dot = svgNode("rect", { x: x(i) - 2.5, y: y(p.rating) - 2.5, width: 5, height: 5, class: "val-hist-dot " + (p.won ? "is-win" : "is-loss") });
+    const hit = svgNode("rect", { x: x(i) - 5, y: 0, width: 10, height: H, class: "val-hist-hit" });
+    hit.addEventListener("mouseenter", () => {
+      const box = card.getBoundingClientRect(), r = svg.getBoundingClientRect();
+      tip.show(r.left - box.left + (x(i) / W) * r.width, r.top - box.top + (y(p.rating) / H) * r.height - 58,
+        `${p.won ? "Win" : "Loss"} vs ${p.opp}`, `${p.rating} (${spSigned(p.change)})`, `${p.event} · ${p.date}`);
+    });
+    hit.addEventListener("mouseleave", () => tip.hide());
+    svg.append(dot, hit);
+  });
+  const first = pts[0], last = pts[pts.length - 1];
+  const wins = pts.filter((p) => p.won).length;
+  valCardDone(card, svg, el("p", { class: "val-hist-foot" },
+    el("span", { text: `${first.date} → ${last.date}` }),
+    el("span", { text: `${wins}–${pts.length - wins} over ${pts.length} matches` }),
+    el("strong", { text: spSigned(last.rating - first.rating) })));
+}
+
+// The map pool: a strip per map with its splash behind, the win rate as a bar, and attack against
+// defence round rates as a split.
+function valMaps(card, d) {
+  if (!card) return;
+  const maps = (d.maps || []).filter((m) => m.played);
+  if (!maps.length) { card.remove(); return; }
+  const list = el("ol", { class: "val-pool" });
+  for (const m of maps.slice(0, 8)) {
+    const bg = isHttp(m.image) ? el("span", { class: "val-pool-bg", "aria-hidden": "true" }) : null;
+    if (bg) bg.style.backgroundImage = `url("${m.image}")`;
+    const bar = el("span", { class: "val-bar" }, el("i"));
+    bar.firstChild.style.width = `${m.win}%`;
+    const split = el("span", { class: "val-split", title: `Attack ${m.atk}% · Defence ${m.def}% of rounds won` }, el("i", { class: "is-atk" }), el("i", { class: "is-def" }));
+    split.children[0].style.flexGrow = m.atk || 1;
+    split.children[1].style.flexGrow = m.def || 1;
+    list.append(el("li", { class: "val-pool-row" + (m.win >= 60 ? " is-strong" : m.win < 45 ? " is-weak" : "") }, bg,
+      el("span", { class: "val-pool-name" }, el("strong", { text: m.map }), el("small", { text: `${m.played} maps · ${m.w}W ${m.l}L` })),
+      el("span", { class: "val-pool-win" }, el("b", { text: `${m.win}%` }), bar),
+      el("span", { class: "val-pool-sides" }, el("small", { text: `ATK ${m.atk}%` }), split, el("small", { text: `DEF ${m.def}%` }))));
+  }
+  valCardDone(card, list);
+}
+
+function valTeam(panel, d) {
+  valPlate(panel, d.tag, d.flag);
+  const rank = $("[data-val-rank]", panel);
+  if (rank) {
+    const record = d.record?.w != null ? d.record : null;
+    const share = record ? Math.round((100 * record.w) / Math.max(1, record.w + record.l)) : 0;
+    const bar = el("span", { class: "val-bar is-wide" }, el("i"));
+    bar.firstChild.style.width = `${share}%`;
+    valCardDone(rank,
+      el("div", { class: "val-rank-row" },
+        el("span", { class: "val-rank-num" + (/^\d+$/.test(d.rank) ? "" : " is-text"), text: /^\d+$/.test(d.rank) ? `#${d.rank}` : (d.rank || "—") }),
+        el("span", { class: "val-rank-meta" }, el("strong", { text: d.region || (d.rank === "Unranked" ? "Not ranked now" : "") }),
+          d.rating ? el("small", { text: `Rating ${d.rating}` }) : null)),
+      record ? el("div", { class: "val-record" }, el("span", { text: `${record.w}W` }), bar, el("span", { text: `${record.l}L` })) : null,
+      record ? el("p", { class: "val-rank-foot", text: `${share}% of matches won with this roster` }) : null,
+      d.winnings ? el("p", { class: "val-winnings" }, el("small", { text: "Total winnings" }), el("strong", { text: d.winnings })) : null);
+  }
+  const roster = $("[data-val-roster]", panel);
+  if (roster) {
+    if (!d.players?.length) roster.remove();
+    else {
+      const five = el("ol", { class: "val-five" }, ...d.players.map((p) => {
+        const pic = img(p.photo, p.alias);
+        const face = el("span", { class: "val-face" }, pic || el("span", { class: "val-face-initial", text: p.alias.slice(0, 1).toUpperCase() }));
+        const flag = img(p.flag, "");
+        if (flag) flag.className = "val-flag";
+        return el("li", { class: "val-player" + (p.role ? " is-" + p.role.toLowerCase().replace(/\W+/g, "-") : "") },
+          el("a", { href: searchHref(p.alias + " valorant"), title: p.name },
+            face,
+            el("span", { class: "val-player-alias" }, flag, el("strong", { text: p.alias }), p.captain ? el("span", { class: "val-capt", title: "Captain", text: "C" }) : null),
+            el("small", { text: p.role ? p.role : p.name })));
+      }));
+      const staff = d.staff?.length ? el("p", { class: "val-staff" }, ...d.staff.map((s) => el("span", {}, el("small", { text: s.role }), s.alias))) : null;
+      valCardDone(roster, five, staff);
+    }
+  }
+  const series = $("[data-val-series]", panel);
+  if (series) {
+    const items = [...(d.upcoming || []), ...(d.results || [])];
+    if (!items.length) series.remove();
+    else valCardDone(series, el("div", { class: "val-series" }, ...items.slice(0, 6).map((s, i) => valSeries(s, i < 2))));
+  }
+  valMaps($("[data-val-maps]", panel), d);
+  valHistory($("[data-val-history]", panel), d);
+  if (!$("[data-val-maps]", panel) && !$("[data-val-history]", panel)) $(".val-duo", panel)?.remove();
+}
+
+function valPlayer(panel, d) {
+  valPlate(panel, d.alias, d.flag);
+  const career = $("[data-val-career]", panel);
+  const c = d.career || {};
+  if (career) {
+    if (!c.rounds) career.remove();
+    else {
+      const split = el("div", { class: "val-roles" }, ...c.roles.map((r) => {
+        const seg = el("i", { class: "is-" + r.role, title: `${VAL_ROLES[r.role]} ${r.share}%` });
+        seg.style.flexGrow = r.share;
+        return seg;
+      }));
+      valCardDone(career,
+        el("div", { class: "val-rank-row" }, el("span", { class: "val-rank-num", text: c.rating?.toFixed ? c.rating.toFixed(2) : String(c.rating) }),
+          el("span", { class: "val-rank-meta" }, el("strong", { text: "Rating" }), el("small", { text: `${f1Num(c.maps)} maps · ${f1Num(c.rounds)} rounds` }))),
+        el("dl", { class: "val-stats" }, ...[["ACS", c.acs], ["K:D", c.kd], ["ADR", c.adr], ["KAST", c.kast != null ? `${c.kast}%` : ""], ["FK:FD", c.fkfd], ["Kills", f1Num(c.kills)]]
+          .filter(([, v]) => v !== "" && v != null).map(([k, v]) => el("div", {}, el("dt", { text: k }), el("dd", { text: String(v) })))),
+        split,
+        el("p", { class: "val-roles-key" }, ...c.roles.map((r) => el("span", { class: "is-" + r.role }, el("i"), `${VAL_ROLES[r.role]} ${r.share}%`))));
+    }
+  }
+  const team = $("[data-val-team]", panel);
+  if (team) {
+    const now = d.team;
+    const rows = [];
+    if (now) rows.push(el("a", { class: "val-team-now", href: searchHref(now.name + " valorant") }, spCrest(now.logo, now.name, "val-crest is-big"),
+      el("span", {}, el("strong", { text: now.name }), el("small", { text: now.note || "Current team" }))));
+    if (d.past?.length) {
+      rows.push(el("p", { class: "val-sub", text: "Before" }), el("ol", { class: "val-past" }, ...d.past.map((t) => el("li", {},
+        spCrest(t.logo, t.name, "val-crest"), el("a", { href: searchHref(t.name + " valorant"), text: t.name }), el("small", { text: [t.tag, t.note].filter(Boolean).join(" · ") })))));
+    }
+    if (!rows.length) team.remove(); else valCardDone(team, ...rows);
+  }
+  const agents = $("[data-val-agents]", panel);
+  if (agents) {
+    if (!d.agents?.length) agents.remove();
+    else {
+      const top = Math.max(...d.agents.map((a) => a.use || 0), 1);
+      valCardDone(agents, el("ol", { class: "val-pool-agents" }, ...d.agents.slice(0, 8).map((a) => {
+        const bar = el("span", { class: "val-bar" }, el("i"));
+        bar.firstChild.style.width = `${(100 * a.use) / top}%`;
+        return el("li", { class: `val-agent-card is-${a.role}` },
+          valAgent(a, "lg"),
+          el("span", { class: "val-agent-name" }, el("strong", { text: a.name }), el("small", { text: `${VAL_ROLES[a.role]} · ${a.maps} maps` })),
+          el("span", { class: "val-agent-use" }, el("b", { text: `${a.use}%` }), bar),
+          el("dl", { class: "val-agent-line" }, ...[["R", a.rating], ["ACS", a.acs != null ? Math.round(a.acs) : ""], ["K:D", a.kd], ["ADR", a.adr != null ? Math.round(a.adr) : ""], ["KAST", a.kast != null ? `${a.kast}%` : ""]]
+            .map(([k, v]) => el("div", {}, el("dt", { text: k }), el("dd", { text: String(v ?? "–") })))));
+      })));
+    }
+  }
+  const log = $("[data-val-log]", panel);
+  if (log) {
+    const games = (d.results || []).flatMap((s) => (s.maps || []).map((m) => ({ ...m, s })));
+    if (!games.length) log.remove();
+    else {
+      const best = Math.max(2, ...games.map((g) => g.rating || 0));
+      valCardDone(log, el("ol", { class: "val-log-list" }, ...games.slice(0, 12).map((g) => {
+        const bar = el("span", { class: "val-bar" + (g.rating >= 1 ? " is-good" : "") }, el("i"));
+        bar.firstChild.style.width = `${Math.min(100, (100 * (g.rating || 0)) / best)}%`;
+        return el("li", { class: "val-log-row " + (g.won ? "is-win" : "is-loss") },
+          ...(g.agents || []).slice(0, 1).map((a) => valAgent(a)),
+          el("span", { class: "val-log-what" }, el("strong", { text: g.map }), el("small", { text: `vs ${g.s.opp} · ${g.s.event}` })),
+          el("span", { class: "val-map-score" }, el("b", { text: String(g.us) }), "–", el("b", { text: String(g.them) })),
+          el("span", { class: "val-log-rating" }, el("b", { text: g.rating != null ? g.rating.toFixed(2) : "–" }), bar),
+          el("span", { class: "val-log-kda", text: g.k != null ? `${g.k}/${g.d}/${g.a}` : "" }));
+      })));
+    }
+  }
+}
+
+function valPanel(panel) {
+  const role = panel.dataset.valRole;
+  getJSON(`/api/esports?${new URLSearchParams({ title: panel.dataset.valTitle || "", role, game: "valorant" })}`).then((d) => {
+    if (!d || !d.role) {
+      $$(".val-card", panel).forEach((c) => c.remove());
+      $(".val-duo", panel)?.remove();
+      panel.classList.add("is-offline");
+      compactPanel(panel);
+      return;
+    }
+    const src = $("[data-val-source]", panel);
+    if (src && isHttp(d.source)) src.href = d.source;
+    (d.role === "team" ? valTeam : valPlayer)(panel, d);
+    valTrophies($("[data-val-trophies]", panel), d);
+  });
+}
+
+$$("[data-val]").forEach(valPanel);
+
+// ------------------------------------------------- VCT seasons
+// "vct 2026": the season's events behind a closed picker that names the one on show, and that event drawn
+// as a result. No photograph of the trophy is free to use, so it is drawn: the Champions trophy's
+// faceted, blade-cut cup on a tall stem and a stepped base, in a muted gold.
+function vctTrophy() {
+  return svgNode("svg", { viewBox: "0 0 64 96", class: "vct-trophy", "aria-hidden": "true" },
+    svgNode("path", { d: "M14 6h36l-4 20-14 16-14-16z", class: "vct-trophy-cup" }),
+    svgNode("path", { d: "M14 6l18 22L50 6M32 28v14", class: "vct-trophy-facet" }),
+    svgNode("path", { d: "M24 12l8 9 8-9", class: "vct-trophy-mark" }),
+    svgNode("path", { d: "M29 42h6l2 26h-10z", class: "vct-trophy-stem" }),
+    svgNode("path", { d: "M22 68h20l3 8H19z", class: "vct-trophy-base" }),
+    svgNode("path", { d: "M15 76h34v12H15z", class: "vct-trophy-base" }),
+    svgNode("path", { d: "M15 82h34", class: "vct-trophy-facet" }));
+}
+
+// Champions has one trophy, the same every year: Riot's studio photograph, cut out of its background
+// (static/vct-champions-trophy.png, kept on this computer). Masters and the rest get the drawn one, as does
+// Champions if the picture can't load.
+function vctChampionsTrophy() {
+  const pic = el("img", { src: "/static/vct-champions-trophy.png", alt: "The Valorant Champions trophy", class: "vct-trophy-photo", decoding: "async" });
+  pic.addEventListener("error", () => pic.replaceWith(vctTrophy()));
+  return pic;
+}
+
+const VCT_STATUS = { ongoing: "Live", upcoming: "Upcoming", completed: "Completed" };
+
+// A team's mark: its logo; if that won't load (or there is none), its flag; failing that, its initials
+// with the country beside the name doing the rest.
+function vctTeamMark(team, cls) {
+  const initials = () => el("span", { class: cls + " is-blank", text: (team.name || team.team || "?").slice(0, 3).toUpperCase(), "aria-hidden": "true" });
+  const flag = () => {
+    if (!isHttp(team.flag)) return initials();
+    const f = el("img", { src: team.flag, alt: "", class: cls + " is-flag", referrerpolicy: "no-referrer" });
+    f.addEventListener("error", () => f.replaceWith(initials()));
+    return f;
+  };
+  if (!isHttp(team.logo)) return flag();
+  const pic = el("img", { src: team.logo, alt: team.name || team.team || "", class: cls, loading: "lazy", referrerpolicy: "no-referrer" });
+  pic.addEventListener("error", () => pic.replaceWith(flag()));
+  return pic;
+}
+
+function vctPicker(card, season, onPick) {
+  const body = $("[data-vct-groups]", card);
+  body.replaceChildren(...season.groups.map((g) => el("div", { class: "vct-group" },
+    el("span", { class: "vct-group-name", text: g.name }),
+    el("div", { class: "vct-chips" }, ...g.events.map((e) => {
+      const chip = el("button", { type: "button", class: `vct-chip is-${e.status}`, "data-id": e.id, "data-group": g.name,
+        title: [e.name, e.dates, e.prize].filter(Boolean).join(" · ") }, e.short || e.name,
+        e.status !== "completed" ? el("small", { text: VCT_STATUS[e.status] || "" }) : null);
+      chip.addEventListener("click", () => { card.open = false; onPick(e.id); });
+      return chip;
+    })))));
+}
+
+// The summary names the event on show, as the season calls it: "Champions", "Masters · London".
+function vctMark(card, id) {
+  let shown = null;
+  for (const chip of $$(".vct-chip", card)) {
+    const on = chip.dataset.id === id;
+    chip.setAttribute("aria-pressed", String(on));
+    if (on) shown = chip;
+  }
+  const now = $("[data-vct-now]", card);
+  if (!now || !shown) return;
+  const group = shown.dataset.group, short = shown.firstChild.textContent;
+  now.replaceChildren(...[el("strong", { text: group }), group === short ? null : el("span", { text: short })].filter(Boolean));
+}
+
+function vctMatch(m) {
+  const side = (t, key) => el("span", { class: "vct-m-side" + (m.winner === key ? " is-won" : m.winner ? " is-lost" : "") },
+    img(t.flag, "") || el("i", { class: "vct-noflag" }), el("a", { href: searchHref(t.name + " valorant"), text: t.name }),
+    el("b", { text: t.score ?? "–" }));
+  return el("li", { class: "vct-m" + (m.final ? " is-final" : "") },
+    el("span", { class: "vct-m-stage", text: m.stage.replace(/–/g, " · ") }),
+    el("a", { class: "vct-m-teams", href: m.url }, side(m.a, "a"), side(m.b, "b")),
+    m.eta ? el("span", { class: "vct-m-eta", text: m.eta }) : null);
+}
+
+function vctEvent(body, ev) {
+  if (!ev || !ev.name) {
+    body.replaceChildren(el("div", { class: "val-card vct-empty", text: "VLR.gg didn't answer for this event. Try again in a minute." }));
+    return;
+  }
+  const status = ev.done ? "completed" : ev.live ? "ongoing" : "upcoming";
+  const logo = img(ev.logo, "");
+  if (logo) logo.className = "vct-ev-logo";
+  const flag = img(ev.flag, "");
+  if (flag) flag.className = "vct-flag";
+  const head = el("div", { class: "vct-ev-head" }, logo,
+    el("div", { class: "vct-ev-title" },
+      el("strong", {}, el("a", { href: ev.source, text: ev.name })),
+      el("span", { class: "vct-ev-meta" }, ...[ev.dates, ev.prize && `${ev.prize} prize pool`].filter(Boolean).map((t) => el("span", { text: t })),
+        ev.location ? el("span", {}, flag, ev.location) : null)),
+    el("span", { class: `vct-status is-${status}`, text: VCT_STATUS[status] }));
+  const parts = [head];
+  const st = ev.standings || [];
+  const named = (name) => st.find((s) => s.team.toLowerCase() === (name || "").toLowerCase()) || {};
+
+  if (ev.champion) {
+    const c = ev.champion;
+    const f = ev.final;
+    const won = f ? (f.winner === "a" ? f.a : f.b) : null;
+    const lost = f ? (f.winner === "a" ? f.b : f.a) : null;
+    const finalist = (t, row, champion) => el("a", { class: "vct-finalist" + (champion ? " is-champion" : ""), href: searchHref(t.name + " valorant") },
+      vctTeamMark({ name: t.name, logo: t.logo || row.logo, flag: t.flag || row.flag }, "vct-finalist-crest"),
+      el("span", { class: "vct-finalist-name", text: t.name }),
+      el("small", { text: [t.country || row.country, champion ? c.prize : row.prize].filter(Boolean).join(" · ") }));
+    const title = ev.kind === "champions" ? "World champions" : ev.kind === "masters" ? "Masters champions" : "Champions";
+    parts.push(el("div", { class: "vct-champ" + (f ? "" : " is-solo") },
+      el("div", { class: "vct-champ-cup" }, ev.kind === "champions" ? vctChampionsTrophy() : vctTrophy(), el("small", { text: title })),
+      f && won && lost
+        ? el("div", { class: "vct-final" },
+          finalist(won, named(won.name), true),
+          el("a", { class: "vct-final-score", href: f.url, title: "Grand final" },
+            el("small", { text: "Grand final" }), el("span", {}, el("b", { text: String(won.score) }), "–", el("b", { text: String(lost.score) }))),
+          finalist(lost, named(lost.name), false))
+        : el("div", { class: "vct-final" }, finalist({ name: c.team, logo: c.logo, flag: c.flag, country: c.country }, c, true))));
+    const podium = st.filter((s) => s.rank >= 3 && s.rank <= 4).slice(0, 2);
+    if (podium.length) {
+      parts.push(el("ol", { class: "vct-podium" }, ...podium.map((s) => el("li", { class: `vct-step is-${s.rank}` },
+        el("span", { class: "vct-step-place", text: s.place }), vctTeamMark(s, "vct-step-crest"),
+        el("a", { href: searchHref(s.team + " valorant"), text: s.team }), el("small", { text: [s.country, s.prize].filter(Boolean).join(" · ") })))));
+    }
+  }
+  const rest = ev.champion ? st.filter((s) => s.rank > 4) : st;
+  if (rest.length) {
+    parts.push(el("div", { class: "val-card vct-table" }, el("p", { class: "val-label", text: ev.champion ? "Rest of the standings" : "Standings" }),
+      el("ol", { class: "vct-rows" }, ...rest.map((s) => el("li", {},
+        el("span", { class: "vct-row-place", text: s.place }), vctTeamMark(s, "val-crest"),
+        el("a", { href: searchHref(s.team + " valorant"), text: s.team }),
+        el("span", { class: "vct-row-country", text: s.country }), el("span", { class: "vct-row-prize", text: s.prize }))))));
+  }
+  const lists = [];
+  if (ev.upcoming?.length) lists.push(el("div", { class: "val-card" }, el("p", { class: "val-label", text: "Next matches" }), el("ol", { class: "vct-ms" }, ...ev.upcoming.map(vctMatch))));
+  if (ev.results?.length) lists.push(el("div", { class: "val-card" }, el("p", { class: "val-label", text: "Latest results" }), el("ol", { class: "vct-ms" }, ...ev.results.map(vctMatch))));
+  if (lists.length) parts.push(el("div", { class: "vct-lists" }, ...lists));
+  if (parts.length === 1) parts.push(el("div", { class: "val-card vct-empty", text: "Nothing has been played yet. Teams, standings and results appear here once it starts." }));
+  body.replaceChildren(...parts);
+}
+
+function vctPanel(panel) {
+  const body = $("[data-vct-body]", panel), picker = $("[data-vct-picker]", panel);
+  const q = new URLSearchParams({ year: panel.dataset.vctYear, event: panel.dataset.vctEvent || "", region: panel.dataset.vctRegion || "" });
+  const open = (id) => {
+    vctMark(picker, id);
+    body.classList.add("is-loading");
+    getJSON(`/api/vct/event?id=${encodeURIComponent(id)}`).then((ev) => { body.classList.remove("is-loading"); vctEvent(body, ev); });
+  };
+  getJSON(`/api/vct/season?${q}`).then((season) => {
+    if (!season?.groups?.length) {
+      picker.remove();
+      body.replaceChildren(el("div", { class: "val-card vct-empty", text: `VLR.gg has no ${panel.dataset.vctYear} season to show, or didn't answer.` }));
+      return;
+    }
+    vctPicker(picker, season, open);
+    if (season.pick) open(season.pick);
+  });
+}
+
+$$("[data-vct]").forEach(vctPanel);
+
+// ------------------------------------------------- esports in other games (Liquipedia)
+function esPanel(panel) {
+  const q = new URLSearchParams({ title: panel.dataset.esTitle || "", role: panel.dataset.esRole || "team", game: panel.dataset.esGame || "" });
+  getJSON(`/api/esports?${q}`).then((d) => {
+    const info = $("[data-es-info]", panel), list = $("[data-es-list]", panel);
+    if (!d || !d.role) { info?.remove(); list?.remove(); panel.classList.add("is-offline"); compactPanel(panel); return; }
+    const src = $("[data-es-source]", panel);
+    if (src && isHttp(d.source)) src.href = d.source;
+    if (info) {
+      const flag = img(d.flag, d.country || d.location || "");
+      if (flag) flag.className = "es-flag";
+      const head = d.role === "player"
+        ? el("div", { class: "es-id" }, el("strong", { text: d.alias }), el("span", {}, flag, d.name || ""), d.position ? el("span", { class: "es-role", text: d.position }) : null)
+        : el("div", { class: "es-id" }, el("strong", { text: d.league || d.region || d.title }), el("span", {}, flag, [d.city, d.location].filter(Boolean).join(", ")),
+          d.created?.length ? el("span", { class: "es-role", text: `Since ${d.created[d.created.length - 1].slice(0, 4)}` }) : null);
+      const facts = el("dl", { class: "es-facts" }, ...(d.facts || []).map((f) => el("div", {}, el("dt", { text: f.label }),
+        el("dd", {}, f.label === "Team" ? el("a", { href: searchHref(f.value), text: f.value }) : f.value))));
+      info.replaceChildren($(".sp-label", info), head, facts);
+    }
+    if (list) {
+      if (d.role === "player") {
+        if (!d.titles?.length) { list.remove(); return; }
+        spLabel(list, `World titles · ${d.titles.length}`);
+        list.replaceChildren($(".sp-label", list), el("ol", { class: "es-titles" }, ...d.titles.map((t) => el("li", {},
+          el("span", { class: "es-cup", "aria-hidden": "true" }, icon("trophy")), el("strong", { text: t.year }), el("span", { text: t.event })))));
+      } else {
+        if (!d.roster?.length) { list.remove(); return; }
+        list.replaceChildren($(".sp-label", list), el("ol", { class: "es-roster" }, ...d.roster.map((p) => {
+          const flag = img(p.flag, p.country);
+          if (flag) flag.className = "es-flag";
+          return el("li", {},
+            el("span", { class: "es-pos", text: p.position || "" }),
+            el("a", { class: "es-alias", href: searchHref(p.alias + " " + (d.game?.name || "")) }, flag, el("strong", { text: p.alias })),
+            el("span", { class: "es-name", text: p.name }),
+            el("small", { text: p.joined ? `since ${p.joined.slice(0, 7)}` : "" }));
+        })));
+      }
+    }
+  });
+}
+
+$$("[data-es]").forEach(esPanel);
+$$("[data-compact]").forEach(compactPanel);
+
+for (const shot of $$(".sp-crest, .val-shot, .es-shot")) {
+  shot.addEventListener("error", () => {
+    if (shot.dataset.fallback && shot.src !== shot.dataset.fallback) shot.src = shot.dataset.fallback;
+  });
+}
 
 // The stage shows its picture whole rather than cropped, so nothing needs re-fitting when it lands; a
 // dead original falls back to the thumbnail Wikipedia also offered.

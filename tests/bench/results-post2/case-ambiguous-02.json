@@ -1,0 +1,73 @@
+{
+  "case": {
+    "id": "ambiguous-02",
+    "query": "is Python worth learning",
+    "depth": "compact",
+    "category": "ambiguous_wording",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 0
+    },
+    "supporting_sources": [],
+    "notes": "Opinion-shaped. No factual ground truth to demand."
+  },
+  "id": "ambiguous-02",
+  "query": "is Python worth learning",
+  "depth": "compact",
+  "category": "ambiguous_wording",
+  "run": {
+    "ok": true,
+    "run_id": "L-ZX8C4EuCXA1DHhMt5QmP-V",
+    "total_s": 0.004099500001757406,
+    "marks": {
+      "t_run": 0.003880599993863143,
+      "t_notice": 0.0039198000013129786,
+      "t_status": 0.003941700007999316,
+      "t_error": 0.0039813000039430335
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "No sources came back. Try another search; Archer won't invent a researched answer.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.004099500001757406,
+    "sources_count": 0,
+    "notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer"
+    ],
+    "pass": false
+  }
+}

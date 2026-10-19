@@ -22,6 +22,12 @@ class AIError(Exception):
     pass
 
 
+# Per-request timeouts. The shared client carries no default so these stay exact
+# and a planning call's budget can never be inherited by a generation call.
+PLANNER_TIMEOUT = 30
+GENERATE_TIMEOUT = 45
+
+
 @dataclass(frozen=True)
 class ProviderInfo:
     label: str
@@ -161,12 +167,37 @@ class Provider:
     def __init__(self, settings, client=None):
         self.settings = settings
         self.client = client
+        # One shared client for every model call on this service. Building a fresh
+        # httpx.AsyncClient per call threw away the connection each time; the TLS
+        # context is already shared (tls.context()), so this reuses the socket and
+        # the negotiated connection, not just the certs.
+        self._shared: httpx.AsyncClient | None = None
+
+    def _new_client(self) -> httpx.AsyncClient:
+        # No default timeout: each call passes its own, so a planning call's 30s and
+        # a generation call's 45s cannot inherit one another through a shared client.
+        return httpx.AsyncClient(timeout=None, trust_env=False, verify=tls.context())
 
     async def _with_client(self, timeout, work):
         if self.client:
             return await work(self.client)
-        async with httpx.AsyncClient(timeout=timeout, trust_env=False, verify=tls.context()) as client:
-            return await work(client)
+        if self._shared is None or self._shared.is_closed:
+            self._shared = self._new_client()
+        try:
+            return await work(self._shared)
+        except httpx.HTTPError:
+            # A pooled connection can be dropped between calls. Rebuild the pool so
+            # the *next* call starts clean; this one still surfaces its failure,
+            # because re-issuing a streaming generation would double-bill it.
+            if self._shared is not None and not self._shared.is_closed:
+                await self._shared.aclose()
+            self._shared = None
+            raise
+
+    async def aclose(self):
+        if self._shared is not None and not self._shared.is_closed:
+            await self._shared.aclose()
+        self._shared = None
 
     # ------------------------------------------------------------- planning
 
@@ -181,7 +212,8 @@ class Provider:
                 "tools": tools, "tool_choice": "auto", "stream": False, **self._openai_extras(r, max_output)}
 
         async def request(client):
-            response = await client.post(r.base + "/chat/completions", headers=self._openai_headers(r), json=body)
+            response = await client.post(r.base + "/chat/completions", headers=self._openai_headers(r),
+                                         json=body, timeout=PLANNER_TIMEOUT)
             if response.status_code != 200:
                 raise AIError(f"The AI planner is unavailable (HTTP {response.status_code}).")
             try:
@@ -200,7 +232,8 @@ class Provider:
                 "tools": [{"name": t["function"]["name"], "description": t["function"].get("description", ""),
                            "input_schema": t["function"]["parameters"]} for t in tools],
                 "tool_choice": {"type": "auto"}}
-        response = await client.post(r.base + "/v1/messages", headers=self._anthropic_headers(r), json=body)
+        response = await client.post(r.base + "/v1/messages", headers=self._anthropic_headers(r),
+                                     json=body, timeout=PLANNER_TIMEOUT)
         if response.status_code != 200:
             raise AIError(f"The AI planner is unavailable (HTTP {response.status_code}).")
         try:
@@ -222,7 +255,7 @@ class Provider:
         body = {"model": r.model, "stream": False, "tools": tools, "keep_alive": "10m",
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 "options": {"num_ctx": self.settings.ollama_context, "num_predict": max_output}}
-        response = await client.post(r.base + "/api/chat", json=body)
+        response = await client.post(r.base + "/api/chat", json=body, timeout=PLANNER_TIMEOUT)
         if response.status_code == 400:
             # This local model can't call tools; research continues with the searches it already has.
             return {"role": "assistant", "content": "", "tool_calls": []}, {}
@@ -281,7 +314,8 @@ class Provider:
             body["messages"][0]["content"] += JSON_ONLY  # not every compatible server supports JSON mode
         else:
             body["response_format"] = {"type": "json_object"}
-        async with client.stream("POST", r.base + "/chat/completions", headers=self._openai_headers(r), json=body) as response:
+        async with client.stream("POST", r.base + "/chat/completions", headers=self._openai_headers(r),
+                                 json=body, timeout=GENERATE_TIMEOUT) as response:
             if response.status_code != 200:
                 raise AIError(http_reason(response.status_code, r.info.label))
             async for line in response.aiter_lines():
@@ -306,7 +340,8 @@ class Provider:
                 # Cached system prompt: repeat answers pay a tenth of the input price for it.
                 "system": [{"type": "text", "text": system + JSON_ONLY, "cache_control": {"type": "ephemeral"}}],
                 "messages": [{"role": "user", "content": user}]}
-        async with client.stream("POST", r.base + "/v1/messages", headers=self._anthropic_headers(r), json=body) as response:
+        async with client.stream("POST", r.base + "/v1/messages", headers=self._anthropic_headers(r),
+                                 json=body, timeout=GENERATE_TIMEOUT) as response:
             if response.status_code != 200:
                 raise AIError(http_reason(response.status_code, "Claude"))
             usage = {}
@@ -334,7 +369,7 @@ class Provider:
         body = {"model": r.model, "stream": True, "format": "json", "keep_alive": "10m",
                 "messages": [{"role": "system", "content": system + JSON_ONLY}, {"role": "user", "content": user}],
                 "options": {"num_ctx": self.settings.ollama_context, "num_predict": max_output}}
-        async with client.stream("POST", r.base + "/api/chat", json=body) as response:
+        async with client.stream("POST", r.base + "/api/chat", json=body, timeout=GENERATE_TIMEOUT) as response:
             if response.status_code == 404:
                 raise AIError(f"Ollama doesn't have “{r.model}”. Run `ollama pull {r.model}` or pick another model.")
             if response.status_code != 200:

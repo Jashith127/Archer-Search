@@ -1,0 +1,40 @@
+{% from "macros.html" import hero_badge %}
+{% from "sport_macros.html" import label, skeleton %}
+{# A Valorant Champions Tour season: "vct 2026", "vct 2024", "valorant champions 2025", "vct masters".
+
+   The season's events (Kickoff, Masters, Stages, Champions, the main Game Changers events) arrive from
+   /api/vct/season as a picker, opened on the event the search names, else the one being played now, else
+   for a past season its Champions, else the latest to finish. The event itself (/api/vct/event) is drawn
+   as a result: the champion with the trophy and the grand final, the podium, the rest of the standings
+   with prizes, and the latest series; one still running shows its next matches instead of a champion.
+   Picking another event redraws the body; the season is one search away by year. #}
+{% set d = v.hero.data %}
+<section class="hero hero-val hero-vct" data-vct data-vct-year="{{ d.year }}" data-vct-event="{{ d.event }}" data-vct-region="{{ d.region }}">
+  <div class="hero-head">
+    <div class="hero-head-main">
+      {{ hero_badge("trophy", "Valorant Champions Tour", extra=("Game Changers" if d.event == "gc" else "")) }}
+      <h1 class="hero-title">VCT {{ d.year }}</h1>
+      <p class="hero-sub">{{ "The season so far" if d.year >= d.this_year else "How the " ~ d.year ~ " season finished" }}: every international event, the regional leagues and Game Changers.</p>
+    </div>
+    <nav class="vct-years" aria-label="Other seasons">
+      {% if d.year > 2021 %}<a href="/search?q={{ ('vct ' ~ (d.year - 1))|qs }}" class="link-chip">← {{ d.year - 1 }}</a>{% endif %}
+      {% if d.year < d.this_year %}<a href="/search?q={{ ('vct ' ~ (d.year + 1))|qs }}" class="link-chip">{{ d.year + 1 }} →</a>{% endif %}
+    </nav>
+  </div>
+
+  {# Closed by default: the summary names the event on show; opening it lists the season to pick from. #}
+  <details class="val-card vct-picker" data-vct-picker>
+    <summary class="vct-picker-head">
+      <span class="val-label">Event</span>
+      <span class="vct-picker-now" data-vct-now><span class="skeleton-text"></span></span>
+      <span class="vct-picker-toggle"><span class="vct-open">All events</span><span class="vct-close">Close</span><svg><use href="#u-chevron"/></svg></span>
+    </summary>
+    <div class="vct-picker-body" data-vct-groups></div>
+  </details>
+
+  <div class="vct-body" data-vct-body aria-live="polite">
+    <div class="val-card">{{ skeleton(6, big=True) }}</div>
+  </div>
+
+  <p class="hero-source">Events, standings and results from <a href="https://www.vlr.gg/vct-{{ d.year }}" data-vct-source>VLR.gg</a>.</p>
+</section>

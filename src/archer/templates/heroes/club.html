@@ -1,0 +1,59 @@
+{% from "macros.html" import spec_grid %}
+{% from "sport_macros.html" import panel_head, about, label, skeleton %}
+{# A club: Arsenal, Real Madrid, the Boston Celtics.
+
+   Wikidata says what the club is (crest, ground, founded, coach). How it is doing arrives from
+   /api/sport/club once the page is up, drawn into cards that already hold skeletons of the right size:
+   the table, the form, the next match and the season so far, the squad. Football is drawn as football:
+   a table with its zones, results as W/D/L blocks with the scoreline, the next fixture as a match card
+   with both crests, the squad on a pitch by line. Other sports keep the same cards in their own terms.
+   The club colour (ESPN's) tints all of it. #}
+{% set e = v.hero.data %}
+{% set c = e.club or {} %}
+{% set football = c.sport == "soccer" %}
+<section class="hero hero-entity hero-club {{ 'is-football' if football else 'is-sport' }}"
+  {%- if c.live %} data-club data-club-title="{{ e.title }}" data-club-league="{{ c.league }}" data-club-sport="{{ c.sport_qid }}" data-club-country="{{ c.country }}"{% else %} data-compact{% endif %}>
+  {{ panel_head(v, e, c.league_name) }}
+
+  <div class="sp-top">
+    <div class="sp-stage{% if e.image_logo or e.image %} is-crest{% endif %}">
+      {# Stripes mown into the grass; the club colour runs along the foot once it is known. #}
+      <div class="sp-pitch" aria-hidden="true"></div>
+      {% if e.image %}
+      <img class="sp-crest" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+      {% else %}
+      <div class="ms-blank"><svg><use href="#u-shield"/></svg><span>No crest yet</span></div>
+      {% endif %}
+      <div class="sp-plate" data-sp-plate hidden></div>
+    </div>
+
+    {% if c.live %}
+    <section class="sp-card sp-table" aria-label="League table" data-sp-table>
+      {{ label("trophy", "League table", hook="data-sp-table-label") }}
+      {{ skeleton(6, big=True) }}
+    </section>
+
+    <section class="sp-card sp-form" aria-label="Form" data-sp-form>
+      {{ label("chart", "Form", hook="data-sp-form-label") }}
+      {{ skeleton(4) }}
+    </section>
+    {% endif %}
+  </div>
+
+  {% if c.live %}
+  {# The next match, or the one being played now. #}
+  <section class="sp-card sp-next" aria-label="Next match" data-sp-next>
+    {{ label("calendar", "Next match", hook="data-sp-next-label") }}
+    {{ skeleton(2, big=True) }}
+  </section>
+
+  <section class="sp-card sp-squad" aria-label="Squad" data-sp-squad>
+    {{ label("users", "Squad", hook="data-sp-squad-label") }}
+    {{ skeleton(3) }}
+  </section>
+  {% endif %}
+
+  {{ spec_grid(e.specs) }}
+  {{ about(e) }}
+  <p class="hero-source">Club details from Wikipedia and Wikidata.{% if c.live %} Table, results, fixtures and squad from ESPN.{% endif %}</p>
+</section>

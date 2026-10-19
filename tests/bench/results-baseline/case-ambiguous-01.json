@@ -1,0 +1,74 @@
+{
+  "case": {
+    "id": "ambiguous-01",
+    "query": "best mechanical keyboard",
+    "depth": "compact",
+    "category": "ambiguous_wording",
+    "properties": {
+      "ambiguous": true,
+      "must_cite": [],
+      "forbidden": [
+        "a single unconditional recommendation with no stated conditions"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Inherently underspecified. Graded only on structural properties and on whether conditions are stated."
+  },
+  "id": "ambiguous-01",
+  "query": "best mechanical keyboard",
+  "depth": "compact",
+  "category": "ambiguous_wording",
+  "run": {
+    "ok": true,
+    "run_id": "dwUytweTFQknGNTe21trAgzg",
+    "total_s": 2.428267399998731,
+    "marks": {
+      "t_run": 0.0053152000036789104,
+      "t_notice": 0.029487899999367073,
+      "t_status": 0.029624500006320886,
+      "t_visuals": 0.0304928999976255,
+      "t_sources": 0.03135640000982676,
+      "t_card": 0.037146900009247474,
+      "t_block": 1.4385781000019051,
+      "t_complete": 2.4277951000112807
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000505,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 2922,
+    "output_tokens": 349,
+    "replayed": false,
+    "t_first_block_s": 1.4385781000019051,
+    "t_complete_s": 2.428267399998731,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

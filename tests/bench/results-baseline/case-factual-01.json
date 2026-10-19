@@ -1,0 +1,91 @@
+{
+  "case": {
+    "id": "factual-01",
+    "query": "why do cats knead",
+    "depth": "compact",
+    "category": "straightforward_factual",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "marks territory or comfort behaviour",
+          "tokens": [
+            "territor",
+            "comfort",
+            "mother",
+            "nurse",
+            "suckle"
+          ]
+        }
+      ],
+      "forbidden": [
+        "veterinary advice presented as diagnosis"
+      ],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Compact path. Exercises the zero-planner research path and snippet-only evidence handling."
+  },
+  "id": "factual-01",
+  "query": "why do cats knead",
+  "depth": "compact",
+  "category": "straightforward_factual",
+  "run": {
+    "ok": true,
+    "run_id": "OB-W9v8MaBWkwFtAi-cqmm4-",
+    "total_s": 2.4981389999884414,
+    "marks": {
+      "t_run": 0.002996700000949204,
+      "t_notice": 0.013449199992464855,
+      "t_status": 0.013517499988665804,
+      "t_visuals": 0.01359299999603536,
+      "t_sources": 0.014974899997469038,
+      "t_card": 0.015066199994180351,
+      "t_block": 1.0955815999914194,
+      "t_complete": 2.4977465999982087
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 3,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": false,
+    "facts": [
+      {
+        "label": "marks territory or comfort behaviour",
+        "present": true,
+        "cited": true
+      }
+    ],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 0,
+    "cost_usd": 0.000538,
+    "cost_is_ceiling": true,
+    "evidence_label": "From search excerpts and Archer data",
+    "input_tokens": 3009,
+    "output_tokens": 386,
+    "replayed": false,
+    "t_first_block_s": 1.0955815999914194,
+    "t_complete_s": 2.4981389999884414,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "summary rests only on unverified snippets"
+    ],
+    "pass": false
+  }
+}

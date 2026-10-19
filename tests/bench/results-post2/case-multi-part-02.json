@@ -1,0 +1,91 @@
+{
+  "case": {
+    "id": "multi-part-02",
+    "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+    "depth": "research",
+    "category": "multi_part_requires_several_sources",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [
+        {
+          "label": "a temperature near the reduced boiling point",
+          "tokens": [
+            "9",
+            "°",
+            "celsius",
+            "below"
+          ]
+        }
+      ],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "notes": "Two-part technical. The calculate tool is in relevant_tools for arithmetic-shaped questions."
+  },
+  "id": "multi-part-02",
+  "query": "what is the boiling point of water at 2000 metres altitude and how does that affect cooking",
+  "depth": "research",
+  "category": "multi_part_requires_several_sources",
+  "run": {
+    "ok": true,
+    "run_id": "OzgZHz2HjwAd0vIPRi4AmiJm",
+    "total_s": 0.00984959999914281,
+    "marks": {
+      "t_run": 0.007111099999747239,
+      "t_notice": 0.0074745999881997705,
+      "t_status": 0.008312499994644895,
+      "t_visuals": 0.008853899998939596,
+      "t_error": 0.009463099995628
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "Couldn't retrieve supporting evidence. Try a more specific question.",
+    "blocks": 0,
+    "summary_is_first": false,
+    "summary_present": false,
+    "citations_resolve": true,
+    "summary_cited": false,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": null,
+    "facts": [
+      {
+        "label": "a temperature near the reduced boiling point",
+        "present": false,
+        "cited": false
+      }
+    ],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": null,
+    "t_complete_s": 0.00984959999914281,
+    "sources_count": 0,
+    "notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "SearXNG is rate-limited right now"
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "no summary block in answer",
+      "required facts absent: ['a temperature near the reduced boiling point']"
+    ],
+    "pass": false
+  }
+}

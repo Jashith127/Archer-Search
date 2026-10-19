@@ -1,0 +1,83 @@
+{
+  "case": {
+    "id": "compare-02",
+    "query": "is the Sony WH-1000XM5 worth buying over the Bose QC Ultra",
+    "depth": "research",
+    "category": "company_and_product_comparison",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a price asserted with no citation"
+      ],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Product comparison with prices. Exercises the product-card path and price grounding."
+  },
+  "id": "compare-02",
+  "query": "is the Sony WH-1000XM5 worth buying over the Bose QC Ultra",
+  "depth": "research",
+  "category": "company_and_product_comparison",
+  "run": {
+    "ok": true,
+    "run_id": "53d3Lf263TMUG9o7AD0vlaML",
+    "total_s": 6.69378709999728,
+    "marks": {
+      "t_run": 0.004339899998740293,
+      "t_notice": 0.004392599992570467,
+      "t_status": 0.004577699990477413,
+      "t_visuals": 0.005754999991040677,
+      "t_sources": 2.439085999998497,
+      "t_block": 3.4517062999948394,
+      "t_complete": 6.693409699990298
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 6,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "24",
+      "30",
+      "400",
+      "429"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.001996,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 4458,
+    "output_tokens": 988,
+    "replayed": false,
+    "t_first_block_s": 3.4517062999948394,
+    "t_complete_s": 6.69378709999728,
+    "sources_count": 12,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Bose QuietComfort Ultra Headphones vs Sony WH-1000XM5: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['24', '30', '400', '429']"
+    ],
+    "pass": false
+  }
+}

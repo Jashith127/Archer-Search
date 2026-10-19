@@ -1,0 +1,138 @@
+{
+  "case": {
+    "id": "followup-01",
+    "query": "why do cats knead",
+    "depth": "research",
+    "category": "followup_depends_on_context",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "followup": "what about kittens",
+    "followup_properties": {
+      "must_cite": [],
+      "forbidden": [
+        "a total restart that ignores the established topic"
+      ]
+    },
+    "notes": "Follow-up pair. Exercises parent-run inheritance and previous_answer_untrusted."
+  },
+  "id": "followup-01",
+  "query": "why do cats knead",
+  "depth": "research",
+  "category": "followup_depends_on_context",
+  "run": {
+    "ok": true,
+    "run_id": "q4G5CSKpNffTlaeCujjApkTr",
+    "total_s": 5.207393000004231,
+    "marks": {
+      "t_run": 0.008239000002504326,
+      "t_notice": 0.011620699995546602,
+      "t_status": 0.011651900000288151,
+      "t_visuals": 0.011695399996824563,
+      "t_sources": 0.01596140000037849,
+      "t_card": 0.01706719999492634,
+      "t_block": 1.9380921999982093,
+      "t_complete": 5.207258499998716
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 6,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 0,
+    "pages_read": 3,
+    "cost_usd": 0.001981,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 5319,
+    "output_tokens": 823,
+    "replayed": false,
+    "t_first_block_s": 1.9380921999982093,
+    "t_complete_s": 5.207393000004231,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Why Do Cats Knead? 7 Vet-Reviewed Reasons They Do It: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  },
+  "followup": {
+    "run": {
+      "ok": true,
+      "run_id": "Xy42IhDZeNheNdhkTh9cDN0L",
+      "total_s": 6.482216499993228,
+      "marks": {
+        "t_run": 0.005091400002129376,
+        "t_notice": 0.00541680000605993,
+        "t_status": 0.005662700001266785,
+        "t_visuals": 0.014219100004993379,
+        "t_card": 2.3201789000013378,
+        "t_sources": 2.3204960000002757,
+        "t_block": 3.534400499993353,
+        "t_complete": 6.4810197000042535
+      }
+    },
+    "grade": {
+      "terminal": "complete",
+      "blocks": 6,
+      "summary_is_first": true,
+      "summary_present": true,
+      "citations_resolve": true,
+      "summary_cited": true,
+      "unsupported_numbers": [],
+      "numbers_supported": true,
+      "summary_not_snippet_only": true,
+      "facts": [],
+      "model_calls": 1,
+      "searches": 0,
+      "pages_read": 6,
+      "cost_usd": 0.002284,
+      "cost_is_ceiling": true,
+      "evidence_label": "Read source pages and Archer data",
+      "input_tokens": 7250,
+      "output_tokens": 687,
+      "replayed": false,
+      "t_first_block_s": 3.534400499993353,
+      "t_complete_s": 6.482216499993228,
+      "sources_count": 13,
+      "notices": [
+        "Some search engines were unavailable; coverage is partial."
+      ],
+      "infra_degraded": true,
+      "infra_notices": [
+        "Some search engines were unavailable; coverage is partial."
+      ],
+      "human_review": {
+        "citation_support": null,
+        "addresses_question": null,
+        "unsupported_claims": null,
+        "notes": null
+      },
+      "problems": [],
+      "pass": true
+    }
+  }
+}

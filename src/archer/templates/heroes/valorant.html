@@ -1,0 +1,86 @@
+{% from "macros.html" import spec_grid %}
+{% from "sport_macros.html" import panel_head, about, label, skeleton %}
+{# Valorant teams and players, drawn in the game's own language: angular cut corners, the red, tactical
+   mono captions, agents by role (duelist, initiator, controller, sentinel).
+
+   Wikidata says who this is. Everything that changes arrives from /api/esports (VLR.gg) after the page is
+   up, into cards that already hold skeletons:
+   - a team: VLR rank and rating with the record, the active five and the staff, recent series with every
+     map's score and both agent compositions, the map pool with attack and defence round rates, the rating
+     over this roster's matches, and event placements with the winnings;
+   - a player: career rating, ACS, K:D, ADR and KAST across every agent, the role split, the agent pool
+     with each agent's line, the last maps played (agent, score, rating, K/D/A), their team and the ones
+     before it, and placements. #}
+{% set e = v.hero.data %}
+{% set s = e.esports or {} %}
+{% set player = s.role == "player" %}
+<section class="hero hero-entity hero-val {{ 'is-player' if player else 'is-team' }}" data-val data-val-title="{{ e.title }}" data-val-role="{{ s.role }}">
+  {{ panel_head(v, e, s.team if player else "Valorant") }}
+
+  <div class="val-top">
+    <div class="val-stage{% if not player %} is-logo{% endif %}">
+      <span class="val-tick val-tick--tl" aria-hidden="true"></span><span class="val-tick val-tick--br" aria-hidden="true"></span>
+      {% if e.image %}
+      <img class="val-shot" src="{{ e.image }}" data-fallback="{{ e.image_fallback }}" alt="{{ e.title }}" referrerpolicy="no-referrer" fetchpriority="high">
+      {% else %}
+      <div class="ms-blank val-blank"><svg><use href="#u-{{ 'user' if player else 'crosshair' }}"/></svg><span>{{ s.handle or e.title }}</span></div>
+      {% endif %}
+      <div class="val-plate" data-val-plate hidden></div>
+    </div>
+
+    {% if player %}
+    <section class="val-card val-career" aria-label="Career" data-val-career>
+      {{ label("crosshair", "Career", cls="val-label") }}
+      {{ skeleton(4, big=True) }}
+    </section>
+    <section class="val-card val-team" aria-label="Team" data-val-team>
+      {{ label("users", "Team", cls="val-label") }}
+      {{ skeleton(4) }}
+    </section>
+    {% else %}
+    <section class="val-card val-rank" aria-label="Ranking" data-val-rank>
+      {{ label("chart", "VLR rating", cls="val-label") }}
+      {{ skeleton(3, big=True) }}
+    </section>
+    <section class="val-card val-roster" aria-label="Roster" data-val-roster>
+      {{ label("users", "Active roster", cls="val-label") }}
+      {{ skeleton(5) }}
+    </section>
+    {% endif %}
+  </div>
+
+  {% if player %}
+  <section class="val-card val-agents" aria-label="Agent pool" data-val-agents>
+    {{ label("target", "Agent pool", cls="val-label") }}
+    {{ skeleton(2) }}
+  </section>
+  <section class="val-card val-log" aria-label="Recent maps" data-val-log>
+    {{ label("crosshair", "Recent maps", cls="val-label") }}
+    {{ skeleton(3) }}
+  </section>
+  {% else %}
+  <section class="val-card val-series" aria-label="Recent series" data-val-series>
+    {{ label("crosshair", "Recent series", cls="val-label") }}
+    {{ skeleton(4) }}
+  </section>
+  <div class="val-duo">
+    <section class="val-card val-maps" aria-label="Map pool" data-val-maps>
+      {{ label("map", "Map pool", cls="val-label") }}
+      {{ skeleton(5) }}
+    </section>
+    <section class="val-card val-history" aria-label="Rating history" data-val-history>
+      {{ label("chart", "Rating · this roster", cls="val-label") }}
+      {{ skeleton(3) }}
+    </section>
+  </div>
+  {% endif %}
+
+  <section class="val-card val-trophies" aria-label="Event placements" data-val-trophies>
+    {{ label("trophy", "Event placements", cls="val-label") }}
+    {{ skeleton(2) }}
+  </section>
+
+  {{ spec_grid(e.specs) }}
+  {{ about(e) }}
+  <p class="hero-source">Identity from Wikipedia and Wikidata. Roster, matches, maps, agents, ratings and placements from <a href="https://www.vlr.gg/" data-val-source>VLR.gg</a>.</p>
+</section>

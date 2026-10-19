@@ -1,0 +1,137 @@
+{
+  "case": {
+    "id": "followup-01",
+    "query": "why do cats knead",
+    "depth": "research",
+    "category": "followup_depends_on_context",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [],
+      "min_supporting_sources": 1
+    },
+    "supporting_sources": [],
+    "followup": "what about kittens",
+    "followup_properties": {
+      "must_cite": [],
+      "forbidden": [
+        "a total restart that ignores the established topic"
+      ]
+    },
+    "notes": "Follow-up pair. Exercises parent-run inheritance and previous_answer_untrusted."
+  },
+  "id": "followup-01",
+  "query": "why do cats knead",
+  "depth": "research",
+  "category": "followup_depends_on_context",
+  "run": {
+    "ok": true,
+    "run_id": "6Epl_0O9B07QYoOIzxTlBWbT",
+    "total_s": 3.089482200011844,
+    "marks": {
+      "t_run": 0.016507000007550232,
+      "t_notice": 0.0514722000079928,
+      "t_status": 0.05578280000190716,
+      "t_visuals": 0.05818370000633877,
+      "t_sources": 0.0595445000071777,
+      "t_card": 0.06045870001253206,
+      "t_block": 1.5497733000083826,
+      "t_error": 3.0889100000058534
+    }
+  },
+  "grade": {
+    "terminal": "error",
+    "error_text": "AI returned a list item without retrieved evidence.",
+    "blocks": 4,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [],
+    "numbers_supported": true,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": null,
+    "searches": null,
+    "pages_read": null,
+    "cost_usd": null,
+    "cost_is_ceiling": null,
+    "evidence_label": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "replayed": false,
+    "t_first_block_s": 1.5497733000083826,
+    "t_complete_s": 3.089482200011844,
+    "sources_count": 13,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Why do cats knead on their owners? - Quora: couldn't read the page; keeping its excerpt.",
+      "Why do cats knead? : r/biology - Reddit: couldn't read the page; keeping its excerpt.",
+      "Why do Cats Knead? | Blue Cross: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": false,
+    "infra_notices": [],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [],
+    "pass": true
+  },
+  "followup": {
+    "run": {
+      "ok": true,
+      "run_id": "YZcjkX6heNhB5FcdvX0YFvlO",
+      "total_s": 3.54838939999172,
+      "marks": {
+        "t_run": 0.006693599993013777,
+        "t_notice": 0.00703839999914635,
+        "t_status": 0.008796800000709482,
+        "t_visuals": 0.008986799992271699,
+        "t_card": 0.941234700003406,
+        "t_sources": 0.9417264999938197,
+        "t_block": 2.063718199991854,
+        "t_complete": 3.5458018999925116
+      }
+    },
+    "grade": {
+      "terminal": "complete",
+      "blocks": 3,
+      "summary_is_first": true,
+      "summary_present": true,
+      "citations_resolve": true,
+      "summary_cited": true,
+      "unsupported_numbers": [],
+      "numbers_supported": true,
+      "summary_not_snippet_only": true,
+      "facts": [],
+      "model_calls": 1,
+      "searches": 0,
+      "pages_read": 4,
+      "cost_usd": 0.001879,
+      "cost_is_ceiling": true,
+      "evidence_label": "Read source pages and Archer data",
+      "input_tokens": 6334,
+      "output_tokens": 453,
+      "replayed": false,
+      "t_first_block_s": 2.063718199991854,
+      "t_complete_s": 3.54838939999172,
+      "sources_count": 13,
+      "notices": [
+        "Some search engines were unavailable; coverage is partial."
+      ],
+      "infra_degraded": false,
+      "infra_notices": [],
+      "human_review": {
+        "citation_support": null,
+        "addresses_question": null,
+        "unsupported_claims": null,
+        "notes": null
+      },
+      "problems": [],
+      "pass": true
+    }
+  }
+}

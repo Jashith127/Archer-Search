@@ -1,0 +1,108 @@
+{
+  "case": {
+    "id": "compare-01",
+    "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+    "depth": "research",
+    "category": "company_and_product_comparison",
+    "properties": {
+      "ambiguous": false,
+      "must_cite": [],
+      "forbidden": [
+        "a single unsupported winner declared without conditions"
+      ],
+      "min_supporting_sources": 2
+    },
+    "supporting_sources": [],
+    "notes": "Two-sided comparison. direct_tools() should route this to two parallel search_web calls without the planner. Verify search count >= 2 and that model_calls stays within the research range."
+  },
+  "id": "compare-01",
+  "query": "rtx 4070 vs rx 7800 xt for 1440p gaming",
+  "depth": "research",
+  "category": "company_and_product_comparison",
+  "run": {
+    "ok": true,
+    "run_id": "6hSq5c2UQhNdqtwOfuoXnMNk",
+    "total_s": 9.997232099995017,
+    "marks": {
+      "t_run": 0.003827299995464273,
+      "t_notice": 0.005258799996227026,
+      "t_status": 0.005480899999383837,
+      "t_card": 0.8496572999865748,
+      "t_visuals": 1.6111972999933641,
+      "t_sources": 2.1961279999959515,
+      "t_block": 5.215556499999366,
+      "t_complete": 9.997086499992292
+    }
+  },
+  "grade": {
+    "terminal": "complete",
+    "blocks": 8,
+    "summary_is_first": true,
+    "summary_present": true,
+    "citations_resolve": true,
+    "summary_cited": true,
+    "unsupported_numbers": [
+      "10",
+      "12",
+      "144",
+      "145",
+      "150",
+      "158",
+      "165",
+      "2",
+      "200",
+      "2077",
+      "25",
+      "263",
+      "3",
+      "35",
+      "499",
+      "5",
+      "58",
+      "599",
+      "600",
+      "650",
+      "66",
+      "700",
+      "86",
+      "90"
+    ],
+    "numbers_supported": false,
+    "summary_not_snippet_only": true,
+    "facts": [],
+    "model_calls": 1,
+    "searches": 2,
+    "pages_read": 3,
+    "cost_usd": 0.002892,
+    "cost_is_ceiling": true,
+    "evidence_label": "Read source pages and Archer data",
+    "input_tokens": 6446,
+    "output_tokens": 1269,
+    "replayed": false,
+    "t_first_block_s": 5.215556499999366,
+    "t_complete_s": 9.997232099995017,
+    "sources_count": 35,
+    "notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "RX 7800XT vs RTX 4070 SUPER: Whichbis better for 1440p gaming ...: couldn't read the page; keeping its excerpt."
+    ],
+    "infra_degraded": true,
+    "infra_notices": [
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial.",
+      "Some search engines were unavailable; coverage is partial."
+    ],
+    "human_review": {
+      "citation_support": null,
+      "addresses_question": null,
+      "unsupported_claims": null,
+      "notes": null
+    },
+    "problems": [
+      "unsupported quantities: ['10', '12', '144', '145', '150', '158', '165', '2', '200', '2077', '25', '263', '3', '35', '499', '5', '58', '599', '600', '650', '66', '700', '86', '90']"
+    ],
+    "pass": false
+  }
+}

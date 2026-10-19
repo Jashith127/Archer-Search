@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from archer import utilities, views
-from archer.evidence import add
+from archer.evidence import add, discussion_host
 from archer.sources import github, weather, wiki, watch
 from archer.imagerank import relevant_images
 from archer.evidence import public_url
@@ -87,6 +87,11 @@ def schemas(names=None):
 
 
 class Toolbox:
+    # Characters per candidate passage. A page is cut into these, they are ranked
+    # against the question, and the top ones are kept until the answer prompt's
+    # per-source budget is filled (see read()).
+    PASSAGE_CHARS = 1800
+
     def __init__(self, searx, ext, reader, settings, evidence, emit):
         self.searx, self.ext, self.reader, self.settings = searx, ext, reader, settings
         self.evidence, self.emit = evidence, emit
@@ -95,6 +100,9 @@ class Toolbox:
         self.ui = {}
         self.shown = set()
         self.executed = set()
+        # Set by execute() so passage selection matches the prompt's own budget.
+        self.text_budget = None
+        self.depth = "compact"
 
     async def call(self, name, raw):
         if name not in TOOLS:
@@ -256,13 +264,36 @@ class Toolbox:
         async def one(item):
             try:
                 text = await self.reader.read(item.url)
-                # Keep relevant passages, rather than always feeding the first page section.
+                # Keep relevant passages rather than always feeding the first page
+                # section, and size the result to what the answer prompt will
+                # actually carry. Selecting 4x1800 chars and then truncating to
+                # `chars` in model_text() discarded most of the ranking work.
                 terms = set(self.question.lower().split()) if hasattr(self, "question") else set()
-                passages = [text[i:i+1800] for i in range(0, len(text), 1800)]
+                passages = [text[i:i+self.PASSAGE_CHARS] for i in range(0, len(text), self.PASSAGE_CHARS)]
                 passages.sort(key=lambda p: sum(t in p.lower() for t in terms if len(t) > 3), reverse=True)
-                item.text = "\n\n".join(passages[:4])
-                item.kind, item.limitation = "page", "Selected extracted passages; page may omit inaccessible content."
+                budget = self.text_budget or (1100 if self.depth == "compact" else 2800)
+                kept, used = [], 0
+                for passage in passages:
+                    if used >= budget:
+                        break
+                    # Never cut mid-passage: a half sentence reads as a broken claim.
+                    kept.append(passage[:max(0, budget - used)])
+                    used += min(len(passage), budget - used)
+                item.text = "\n\n".join(kept)
+                # A forum thread stays a discussion even when Archer managed to fetch
+                # it. Fetchable is not the same as editorial: promoting it to `page`
+                # would hand it the +4 kind bonus in ranked_evidence and let a
+                # navigation listing outrank real reporting.
+                was_discussion = item.kind == "discussion" or discussion_host(item.url)
+                item.kind = "discussion" if was_discussion else "page"
+                item.verified = not was_discussion
+                item.limitation = ("Discussion thread read; it reports attributed opinion, "
+                                   "not verified fact.") if was_discussion else \
+                    "Selected extracted passages; page may omit inaccessible content."
             except (ValueError, OSError, httpx.HTTPError, TimeoutError):
+                # Keep the excerpt, but mark it unverified so it cannot be the only
+                # thing standing behind a summary.
+                item.verified = False
                 item.limitation = "Page could not be read; only the search excerpt is available."
                 self.emit("notice", {"text": item.title + ": couldn't read the page; keeping its excerpt."})
         await asyncio.gather(*(one(item) for item in selected))
