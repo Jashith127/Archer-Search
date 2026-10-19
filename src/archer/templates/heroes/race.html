@@ -6,8 +6,9 @@
 {% set r = e.race or {} %}
 {# A Formula One Grand Prix also gets its live card: this season's round, the circuit drawn as a dot matrix
    and who has won there. /api/f1/gp answers {} for anything that isn't on the calendar. #}
+{% set series = e.title|lower|trim in ["formula one", "formula 1", "f1", "formula one world championship", "fia formula one world championship"] %}
 {% set gp = "grand prix" in e.title|lower or "Formula One" in r.disciplines %}
-<section class="hero hero-entity hero-race"{% if gp %} data-f1-gp="{{ e.title }}"{% endif %}>
+<section class="hero hero-entity hero-race"{% if gp %} data-f1-gp="{{ e.title }}"{% endif %}{% if series %} data-f1-series{% endif %}>
   <div class="hero-head">
     <div class="hero-head-main">
       {{ hero_badge(e.badge.icon, e.badge.label, extra=(r.year|string if r.year else "")) }}
@@ -23,6 +24,9 @@
     <div class="hero-links">{% for l in e.links %}{{ link_chip(l) }}{% endfor %}</div>
   </div>
 
+  {% if series %}
+  <div class="f1s" data-f1s hidden></div>
+  {% endif %}
   {% if gp %}
   <section class="f1-card f1-weekend f1-gp" aria-label="This season" data-f1-gp-card hidden>
     <p class="f1-label"><svg><use href="#u-flag"/></svg><span data-f1-gp-label>This season</span></p>

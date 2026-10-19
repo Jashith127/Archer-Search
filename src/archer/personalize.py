@@ -39,6 +39,7 @@ import numpy as np
 from archer.config import settings
 from archer.embed import LEXICAL, Embeddings, embeddings as default_embeddings, words
 from archer.history import History, host_of, norm
+from archer.quality import signals
 
 # Similarity above which two searches count as "about the same thing". Every model spreads its
 # scores differently (one puts unrelated text near 0, another near 0.4), so each is calibrated on
@@ -478,12 +479,13 @@ class Personalizer:
             sem_n = (sem - sem.min()) / spread if spread > 0.05 else np.full(len(kept), 0.5)
             w_sem = W_SEMANTIC if model != "lexical" else W_SEMANTIC / 2
             scored = []
+            quality = signals(q, kept)
             for i, r in enumerate(kept):
                 rank = 1 / (1 + 0.25 * i)  # the provider's order, independent of page length
                 aff = 1 - np.exp(-affinity.get(r.host, 0.0)) if opened[r.host] >= 2 else 0.0
                 pref = PREF_BONUS.get(site_pref(r.host, prefs), 0.0)
                 revisit = 0.08 if r.url in visits else 0.0
-                score = W_RANK * rank + w_sem * float(sem_n[i]) + W_AFFINITY * aff + pref + revisit
+                score = W_RANK * rank + w_sem * float(sem_n[i]) + W_AFFINITY * aff + pref + revisit + quality[i]
                 scored.append((score, -i, r))
             scored.sort(reverse=True, key=lambda t: (t[0], t[1]))
             kept = [r for _, _, r in scored]

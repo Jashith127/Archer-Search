@@ -493,6 +493,12 @@ async def api_f1_gp(request: Request, title: str = Query("", max_length=120)) ->
     return JSONResponse(await f1.grand_prix(request.app.state.ext, title.strip()))
 
 
+@app.get("/api/f1/season")
+async def api_f1_season(request: Request) -> JSONResponse:
+    """The championship now: driver and constructor tables, next round, last podium, the calendar."""
+    return JSONResponse(await f1.season(request.app.state.ext))
+
+
 @app.get("/api/f1/circuit")
 async def api_f1_circuit(request: Request, title: str = Query("", max_length=120),
                          lat: str = Query("", max_length=20), lon: str = Query("", max_length=20)) -> JSONResponse:

@@ -2782,6 +2782,87 @@ $$("[data-f1]").forEach(f1Panel);
 $$("[data-f1-gp]").forEach(gpPanel);
 $$("[data-f1-circuit]").forEach(circuitPanel);
 
+// The championship itself ("Formula One"): the table as it stands, the constructors, the next round with
+// its circuit, the last round's podium and the season as a strip, laid out as a bento. Every tile reuses a
+// piece the driver, team and Grand Prix panels already draw.
+function f1sTable(title, iconName, rows, { driver }) {
+  const list = el("ol", { class: "f1s-rows" });
+  const top = Math.max(1, ...rows.map((r) => Number(r.points) || 0));
+  rows.forEach((r, i) => {
+    const bar = el("span", { class: "f1s-bar" }, el("i"));
+    bar.firstChild.style.width = `${Math.max(2, (r.points / top) * 100)}%`;
+    if (r.color) bar.firstChild.style.background = r.color;
+    const swatch = el("i", { class: "f1s-swatch" });
+    if (r.color) swatch.style.background = r.color;
+    list.append(el("li", { class: i === 0 ? "is-lead" : "" },
+      el("span", { class: "f1s-pos", text: String(r.position) }), swatch,
+      el("span", { class: "f1s-who" }, el("a", { href: searchHref(r.name), text: r.name }), driver ? el("small", { text: r.team }) : null),
+      bar, el("strong", { text: f1Num(r.points) }), el("small", { class: "f1s-gap", text: i ? `−${f1Num(r.gap)}` : (r.wins ? `${r.wins}W` : "") })));
+  });
+  return list;
+}
+
+function f1sLead(d) {
+  const lead = d.drivers[0], second = d.drivers[1];
+  if (!lead) return null;
+  const box = el("div", { class: "f1s-lead" },
+    el("span", { class: "f1s-lead-num", text: lead.number || lead.code || "1" }),
+    el("div", {}, el("small", { text: "Championship leader" }), el("a", { class: "f1s-lead-name", href: searchHref(lead.name), text: lead.name }),
+      el("span", { class: "f1s-lead-rec", text: `${lead.team} · ${f1Plural(lead.wins, "win")}${second ? ` · ${f1Num(lead.points - second.points)} clear` : ""}` })),
+    el("strong", { class: "f1s-lead-pts" }, f1Num(lead.points), el("small", { text: "pts" })));
+  if (lead.color) box.style.setProperty("--team", lead.color);
+  return box;
+}
+
+function f1sTile(cls, iconName, text, ...kids) {
+  return el("section", { class: "f1-card f1s-tile " + cls, "aria-label": text }, f1Label(text, iconName), ...kids.filter(Boolean));
+}
+
+function seriesPanel(panel) {
+  const box = $("[data-f1s]", panel);
+  getJSON("/api/f1/season").then((d) => {
+    if (!box || !d?.drivers?.length) return;
+    const tiles = [];
+    const progress = `${d.season} · ${d.run} of ${d.rounds} rounds run`;
+    const scroller = el("div", { class: "f1s-scroll", tabindex: "0", role: "region", "aria-label": "All drivers" },
+      el("div", { class: "f1s-scroll-in" }, f1sTable("Drivers", "trophy", d.drivers, { driver: true })));
+    tiles.push(f1sTile("f1s-drivers", "trophy", `Drivers' championship · ${d.season} · ${d.drivers.length} drivers`, f1sLead(d), scroller));
+
+    if (d.next?.name) {
+      const n = d.next;
+      const flagImg = n.flag ? img(n.flag, "") : null;
+      if (flagImg) flagImg.className = "f1-flag";
+      const map = f1TrackBlock(n.map, "", `${n.circuit}, track map`);
+      const rail = f1Rail(n.schedule, false);
+      tiles.push(f1sTile("f1s-next", "flag", `Next · round ${n.round} of ${d.rounds}`,
+        el("h3", { class: "f1-race-name" }, flagImg, el("a", { href: searchHref(n.name), text: n.name })),
+        el("p", { class: "f1-race-where" }, el("span", { text: n.circuit }), el("span", { text: [n.locality, n.country].filter(Boolean).join(", ") })),
+        f1Countdown(n.start), map, rail, n.sprint ? el("span", { class: "f1-sprint" }, icon("bolt"), "Sprint weekend") : null));
+    }
+
+    tiles.push(f1sTile("f1s-teams", "award", "Constructors' championship", f1sTable("Constructors", "award", d.constructors, { driver: false })));
+
+    if (d.last?.podium?.length) {
+      const l = d.last;
+      const stats = f1Stats(l.report);
+      tiles.push(f1sTile("f1s-last", "flag", `Last race · round ${l.round}`,
+        el("h3", { class: "f1-race-name f1-race-name--sm" }, el("a", { href: searchHref(l.name), text: l.name })),
+        f1Steps(l.podium), stats));
+    }
+    const strip = f1Calendar(d.calendar, d.run + 1);
+    if (strip) tiles.push(f1sTile("f1s-season", "calendar", progress, strip));
+
+    box.replaceChildren(...tiles);
+    box.hidden = false;
+    panel.classList.add("has-series");
+    const lead = d.drivers[0]?.color;
+    if (lead) panel.style.setProperty("--team", lead);
+  });
+}
+
+$$("[data-f1-series]").forEach(seriesPanel);
+
+
 // ------------------------------------------------- clubs and leagues
 // Club and league panels. The page arrives with skeletons; ESPN's half lands from /api/sport/* and is
 // drawn in the house vocabulary with one accent, --club, the club's own colour. Football is drawn as
@@ -3020,11 +3101,90 @@ function clubPanel(panel) {
   });
 }
 
+// A football league as a bento: the title race (leader large, the rest as bars against his points), this
+// round as score tiles, four one-number records, one strip per zone, and the whole table folded away.
+function lgTile(cls, name, text, ...kids) {
+  return el("section", { class: "sp-card lg-tile " + cls, "aria-label": text }, el("p", { class: "sp-label" }, icon(name), el("span", { text })), ...kids.filter(Boolean));
+}
+
+function lgBento(panel, d) {
+  const grid = $(".sp-league", panel);
+  const rows = d.tables[0].rows;
+  if (!grid || rows.length < 4) return false;
+  const lead = rows[0], top = Math.max(1, lead.points || 0);
+  const link = (r, cls = "") => el("a", { class: cls, href: searchHref(r.name), text: r.name });
+
+  // Title race.
+  const race = el("ol", { class: "lg-race" });
+  rows.slice(0, 5).forEach((r, i) => {
+    const bar = el("span", { class: "lg-bar" }, el("i"));
+    bar.firstChild.style.width = `${Math.max(3, (r.points / top) * 100)}%`;
+    race.append(el("li", { class: i === 0 ? "is-lead" : "" }, el("span", { class: "lg-rank", text: String(r.rank) }), spCrest(r.logo, r.abbr || r.name), link(r), bar,
+      el("strong", { text: String(r.points) }), el("small", { text: i ? `−${top - r.points}` : "" })));
+  });
+  const hero = el("div", { class: "lg-lead" }, spCrest(lead.logo, lead.abbr || lead.name, "lg-lead-crest"),
+    el("div", {}, el("small", { text: "Leaders" }), link(lead, "lg-lead-name"),
+      el("span", { class: "lg-lead-rec", text: `${lead.wins}W ${lead.draws}D ${lead.losses}L · GD ${spSigned(lead.diff)} · ${lead.played} played` })));
+  const tiles = [lgTile("lg-race-tile", "trophy", "Title race", hero, race)];
+
+  // This round.
+  if (d.games?.length) {
+    const live = d.games.some((g) => g.state === "in");
+    const list = el("div", { class: "lg-games" });
+    let day = "";
+    for (const g of d.games) {
+      const today = spDay(g.date);
+      if (today !== day) { day = today; list.append(el("p", { class: "sp-round-day lg-day", text: today })); }
+      const mid = g.state === "pre" ? el("span", { class: "lg-score is-pre", text: f1Clock(g.date) })
+        : el("span", { class: "lg-score" + (g.state === "in" ? " is-live" : "") }, `${g.home.score ?? ""}–${g.away.score ?? ""}`, el("small", { text: g.state === "in" ? g.detail : "FT" }));
+      const team = (t) => el("a", { class: "lg-team" + (g.state === "post" && !t.winner ? " is-quiet" : ""), href: searchHref(t.name), title: t.name }, spCrest(t.logo, t.abbr || t.name, "lg-crest"), el("span", { text: t.abbr || t.name }));
+      list.append(el("div", { class: "lg-game" + (g.state === "in" ? " is-live" : "") }, team(g.home), mid, team(g.away)));
+    }
+    tiles.push(lgTile("lg-round-tile", "calendar", live ? "Live and this round" : "This round", list));
+  }
+
+  // Records: one number each, read from the table.
+  const best = (key, sign = 1) => rows.reduce((a, b) => ((b[key] || 0) * sign > (a[key] || 0) * sign ? b : a));
+  const records = [["Best goal difference", best("diff"), (r) => spSigned(r.diff)], ["Most wins", best("wins"), (r) => `${r.wins} wins`],
+    ["Most draws", best("draws"), (r) => `${r.draws} draws`], ["Worst goal difference", best("diff", -1), (r) => spSigned(r.diff)]];
+  for (const [k, r, fmt] of records) {
+    tiles.push(el("section", { class: "sp-card lg-tile lg-stat", "aria-label": k }, el("small", { text: k }), el("strong", { text: fmt(r) }),
+      el("a", { class: "lg-stat-who", href: searchHref(r.name) }, spCrest(r.logo, r.abbr || r.name), el("span", { text: r.name }))));
+  }
+
+  // Zones: a strip of crests per zone, with points under each.
+  const zones = (d.zones || []).map((z) => [z, rows.filter((r) => r.zone?.label === z.label)]).filter(([, list]) => list.length);
+  if (zones.length) {
+    const strip = el("div", { class: "lg-zones" });
+    for (const [z, list] of zones) {
+      const dot = el("i");
+      dot.style.background = z.color;
+      const cells = el("div", { class: "lg-zone-cells" });
+      for (const r of list) cells.append(el("a", { class: "lg-zone-club", href: searchHref(r.name), title: `${r.name} · ${r.points} pts` }, spCrest(r.logo, r.abbr || r.name, "lg-crest"), el("small", { text: String(r.points) })));
+      const box = el("div", { class: "lg-zone" }, el("p", {}, dot, z.label), cells);
+      box.style.setProperty("--zone", z.color);
+      strip.append(box);
+    }
+    tiles.push(lgTile("lg-zones-tile", "shield", "Places at stake", strip));
+  }
+
+  // The whole table, folded.
+  const full = el("details", { class: "sp-card lg-tile lg-full" }, el("summary", {}, icon("chart"), el("span", { text: `Full table · ${rows.length} clubs` })));
+  full.append(spTableRows(rows, { football: true }));
+  const key = spZoneKey(d.zones);
+  if (key) full.append(key);
+  tiles.push(full);
+  grid.classList.add("lg-bento");
+  grid.replaceChildren(...tiles);
+  return true;
+}
+
 function leaguePanel(panel) {
   getJSON(`/api/sport/league?qid=${encodeURIComponent(panel.dataset.league)}`).then((d) => {
     const tableCard = $("[data-lg-table]", panel), roundCard = $("[data-lg-round]", panel);
     if (!d || !d.tables) { tableCard?.remove(); roundCard?.remove(); return; }
     const football = d.sport === "soccer";
+    if (football && lgBento(panel, d)) return;
     spLabel(tableCard, football ? "Table" : "Standings");
     const parts = [$(".sp-label", tableCard)];
     for (const t of d.tables) {

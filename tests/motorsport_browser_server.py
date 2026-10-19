@@ -75,6 +75,8 @@ CLAIMS = {
     "Q219357": {"P31": [claim("Q3231690")], "P176": [claim("Q40993")], "P279": [claim("Q11030")],
                 "P571": [when("+1963-09-12T00:00:00Z")], "P2052": [quantity("340", "Q180154")],
                 "P1092": [quantity("1500000")], "P155": [claim("Q177250")], "P17": [claim("Q183")]},
+    "Q1968": {"P31": [claim("Q18608583")], "P641": [claim("Q5367")], "P279": [claim("Q5367")],
+              "P571": [when("+1950-05-13T00:00:00Z")]},
     "Q187579": {"P31": [claim("Q18608583")], "P641": [claim("Q1805420")], "P279": [claim("Q1805420")],
                 "P571": [when("+1923-05-26T00:00:00Z")], "P17": [claim("Q142")], "P1346": [claim("Q310687")],
                 "P276": [claim("Q1067346")]},
@@ -107,6 +109,8 @@ PAGES = {
                             "Silverstone Circuit is a motor racing circuit in England, near the Northamptonshire villages of "
                             "Silverstone and Whittlebury. It is the home of the British Grand Prix."),
     "Porsche 911": ("Q219357", "Sports car produced by Porsche", "wide", "The Porsche 911 is a two-door sports car."),
+    "Formula One": ("Q1968", "Motorsport championship held worldwide", "wide",
+                    "Formula One (F1) is the highest class of worldwide racing for open-wheel, single-seater formula racing cars."),
     "24 Hours of Le Mans": ("Q187579", "Annual sports car race held in France", "wide",
                             "The 24 Hours of Le Mans is an endurance-focused sports car race held annually near Le Mans."),
 }

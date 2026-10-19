@@ -687,6 +687,53 @@ async def grand_prix(client: httpx.AsyncClient, title: str) -> dict:
         return {}
 
 
+SERIES_NAMES = {"formula one", "formula 1", "f1", "formula one world championship", "fia formula one world championship",
+                "formula one championship", "formula 1 world championship"}
+
+
+def is_series(title: str) -> bool:
+    """The championship itself ("Formula One"), as opposed to a Grand Prix, a driver or a team."""
+    return (title or "").strip().casefold() in SERIES_NAMES
+
+
+async def season(client: httpx.AsyncClient) -> dict:
+    """The championship as it stands: both tables, the next round, the last round's podium, the calendar."""
+    try:
+        drivers, teams, rounds = await asyncio.gather(_soft(_standings(client, "driver"), []),
+                                                      _soft(_standings(client, "constructor"), []),
+                                                      _soft(_schedule(client), []))
+        if not rounds and not drivers:
+            return {}
+        top = float(drivers[0].get("points") or 0) if drivers else 0
+        out_drivers = []
+        for row in drivers:
+            d = row.get("Driver") or {}
+            t = (row.get("Constructors") or [{}])[-1]
+            out_drivers.append({"position": _number(row.get("position")), "name": _name(d), "code": d.get("code", ""),
+                                "number": d.get("permanentNumber", ""), "team": t.get("name", ""),
+                                "color": color(t.get("constructorId", "")), "points": _points(row.get("points")),
+                                "wins": _number(row.get("wins")), "gap": _points(top - float(row.get("points") or 0))})
+        top_t = float(teams[0].get("points") or 0) if teams else 0
+        out_teams = []
+        for row in teams[:11]:
+            t = row.get("Constructor") or {}
+            out_teams.append({"position": _number(row.get("position")), "name": t.get("name", ""),
+                              "color": color(t.get("constructorId", "")), "points": _points(row.get("points")),
+                              "wins": _number(row.get("wins")), "gap": _points(top_t - float(row.get("points") or 0))})
+        run = [r for r in rounds if _done(r)]
+        upcoming = next((r for r in rounds if not _done(r)), None)
+        last = {}
+        if run:
+            podium = await _soft(_podium(client, run[-1]["round"]), [])
+            card = _race_card(run[-1])
+            last = {**card, "podium": podium, "report": _report(podium, (card.get("map") or {}).get("length"))} if podium else {}
+        return {"season": rounds[0]["season"] if rounds else "", "rounds": len(rounds), "run": len(run),
+                "drivers": out_drivers, "constructors": out_teams, "calendar": _calendar(rounds),
+                "next": _race_card(upcoming) if upcoming else {}, "last": last}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, IndexError):
+        return {}
+
+
 async def circuit(client: httpx.AsyncClient, title: str, lat: str = "", lon: str = "") -> dict:
     """A circuit panel's live half, matched by Wikipedia article or, failing that, by position."""
     try:
