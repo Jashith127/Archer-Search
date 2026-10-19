@@ -1,5 +1,13 @@
 Archer v0.4 adds panels for Formula One, football, basketball and esports, makes startup and searching noticeably faster, redesigns the companion app, and makes AI answers stricter about their evidence.
 
+![A Formula One driver panel: championship standing, season round by round, career totals and the next round's track](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/f1-driver.png)
+
+![A Grand Prix panel: the circuit as a dot matrix, podium, race stats, weekend schedule and past winners](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/f1-grand-prix.png)
+
+![A football club panel: league table, form, next match and fixtures](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/club.png)
+
+![The VCT season page: champion, standings and results](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/vct.png)
+
 ### Install
 
 Download **ArcherSetup.exe** below and run it on Windows 10 or 11. Setup downloads Python and dependencies automatically. You need an internet connection and at least 1 GB of free space.
