@@ -4,7 +4,7 @@ Archer v0.4 adds panels for Formula One, football, basketball and esports, makes
 
 ![A Grand Prix panel: the circuit as a dot matrix, podium, race stats, weekend schedule and past winners](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/f1-grand-prix.png)
 
-![A football club panel: league table, form, next match and fixtures](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/club.png)
+![A league panel: the title race, this round, places at stake and the full table](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/league.png)
 
 ![The VCT season page: champion, standings and results](https://raw.githubusercontent.com/Jashith127/Archer-Search/main/docs/screenshots/v0.4/vct.png)
 
